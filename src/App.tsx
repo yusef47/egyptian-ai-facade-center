@@ -81,11 +81,11 @@ export function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageDataUrl, prompt }),
       });
-      const data = await response.json() as { imageDataUrl?: string; error?: string };
-      if (!response.ok || !data.imageDataUrl) {
+      const data = await response.json() as { imageUrl?: string; error?: string };
+      if (!response.ok || !data.imageUrl) {
         throw new Error(data.error || "تعذر إكمال الترميم.");
       }
-      setOutputImage(data.imageDataUrl);
+      setOutputImage(data.imageUrl);
       setStatus("اكتمل الترميم — الواجهة جاهزة للمراجعة المعمارية.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "حدث خطأ أثناء الترميم.");

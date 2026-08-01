@@ -24,6 +24,11 @@ function sendError(res: VercelResponse, status: number, message: string) {
   res.status(status).json({ error: message });
 }
 
+// V109.3: clean success payload consumed by the frontend as `data.imageUrl`.
+export function buildSuccessResponse(output: string) {
+  return { imageUrl: output };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -75,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const output = extractImageData(data);
     if (!output) return sendError(res, 502, "لم تصل صورة من نموذج الترميم.");
-    return res.status(200).json({ imageDataUrl: output });
+    return res.status(200).json(buildSuccessResponse(output));
   } catch (error) {
     console.error("[api/restore] OpenRouter request failed:", error);
     return res.status(500).json({
