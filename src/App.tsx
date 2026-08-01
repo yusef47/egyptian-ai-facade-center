@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { FooterStatus } from "./components/FooterStatus";
 import { Header } from "./components/Header";
+import { HeritageGallery } from "./components/HeritageGallery";
 import { Workspace } from "./components/Workspace";
 import { compressImage } from "./lib/image";
 
@@ -20,10 +21,32 @@ export function buildRestoreRequestBody(
   const styleInstruction = selectedStyle
     ? `\nArchitectural style direction: ${selectedStyle}.`
     : "";
-  return {
-    imageDataUrl,
-    prompt: `${prompt.trim()}${styleInstruction}`,
-  };
+  return { imageDataUrl, prompt: `${prompt.trim()}${styleInstruction}` };
+}
+
+function Hero() {
+  return (
+    <section className="hero-section" id="top" aria-labelledby="hero-title" dir="rtl">
+      <div className="hero-copy">
+        <span className="hero-kicker"><i /> منصة الإحياء المعماري · V112.0</span>
+        <h1 id="hero-title">المنصة القومية لإعادة إحياء الهوية المعمارية المصرية بالذكاء الاصطناعي</h1>
+        <p>نحوّل الواجهات المنسية إلى مستقبل بصري يحترم ذاكرة المكان، بلمسة من الذكاء الاصطناعي ودقة العمارة المصرية.</p>
+        <a className="hero-cta" href="#studio"><span>اكتشف الاستوديو</span><b>↓</b></a>
+      </div>
+      <div className="hero-orbit" aria-hidden="true">
+        <div className="orbit-ring orbit-ring-one" />
+        <div className="orbit-ring orbit-ring-two" />
+        <div className="hero-monogram">م<br /><span>AI</span></div>
+        <span className="orbit-note orbit-note-top">RE-IMAGINE / 01</span>
+        <span className="orbit-note orbit-note-bottom">CAIRO · EGYPT</span>
+      </div>
+      <div className="hero-metrics" aria-label="مؤشرات المنصة">
+        <div><strong>⚡ 3.0s</strong><span>Speed</span></div>
+        <div><strong>🏛️ 8K</strong><span>Restoration</span></div>
+        <div><strong>🇪🇬 Heritage</strong><span>Hashami &amp; Khedivial</span></div>
+      </div>
+    </section>
+  );
 }
 
 export function App() {
@@ -64,7 +87,6 @@ export function App() {
       setStatus("اكتب رؤيتك المعمارية قبل بدء الترميم.");
       return;
     }
-
     setIsGenerating(true);
     setOutputImage(null);
     setStatus("جاري تحليل الكتلة والمواد وإعادة تركيب الواجهة الملكية...");
@@ -75,9 +97,7 @@ export function App() {
         body: JSON.stringify(buildRestoreRequestBody(imageDataUrl, prompt, selectedStyle)),
       });
       const data = await response.json() as { imageUrl?: string; error?: string };
-      if (!response.ok || !data.imageUrl) {
-        throw new Error(data.error || "تعذر إكمال الترميم.");
-      }
+      if (!response.ok || !data.imageUrl) throw new Error(data.error || "تعذر إكمال الترميم.");
       setOutputImage(data.imageUrl);
       setStatus("اكتمل الترميم الملكي — الواجهة جاهزة للمراجعة.");
     } catch (error) {
@@ -88,30 +108,25 @@ export function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" id="app">
       <div className="ambient-glow glow-one" />
       <div className="ambient-glow glow-two" />
       <Header />
       <main className="main-content">
-        <div className="hero-intro" dir="rtl">
-          <div>
-            <span className="hero-label">المركز المصري للذكاء الاصطناعي · V111.1</span>
-            <h2>ترميم بصري<br /><em>يليق بتاريخ القاهرة.</em></h2>
-          </div>
-          <p>حوّل صورة واجهتك الحالية إلى رؤية معمارية ملكية، مع مقارنة حيّة تحافظ على النسب وتكشف التفاصيل الجديدة.</p>
-        </div>
+        <Hero />
         <Workspace
           inputPreview={inputPreview}
           outputImage={outputImage}
           prompt={prompt}
           isGenerating={isGenerating}
-          onPromptChange={setPrompt}
           selectedStyle={selectedStyle}
+          onPromptChange={setPrompt}
           onStyleChange={setSelectedStyle}
           onUploadClick={() => fileInputRef.current?.click()}
           onRestore={handleRestore}
         />
         <p className="workspace-status" role="status" aria-live="polite">{status}</p>
+        <HeritageGallery />
         <input ref={fileInputRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFileChange} />
       </main>
       <FooterStatus />

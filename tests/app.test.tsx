@@ -1,49 +1,81 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App, buildRestoreRequestBody } from "../src/App";
 
 describe("Egyptian Center facade app", () => {
-  it("renders the visual transformation canvas and one royal restoration action", () => {
+  it("renders the V112 three-section architectural portal", () => {
     render(<App />);
 
-    expect(
-      screen.getByText("المركز المصري للذكاء الاصطناعي في العمارة والعمران"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /لوحة التحول المعماري/i }))
+    expect(screen.getByRole("banner", { name: /الهوية الرسمية/i })).toBeInTheDocument();
+    expect(screen.getByText("المنصة القومية لإعادة إحياء الهوية المعمارية المصرية بالذكاء الاصطناعي"))
       .toBeInTheDocument();
-    expect(screen.getByText("الواجهة الأصلية")).toBeInTheDocument();
-    expect(screen.getByText("الترميم الملكي")).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: /مقارنة الواجهة/i }))
-      .toHaveValue("50");
-    expect(screen.getByRole("button", { name: /بدء الترميم المعماري الملكي/i }))
+    expect(screen.getByText("⚡ 3.0s")).toBeInTheDocument();
+    expect(screen.getByText("Speed")).toBeInTheDocument();
+    expect(screen.getByText("🏛️ 8K")).toBeInTheDocument();
+    expect(screen.getByText("Restoration")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /استوديو الذكاء الاصطناعي/i }))
       .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /رفع صورة الواجهة/i }))
+    expect(screen.getByRole("region", { name: /معرض ترميمات التراث/i }))
       .toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/اكتب رؤيتك المعمارية/i))
-      .toBeInTheDocument();
+    expect(screen.getByText(/Red Brick → Hashami Palace/i)).toBeInTheDocument();
+    expect(screen.getByText(/Streetscape → Heritage Alleyway/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Wikimedia Commons/i })).toBeInTheDocument();
   });
 
-  it("moves the comparison handle and selects one visual style", () => {
+  it("renders a real photographic demo image without crop styling", () => {
     render(<App />);
 
-    const slider = screen.getByRole("slider", { name: /مقارنة الواجهة/i });
-    fireEvent.change(slider, { target: { value: "72" } });
-    expect(slider).toHaveValue("72");
-
-    const hashamiBadge = screen.getByRole("button", { name: /طراز هشمي/ });
-    expect(hashamiBadge).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(hashamiBadge);
-    expect(hashamiBadge).toHaveAttribute("aria-pressed", "true");
+    const demoImage = screen.getByTestId("restored-demo-image");
+    expect(demoImage).toHaveAttribute("src", expect.stringContaining("upload.wikimedia.org"));
+    expect(demoImage).toHaveClass("image-contain");
   });
 
-  it("starts with a visual palace placeholder before generation", () => {
+  it("moves the divider with pointer dragging from left to right", () => {
     render(<App />);
 
-    expect(screen.getByTestId("restored-placeholder")).toBeInTheDocument();
-    expect(screen.getByText(/ارفع صورة الواجهة الأصلية/i)).toBeInTheDocument();
+    const canvas = screen.getByTestId("transformation-canvas");
+    const divider = screen.getByRole("slider", { name: /سحب للمقارنة/i });
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      right: 900,
+      top: 0,
+      bottom: 500,
+      width: 800,
+      height: 500,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent(
+      divider,
+      new MouseEvent("pointerdown", { bubbles: true, clientX: 180 }),
+    );
+    fireEvent(
+      divider,
+      new MouseEvent("pointermove", { bubbles: true, clientX: 740 }),
+    );
+    fireEvent(
+      divider,
+      new MouseEvent("pointerup", { bubbles: true, clientX: 740 }),
+    );
+
+    expect(divider).toHaveAttribute("aria-valuenow", "80");
   });
 
-  it("builds the one direct restore payload with the selected style", () => {
+  it("switches between slider and full side-by-side views", () => {
+    render(<App />);
+
+    const sideBySide = screen.getByRole("button", { name: /عرض الصورتين كلياً/i });
+    fireEvent.click(sideBySide);
+    expect(screen.getByTestId("transformation-canvas")).toHaveClass("side-by-side");
+    expect(screen.getByRole("button", { name: /مقارنة بالسلايدر/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /مقارنة بالسلايدر/i }));
+    expect(screen.getByTestId("transformation-canvas")).not.toHaveClass("side-by-side");
+  });
+
+  it("keeps the selected style in the one direct restore payload", () => {
     expect(
       buildRestoreRequestBody(
         "data:image/jpeg;base64,raw",
@@ -54,12 +86,5 @@ describe("Egyptian Center facade app", () => {
       imageDataUrl: "data:image/jpeg;base64,raw",
       prompt: "واجهة ملكية\nArchitectural style direction: طراز خديوي.",
     });
-  });
-
-  it("starts with the direct royal restoration action available", () => {
-    render(<App />);
-
-    const action = screen.getByRole("button", { name: /بدء الترميم المعماري الملكي/i });
-    expect(action).not.toBeDisabled();
   });
 });
