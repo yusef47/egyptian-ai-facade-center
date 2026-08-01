@@ -2,8 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   buildOpenRouterRequest,
   extractImageData,
-} from "../src/lib/openrouter";
-import { createRateLimiter } from "../src/lib/rateLimit";
+} from "../src/lib/openrouter.js";
+import { createRateLimiter } from "../src/lib/rateLimit.js";
 
 const MAX_DATA_URL_BYTES = 3_500_000;
 // Best-effort per-warm-instance burst guard. Use distributed storage/auth for public production traffic.
