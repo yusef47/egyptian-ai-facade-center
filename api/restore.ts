@@ -9,6 +9,17 @@ const MAX_DATA_URL_BYTES = 3_500_000;
 // Best-effort per-warm-instance burst guard. Use distributed storage/auth for public production traffic.
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 6 });
 
+// V109.2: raise the serverless execution window and request body limit.
+export const maxDuration = 60;
+export const config = {
+  maxDuration: 60,
+  api: {
+    bodyParser: {
+      sizeLimit: "10mb",
+    },
+  },
+};
+
 function sendError(res: VercelResponse, status: number, message: string) {
   res.status(status).json({ error: message });
 }
@@ -65,7 +76,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const output = extractImageData(data);
     if (!output) return sendError(res, 502, "لم تصل صورة من نموذج الترميم.");
     return res.status(200).json({ imageDataUrl: output });
-  } catch {
-    return sendError(res, 502, "حدث خطأ أثناء الاتصال بخدمة الترميم.");
+  } catch (error) {
+    console.error("[api/restore] OpenRouter request failed:", error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "حدث خطأ أثناء الاتصال بخدمة الترميم.",
+    });
   }
 }
