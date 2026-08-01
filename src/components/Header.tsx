@@ -1,8 +1,4 @@
-type HeaderProps = {
-  onSearch: (value: string) => void;
-};
-
-export function Header({ onSearch }: HeaderProps) {
+export function Header() {
   return (
     <header className="site-header glass-panel" dir="rtl">
       <div className="brand-lockup">
@@ -21,21 +17,13 @@ export function Header({ onSearch }: HeaderProps) {
 
       <nav className="primary-nav" aria-label="التنقل الرئيسي">
         <a className="active" href="#workspace">الرئيسية</a>
-        <a href="#projects">مشروعاتنا</a>
-        <a href="#analytics">تحليلات الذكاء الاصطناعي</a>
-        <a href="#platform">منصتنا</a>
-        <a href="#account">حسابي</a>
+        <a href="#workspace">مشروعاتنا</a>
+        <a href="#workspace">تحليلات الذكاء الاصطناعي</a>
+        <a href="#workspace">منصتنا</a>
+        <a href="#workspace">حسابي</a>
       </nav>
 
       <div className="header-tools" dir="ltr">
-        <label className="search-field">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="البحث"
-            placeholder="البحث"
-            onChange={(event) => onSearch(event.target.value)}
-          />
-        </label>
         <button className="icon-button notification-button" aria-label="الإشعارات">
           ♧
           <span className="notification-dot" />

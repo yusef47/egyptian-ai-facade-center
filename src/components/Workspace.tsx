@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useState } from "react";
 
 type WorkspaceProps = {
   inputPreview: string | null;
@@ -7,16 +7,36 @@ type WorkspaceProps = {
   isGenerating: boolean;
   onPromptChange: (value: string) => void;
   onUploadClick: () => void;
-  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onRestore: () => void;
+  selectedStyle: string;
+  onStyleChange?: (style: string) => void;
 };
 
-const badges = [
-  "النمط الكلاسيكي الخديوي",
-  "حجر هشمي",
-  "إضاءة ليلية",
-  "جودة 8K",
-];
+const styles = ["طراز هشمي", "مشربيات خشبية", "طراز خديوي", "طراز فرعوني"];
+
+function PalacePlaceholder() {
+  return (
+    <div className="palace-placeholder" data-testid="restored-placeholder" aria-hidden="true">
+      <div className="placeholder-sky" />
+      <div className="placeholder-moon" />
+      <div className="palace-glow" />
+      <div className="palace-building">
+        <div className="palace-dome"><i /></div>
+        <div className="palace-roof" />
+        <div className="palace-facade">
+          {Array.from({ length: 15 }, (_, index) => (
+            <span className="palace-window" key={index}><i /></span>
+          ))}
+        </div>
+        <div className="palace-entrance"><i /></div>
+        <div className="palace-steps" />
+      </div>
+      <div className="palace-palms palm-one"><i /><b /><em /></div>
+      <div className="palace-palms palm-two"><i /><b /><em /></div>
+      <div className="palace-ground" />
+    </div>
+  );
+}
 
 export function Workspace({
   inputPreview,
@@ -25,107 +45,137 @@ export function Workspace({
   isGenerating,
   onPromptChange,
   onUploadClick,
-  onFileChange,
   onRestore,
+  selectedStyle,
+  onStyleChange,
 }: WorkspaceProps) {
+  const [splitPosition, setSplitPosition] = useState(50);
+
+  const handleStyleChange = (style: string) => {
+    onStyleChange?.(selectedStyle === style ? "" : style);
+  };
+
   return (
-    <section className="workspace-section" id="workspace">
-      <div className="section-heading-row">
+    <section className="workspace-section" id="workspace" dir="rtl">
+      <div className="workspace-heading">
         <div>
-          <span className="eyebrow">01 · تحليل بصري مباشر</span>
-          <h1>المدخلات: الواجهة الحالية <span>📥</span></h1>
+          <span className="eyebrow">01 · الاستوديو البصري الملكي</span>
+          <h1>تحوّل الواجهة أمام عينيك</h1>
         </div>
-        <div className="section-accent-line" />
-        <div className="heading-meta">معالجة آمنة · 4K → 8K</div>
+        <div className="heading-signal">
+          <span className="signal-dot" />
+          <span>محرك Gemini · مباشر</span>
+        </div>
       </div>
 
-      <div className="workspace-grid">
-        <article className="facade-card input-card glass-panel">
-          <div className="card-topline">
-            <span className="card-kicker">المصدر الأصلي</span>
-            <span className="card-index">A / 01</span>
+      <div className="transformation-shell glass-panel" role="region" aria-label="لوحة التحول المعماري">
+        <div className="canvas-toolbar">
+          <span className="canvas-index">EG · 111.1</span>
+          <span className="canvas-hint">اسحب الخط الذهبي للمقارنة</span>
+        </div>
+
+        <div className="transformation-canvas">
+          <div className="transformation-layer restored-layer">
+            {outputImage ? (
+              <img src={outputImage} alt="الواجهة بعد الترميم الملكي" />
+            ) : (
+              <PalacePlaceholder />
+            )}
+            <div className="layer-shade restored-shade" />
+            <div className="layer-label restored-label"><span>✦</span> الترميم الملكي</div>
           </div>
-          <div className={`image-stage ${inputPreview ? "has-image" : ""}`}>
+
+          <div
+            className="transformation-layer original-layer"
+            style={{ clipPath: `inset(0 ${100 - splitPosition}% 0 0)` }}
+          >
             {inputPreview ? (
               <img src={inputPreview} alt="صورة الواجهة الأصلية" />
             ) : (
-              <button className="dropzone-button" onClick={onUploadClick}>
-                <span className="upload-glyph">↑</span>
-                <strong>ارفع صورة الواجهة</strong>
-                <small>لم يتم رفع صورة بعد · JPG أو PNG · حتى 10 ميجابايت</small>
-              </button>
-            )}
-            <div className="stage-corner top-right" />
-            <div className="stage-corner bottom-left" />
-          </div>
-          <div className="image-caption">
-            <span className="caption-dot" />
-            <span>الواجهة الأصلية للطوب الأحمر والخرسانة</span>
-          </div>
-        </article>
-
-        <article className="facade-card output-card glass-panel">
-          <h2 className="output-card-title">
-            <span>المخرجات: الترميم المعماري المعتمد على الذكاء الاصطناعي (8K)</span>
-            <span aria-hidden="true"> ✨</span>
-          </h2>
-          <div className="card-topline">
-            <span className="card-kicker gold-text">الناتج المعماري</span>
-            <span className="card-index">B / 02</span>
-          </div>
-          <div className={`image-stage output-stage ${outputImage ? "has-image" : ""}`}>
-            {outputImage ? (
-              <img src={outputImage} alt="الواجهة المعمارية بعد الترميم" />
-            ) : (
-              <div className="empty-output">
-                {isGenerating ? (
-                  <>
-                    <span className="generation-orbit" />
-                    <strong>جاري تركيب الواجهة...</strong>
-                    <small>Gemini 3.1 · تحليل المواد والكتلة</small>
-                  </>
-                ) : (
-                  <>
-                    <span className="output-mark">✦</span>
-                    <strong>ستظهر الواجهة المعمارية هنا</strong>
-                    <small>ابدأ الترميم لمشاهدة النتيجة</small>
-                  </>
-                )}
+              <div className="original-placeholder">
+                <div className="brick-grid" />
+                <div className="original-placeholder-copy">
+                  <span className="upload-glyph">↑</span>
+                  <strong>ارفع صورة الواجهة الأصلية</strong>
+                  <small>JPG · PNG · WEBP</small>
+                </div>
               </div>
             )}
-            <div className="stage-corner top-left" />
-            <div className="stage-corner bottom-right" />
+            <div className="layer-shade original-shade" />
+            <div className="layer-label original-label">الواجهة الأصلية</div>
           </div>
-          <div className="image-caption output-caption">
-            <span className="caption-dot gold-dot" />
-            <span>Khedivial Cairo Heritage building</span>
-            <span className="resolution-mark">8K</span>
+
+          <div className="comparison-divider" style={{ left: `${splitPosition}%` }} aria-hidden="true">
+            <span className="divider-handle"><i /><i /><i /></span>
           </div>
-        </article>
+          <span className="canvas-corner canvas-corner-tr" />
+          <span className="canvas-corner canvas-corner-bl" />
+          {isGenerating && (
+            <div className="generation-overlay" role="status" aria-live="polite">
+              <span className="generation-orbit" />
+              <strong>جاري بناء الترميم الملكي</strong>
+              <small>تحليل الكتلة · المواد · الضوء</small>
+            </div>
+          )}
+        </div>
+
+        <label className="comparison-control">
+          <span className="sr-only">مقارنة الواجهة الأصلية والترميم الملكي</span>
+          <input
+            aria-label="مقارنة الواجهة الأصلية والترميم الملكي"
+            type="range"
+            min="0"
+            max="100"
+            value={splitPosition}
+            onChange={(event) => setSplitPosition(Number(event.target.value))}
+          />
+        </label>
+
+        <div className="canvas-caption">
+          <span><i className="caption-dot original-dot" /> المصدر · طوب أحمر وخرسانة</span>
+          <span className="canvas-caption-center">اضغط واسحب للمشاهدة</span>
+          <span><i className="caption-dot restored-dot" /> الرؤية الملكية · حجر هشمي</span>
+        </div>
       </div>
 
-      <div className="workspace-toolbar glass-panel" dir="rtl">
-        <div className="toolbar-actions">
-          <button className="button button-primary" onClick={onRestore} disabled={isGenerating}>
-            {isGenerating ? "جاري الترميم..." : "بدء الترميم ✨"}
-          </button>
-          <button className="button button-secondary" onClick={onUploadClick} disabled={isGenerating}>
-            رفع الصورة 📤
+      <div className="floating-control-dock glass-panel">
+        <div className="dock-upload">
+          <button className="upload-trigger" type="button" onClick={onUploadClick} disabled={isGenerating}>
+            <span className="upload-trigger-icon">↥</span>
+            <span><strong>رفع صورة الواجهة</strong><small>{inputPreview ? "تم التحميل · تغيير" : "صورة أصلية · JPG أو PNG"}</small></span>
           </button>
         </div>
-        <div className="style-badges" aria-label="إعدادات الترميم">
-          {badges.map((badge) => <span className="style-badge" key={badge}>{badge}</span>)}
-        </div>
-        <div className="prompt-row">
-          <label htmlFor="design-prompt">التوجيه المعماري</label>
+        <div className="dock-divider" />
+        <div className="dock-prompt">
+          <label htmlFor="design-prompt">رؤيتك المعمارية</label>
           <textarea
             id="design-prompt"
             value={prompt}
             onChange={(event) => onPromptChange(event.target.value)}
-            placeholder="اكتب وصف التصميم الذي تتخيله..."
-            rows={2}
+            placeholder="اكتب رؤيتك المعمارية..."
+            rows={1}
           />
         </div>
+        <div className="dock-divider dock-divider-mobile" />
+        <div className="dock-styles" aria-label="اختيار النمط المعماري">
+          {styles.map((style) => (
+            <button
+              className={`style-chip ${selectedStyle === style ? "selected" : ""}`}
+              key={style}
+              type="button"
+              aria-pressed={selectedStyle === style}
+              onClick={() => handleStyleChange(style)}
+              disabled={isGenerating}
+            >
+              <span>✦</span>{style}
+            </button>
+          ))}
+        </div>
+        <button className="royal-action" type="button" onClick={onRestore} disabled={isGenerating}>
+          <span className="royal-action-star">✦</span>
+          <span>{isGenerating ? "جاري الترميم الملكي..." : "بدء الترميم المعماري الملكي"}</span>
+          <span className="royal-action-arrow">←</span>
+        </button>
       </div>
     </section>
   );

@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { ArchitectChat, type ChatMessage } from "./components/ArchitectChat";
 import { FooterStatus } from "./components/FooterStatus";
 import { Header } from "./components/Header";
 import { Workspace } from "./components/Workspace";
@@ -8,40 +7,34 @@ import { compressImage } from "./lib/image";
 
 const MAX_IMAGE_DATA_URL = 3_500_000;
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: 1,
-    role: "assistant",
-    text: "أهلاً بك في استوديو الترميم المعماري. ارفع صورة الواجهة واكتب رؤيتك، وسأساعدك في تحويلها إلى تكوين مصري معاصر يحافظ على روح المكان.",
-  },
-  {
-    id: 2,
-    role: "user",
-    text: "أريد واجهة خديوية هادئة مع حجر هشمي وإضاءة ليلية دافئة.",
-  },
-  {
-    id: 3,
-    role: "assistant",
-    text: "اختيار ممتاز. سأحافظ على نسب الفتحات والكتلة الأصلية، مع إيقاع أفقي واضح، مشربيات من خشب الجوز، وفوانيس نحاسية بدرجة 2700K.",
-  },
-];
+type RestoreRequestBody = {
+  imageDataUrl: string;
+  prompt: string;
+};
+
+export function buildRestoreRequestBody(
+  imageDataUrl: string,
+  prompt: string,
+  selectedStyle = "",
+): RestoreRequestBody {
+  const styleInstruction = selectedStyle
+    ? `\nArchitectural style direction: ${selectedStyle}.`
+    : "";
+  return {
+    imageDataUrl,
+    prompt: `${prompt.trim()}${styleInstruction}`,
+  };
+}
 
 export function App() {
   const [inputPreview, setInputPreview] = useState<string | null>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [outputImage, setOutputImage] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [status, setStatus] = useState("جاهز — ارفع صورة واكتب وصف التصميم ثم ابدأ الترميم.");
-  const [chatDraft, setChatDraft] = useState("");
-  const [messages, setMessages] = useState(initialMessages);
-  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("جاهز — ارفع صورة الواجهة واكتب رؤيتك المعمارية.");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const visibleMessages = useMemo(() => {
-    if (!search.trim()) return messages;
-    return messages.filter((message) => message.text.includes(search.trim()));
-  }, [messages, search]);
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -54,7 +47,7 @@ export function App() {
       setInputPreview(compressed);
       setImageDataUrl(compressed);
       setOutputImage(null);
-      setStatus("تم تحميل الواجهة. اكتب رؤيتك ثم ابدأ الترميم.");
+      setStatus("تم تحميل الواجهة. اختر الطراز واكتب رؤيتك ثم ابدأ الترميم.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "تعذر تحميل الصورة.");
     } finally {
@@ -68,25 +61,25 @@ export function App() {
       return;
     }
     if (prompt.trim().length < 3) {
-      setStatus("اكتب وصفاً معمارياً قبل بدء الترميم.");
+      setStatus("اكتب رؤيتك المعمارية قبل بدء الترميم.");
       return;
     }
 
     setIsGenerating(true);
     setOutputImage(null);
-    setStatus("جاري تحليل الكتلة والمواد وإعادة تركيب الواجهة...");
+    setStatus("جاري تحليل الكتلة والمواد وإعادة تركيب الواجهة الملكية...");
     try {
       const response = await fetch("/api/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageDataUrl, prompt }),
+        body: JSON.stringify(buildRestoreRequestBody(imageDataUrl, prompt, selectedStyle)),
       });
       const data = await response.json() as { imageUrl?: string; error?: string };
       if (!response.ok || !data.imageUrl) {
         throw new Error(data.error || "تعذر إكمال الترميم.");
       }
       setOutputImage(data.imageUrl);
-      setStatus("اكتمل الترميم — الواجهة جاهزة للمراجعة المعمارية.");
+      setStatus("اكتمل الترميم الملكي — الواجهة جاهزة للمراجعة.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "حدث خطأ أثناء الترميم.");
     } finally {
@@ -94,31 +87,18 @@ export function App() {
     }
   };
 
-  const handleChatSend = () => {
-    const text = chatDraft.trim();
-    if (!text) return;
-    const userMessage: ChatMessage = { id: Date.now(), role: "user", text };
-    const assistantMessage: ChatMessage = {
-      id: Date.now() + 1,
-      role: "assistant",
-      text: "سأضع هذه الرؤية في الاعتبار: الحفاظ على التكوين الأصلي أولاً، ثم ضبط المواد والإضاءة بما يخدم هوية الواجهة المصرية.",
-    };
-    setMessages((current) => [...current, userMessage, assistantMessage]);
-    setChatDraft("");
-  };
-
   return (
     <div className="app-shell">
       <div className="ambient-glow glow-one" />
       <div className="ambient-glow glow-two" />
-      <Header onSearch={setSearch} />
+      <Header />
       <main className="main-content">
         <div className="hero-intro" dir="rtl">
           <div>
-            <span className="hero-label">منصة الترميم الرقمي · 2026</span>
-            <h2>نمنح الواجهات المصرية<br /><em>مستقبلاً يليق بتاريخها.</em></h2>
+            <span className="hero-label">المركز المصري للذكاء الاصطناعي · V111.1</span>
+            <h2>ترميم بصري<br /><em>يليق بتاريخ القاهرة.</em></h2>
           </div>
-          <p>استوديو ذكاء اصطناعي بصري يحوّل صورة الواجهة الحالية إلى تصور معماري قابل للتنفيذ، مع الحفاظ على روح القاهرة وتفاصيلها.</p>
+          <p>حوّل صورة واجهتك الحالية إلى رؤية معمارية ملكية، مع مقارنة حيّة تحافظ على النسب وتكشف التفاصيل الجديدة.</p>
         </div>
         <Workspace
           inputPreview={inputPreview}
@@ -126,17 +106,13 @@ export function App() {
           prompt={prompt}
           isGenerating={isGenerating}
           onPromptChange={setPrompt}
+          selectedStyle={selectedStyle}
+          onStyleChange={setSelectedStyle}
           onUploadClick={() => fileInputRef.current?.click()}
-          onFileChange={handleFileChange}
           onRestore={handleRestore}
         />
+        <p className="workspace-status" role="status" aria-live="polite">{status}</p>
         <input ref={fileInputRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFileChange} />
-        <ArchitectChat
-          messages={visibleMessages}
-          draft={chatDraft}
-          onDraftChange={setChatDraft}
-          onSend={handleChatSend}
-        />
       </main>
       <FooterStatus />
     </div>
