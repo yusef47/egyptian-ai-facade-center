@@ -19,7 +19,46 @@ describe("Egyptian Center facade app", () => {
       .toBeInTheDocument();
     expect(screen.getByText(/Red Brick → Hashami Palace/i)).toBeInTheDocument();
     expect(screen.getByText(/Streetscape → Heritage Alleyway/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Wikimedia Commons/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Unsplash/i })).toBeInTheDocument();
+  });
+
+  it("populates all four gallery cards with requested high-resolution images", () => {
+    render(<App />);
+
+    const galleryImages = screen.getAllByTestId(/gallery-image-/);
+    expect(galleryImages).toHaveLength(4);
+
+    const expectedSources = [
+      "https://images.unsplash.com/photo-1541888946425-d0fbb186a5b7?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+    ];
+
+    galleryImages.forEach((image, index) => {
+      expect(image).toHaveAttribute("src", expectedSources[index]);
+      expect(image).toHaveClass("w-full", "h-52", "object-cover", "rounded-t-xl");
+    });
+  });
+
+  it("falls back to a non-empty image when a gallery URL fails", () => {
+    render(<App />);
+
+    const image = screen.getByTestId("gallery-image-01");
+    fireEvent.error(image);
+    expect(image).toHaveAttribute("src", expect.stringContaining("images.unsplash.com"));
+
+    fireEvent.error(image);
+    expect(image).toHaveAttribute("src", expect.stringContaining("data:image/svg+xml"));
+  });
+
+  it("keeps gallery fallback images styled as full cards", () => {
+    render(<App />);
+
+    const image = screen.getByTestId("gallery-image-03");
+    fireEvent.error(image);
+    fireEvent.error(image);
+    expect(image).toHaveClass("w-full", "h-52", "object-cover", "rounded-t-xl");
   });
 
   it("renders a real photographic demo image without crop styling", () => {
