@@ -43,6 +43,36 @@ function decodeBase64(value: string): string {
   return `data:image/png;base64,${value}`;
 }
 
+// V109.4: hosted URLs are preferred over base64 so the Vercel response stays small.
+// Data URLs are also accepted (returned as-is) so no valid image is dropped.
+function hostedUrl(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("data:image/")) return trimmed;
+    if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) return trimmed;
+    // Parse markdown image syntax: ![alt](https://...)
+    const markdown = /!\[[^\]]*\]\(\s*(https?:\/\/[^)\s]+)\s*\)/.exec(trimmed);
+    if (markdown) return markdown[1];
+  }
+  return null;
+}
+
+function pickImage(candidate: Record<string, unknown>): string | null {
+  const url = hostedUrl(candidate.url);
+  if (url) return url;
+  const imageUrl = candidate.image_url;
+  if (imageUrl && typeof imageUrl === "object") {
+    const nested = hostedUrl((imageUrl as Record<string, unknown>).url);
+    if (nested) return nested;
+  }
+  const contentUrl = hostedUrl(imageUrl as string);
+  if (contentUrl) return contentUrl;
+  if (typeof candidate.b64_json === "string") return decodeBase64(candidate.b64_json);
+  const textUrl = hostedUrl(candidate.text);
+  if (textUrl) return textUrl;
+  return null;
+}
+
 export function extractImageData(response: unknown): string | null {
   if (!response || typeof response !== "object") return null;
   const record = response as Record<string, unknown>;
@@ -51,11 +81,8 @@ export function extractImageData(response: unknown): string | null {
   if (Array.isArray(images)) {
     for (const image of images) {
       if (!image || typeof image !== "object") continue;
-      const candidate = image as Record<string, unknown>;
-      if (typeof candidate.b64_json === "string") {
-        return decodeBase64(candidate.b64_json);
-      }
-      if (typeof candidate.url === "string") return candidate.url;
+      const found = pickImage(image as Record<string, unknown>);
+      if (found) return found;
     }
   }
 
@@ -79,9 +106,8 @@ function extractImageDataFromContent(value: unknown): string | null {
   if (Array.isArray(images)) {
     for (const image of images) {
       if (!image || typeof image !== "object") continue;
-      const candidate = image as Record<string, unknown>;
-      if (typeof candidate.b64_json === "string") return decodeBase64(candidate.b64_json);
-      if (typeof candidate.url === "string") return candidate.url;
+      const found = pickImage(image as Record<string, unknown>);
+      if (found) return found;
     }
   }
 
@@ -90,15 +116,15 @@ function extractImageDataFromContent(value: unknown): string | null {
     for (const part of content) {
       if (!part || typeof part !== "object") continue;
       const item = part as Record<string, unknown>;
-      const imageUrl = item.image_url;
-      if (typeof imageUrl === "string") return imageUrl;
-      if (imageUrl && typeof imageUrl === "object") {
-        const url = (imageUrl as Record<string, unknown>).url;
-        if (typeof url === "string") return url;
-      }
-      if (typeof item.b64_json === "string") return decodeBase64(item.b64_json);
-      if (typeof item.url === "string") return item.url;
+      const found = pickImage(item);
+      if (found) return found;
     }
+  }
+
+  const rawText = record.text;
+  if (typeof rawText === "string") {
+    const url = hostedUrl(rawText);
+    if (url) return url;
   }
   return null;
 }

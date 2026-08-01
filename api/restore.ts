@@ -3,6 +3,7 @@ import {
   buildOpenRouterRequest,
   extractImageData,
 } from "../src/lib/openrouter.js";
+import { compressImageDataUrl } from "../src/lib/optimize.js";
 import { createRateLimiter } from "../src/lib/rateLimit.js";
 
 const MAX_DATA_URL_BYTES = 3_500_000;
@@ -80,7 +81,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const output = extractImageData(data);
     if (!output) return sendError(res, 502, "لم تصل صورة من نموذج الترميم.");
-    return res.status(200).json(buildSuccessResponse(output));
+    // V109.4: hosted URLs pass through; oversized base64 is compressed server-side.
+    const imageUrl = output.startsWith("data:image/")
+      ? await compressImageDataUrl(output)
+      : output;
+    return res.status(200).json(buildSuccessResponse(imageUrl));
   } catch (error) {
     console.error("[api/restore] OpenRouter request failed:", error);
     return res.status(500).json({
