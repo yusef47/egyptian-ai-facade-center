@@ -7,10 +7,12 @@ export interface RestoreResult {
   imageDataUrl: string;
 }
 
+const IMAGE_REFERENCE_RE = /^(data:image\/|https?:\/\/)/i;
+
 /**
  * Calls the Vercel serverless route /api/restore with the compressed
  * image data URL and the architectural prompt, returning the restored
- * facade image data URL on success.
+ * facade image (either a hosted https:// URL or a data:image/... string).
  */
 export async function restoreFacade(request: RestoreRequest): Promise<string> {
   const response = await fetch("/api/restore", {
@@ -35,7 +37,7 @@ export async function restoreFacade(request: RestoreRequest): Promise<string> {
   }
 
   const output = (data as RestoreResult | null)?.imageDataUrl;
-  if (typeof output !== "string" || output.length === 0) {
+  if (typeof output !== "string" || output.length === 0 || !IMAGE_REFERENCE_RE.test(output)) {
     throw new Error("No image returned");
   }
   return output;

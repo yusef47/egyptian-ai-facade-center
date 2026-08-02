@@ -1,10 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import sharp from "sharp";
 
 export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
 export const OPENROUTER_MODEL = "google/gemini-3.1-flash-lite-image";
 
-const MAX_DATA_URL_BYTES = 3_500_000;
+const MAX_DATA_URL_BYTES = 3_500_000; // incoming image payload guard
+const MAX_OUTPUT_DATA_URL_BYTES = 2_000_000; // keep the JSON response well under Vercel's 4.5 MB limit
+
+const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)\s*\)/i;
+const URL_RE = /https?:\/\/[^\s"'<>()]+/gi;
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|avif|heic|bmp)(\?|$)/i;
 
 export type OpenRouterRequest = {
   url: string;
@@ -47,15 +53,44 @@ function decodeBase64(value: string): string {
   return `data:image/png;base64,${value}`;
 }
 
+function isUsableImageUrl(value: string): boolean {
+  return value.length > 0 && (/^https?:\/\//i.test(value) || value.startsWith("data:image/"));
+}
+
+/**
+ * Extracts an image URL from a text part: markdown ![image](url) first, then
+ * the first bare https:// URL that looks like an image reference. Unrelated
+ * plain links (e.g. documentation) are ignored to avoid returning a wrong URL.
+ */
+export function extractImageUrlFromText(text: unknown): string | null {
+  if (typeof text !== "string" || text.length === 0) return null;
+  const markdown = text.match(MARKDOWN_IMAGE_RE);
+  if (markdown?.[1]) return markdown[1];
+  const urls = text.match(URL_RE) ?? [];
+  const imageLike = urls.find((url) => IMAGE_EXT_RE.test(url));
+  return imageLike ?? null;
+}
+
 function extractFromImages(images: unknown): string | null {
   if (!Array.isArray(images)) return null;
+  // Prefer hosted urls across all entries before falling back to base64.
   for (const image of images) {
     if (!image || typeof image !== "object") continue;
     const candidate = image as Record<string, unknown>;
-    if (typeof candidate.b64_json === "string") {
-      return decodeBase64(candidate.b64_json);
-    }
-    if (typeof candidate.url === "string") return candidate.url;
+    const directUrl = typeof candidate.url === "string" ? candidate.url : "";
+    const imageUrl = candidate.image_url;
+    const imageUrlStr = typeof imageUrl === "string" ? imageUrl : "";
+    const imageUrlObj =
+      imageUrl && typeof imageUrl === "object"
+        ? (imageUrl as Record<string, unknown>).url
+        : "";
+    const url = directUrl || imageUrlStr || (typeof imageUrlObj === "string" ? imageUrlObj : "");
+    if (isUsableImageUrl(url)) return url;
+  }
+  for (const image of images) {
+    if (!image || typeof image !== "object") continue;
+    const b64 = (image as Record<string, unknown>).b64_json;
+    if (typeof b64 === "string" && b64.length > 0) return decodeBase64(b64);
   }
   return null;
 }
@@ -72,15 +107,30 @@ function extractFromContent(value: unknown): string | null {
       if (!part || typeof part !== "object") continue;
       const item = part as Record<string, unknown>;
       const imageUrl = item.image_url;
-      if (typeof imageUrl === "string") return imageUrl;
+      if (typeof imageUrl === "string" && isUsableImageUrl(imageUrl)) return imageUrl;
       if (imageUrl && typeof imageUrl === "object") {
         const url = (imageUrl as Record<string, unknown>).url;
-        if (typeof url === "string") return url;
+        if (typeof url === "string" && isUsableImageUrl(url)) return url;
       }
-      if (typeof item.b64_json === "string") return decodeBase64(item.b64_json);
-      if (typeof item.url === "string") return item.url;
+      if (typeof item.b64_json === "string" && item.b64_json.length > 0) {
+        return decodeBase64(item.b64_json);
+      }
+      if (typeof item.url === "string" && isUsableImageUrl(item.url)) return item.url;
+      if (typeof item.text === "string") {
+        const fromText = extractImageUrlFromText(item.text);
+        if (fromText) return fromText;
+      }
     }
   }
+
+  // Some providers return content as a plain string (e.g. markdown with an embedded image).
+  if (typeof content === "string") {
+    const fromText = extractImageUrlFromText(content);
+    if (fromText) return fromText;
+  }
+  const fromText = extractImageUrlFromText(record.text);
+  if (fromText) return fromText;
+
   return null;
 }
 
@@ -101,6 +151,32 @@ export function extractImageData(response: unknown): string | null {
   }
 
   return extractFromContent(record);
+}
+
+/**
+ * Keeps the returned payload strictly under 2 MB. Hosted https:// urls are
+ * returned untouched; oversized base64 data urls are re-encoded as a smaller
+ * JPEG with sharp. Any failure falls back to the original payload.
+ */
+export async function trimOutputDataUrl(output: string): Promise<string> {
+  if (/^https?:\/\//i.test(output) || output.length <= MAX_OUTPUT_DATA_URL_BYTES) {
+    return output;
+  }
+  if (!output.startsWith("data:image/")) return output;
+  const comma = output.indexOf(",");
+  if (comma < 0) return output;
+
+  const base64 = output.slice(comma + 1);
+  try {
+    const buffer = Buffer.from(base64, "base64");
+    const resized = await sharp(buffer, { failOn: "none" })
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 80, mozjpeg: true })
+      .toBuffer();
+    return `data:image/jpeg;base64,${resized.toString("base64")}`;
+  } catch {
+    return output;
+  }
 }
 
 function createRateLimiter({ windowMs, maxRequests }: { windowMs: number; maxRequests: number }) {
@@ -170,7 +246,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey);
     const upstream = await fetch(request.url, request.init);
-    const data: unknown = await upstream.json();
+
+    let data: unknown = null;
+    try {
+      data = await upstream.json();
+    } catch {
+      // non-JSON upstream response — handled below via !upstream.ok
+    }
+
     if (!upstream.ok) {
       const upstreamData = data as { error?: { message?: unknown } } | null;
       const upstreamMessage =
@@ -190,7 +273,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const output = extractImageData(data);
     if (!output) return sendError(res, 502, "لم تصل صورة من نموذج الترميم.");
-    return res.status(200).json({ imageDataUrl: output });
+
+    const trimmed = await trimOutputDataUrl(output);
+    return res.status(200).json({ imageDataUrl: trimmed });
   } catch {
     return sendError(res, 502, "حدث خطأ أثناء الاتصال بخدمة الترميم.");
   }

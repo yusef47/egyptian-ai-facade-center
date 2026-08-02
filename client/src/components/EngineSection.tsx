@@ -254,6 +254,8 @@ export default function EngineSection() {
                       <img
                         src={result}
                         alt={t("studio.outputRestored")}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
                         className="w-full max-h-[420px] object-contain bg-black/30"
                       />
                     </div>
