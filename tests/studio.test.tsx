@@ -1,0 +1,78 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import EngineSection from "../client/src/components/EngineSection";
+import { I18nProvider } from "../client/src/lib/i18n";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("EngineSection restoration studio", () => {
+  it("posts { imageDataUrl, prompt } to /api/restore and renders the result", { timeout: 20000 }, async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ imageDataUrl: "data:image/png;base64,UkVTVUxU" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <EngineSection />
+      </I18nProvider>,
+    );
+
+    // Upload a facade photo (canvas is unavailable in jsdom, so the raw data URL is used)
+    const file = new File(["fake-image-bytes"], "facade.jpg", { type: "image/jpeg" });
+    const upload = screen.getByLabelText(/Current Facade/i) as HTMLInputElement;
+    await user.upload(upload, file);
+
+    // Write an architectural prompt
+    const prompt = screen.getByLabelText(/Restoration prompt/i);
+    await user.type(prompt, "Restore in Khedivial style");
+
+    // Trigger the restoration
+    await user.click(screen.getByRole("button", { name: /Start Restoration/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 15000 });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/restore");
+
+    const body = JSON.parse(String(init.body)) as { imageDataUrl: string; prompt: string };
+    expect(body.prompt).toBe("Restore in Khedivial style");
+    expect(body.imageDataUrl.startsWith("data:")).toBe(true);
+
+    await waitFor(() =>
+      expect(screen.getByAltText("Restored")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows an inline error when the restore request fails", { timeout: 20000 }, async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: "Quota exceeded" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <EngineSection />
+      </I18nProvider>,
+    );
+
+    const file = new File(["fake-image-bytes"], "facade.jpg", { type: "image/jpeg" });
+    await user.upload(screen.getByLabelText(/Current Facade/i), file);
+    await user.type(screen.getByLabelText(/Restoration prompt/i), "Restore the facade");
+
+    await user.click(screen.getByRole("button", { name: /Start Restoration/i }));
+
+    await waitFor(
+      () => expect(screen.getByRole("alert")).toBeInTheDocument(),
+      { timeout: 15000 },
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/credit|quota|openrouter/i);
+  });
+});
