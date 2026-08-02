@@ -1,22 +1,31 @@
-export function Header() {
+type HeaderProps = {
+  onSearch: (value: string) => void;
+};
+
+export function Header({ onSearch }: HeaderProps) {
   return (
-    <header className="site-header glass-panel" dir="rtl" role="banner" aria-label="الهوية الرسمية">
-      <a className="brand-lockup" href="#top" aria-label="المركز المصري للذكاء الاصطناعي في العمارة والعمران">
-        <span className="brand-emblem" aria-hidden="true"><span>م</span></span>
-        <span>
-          <strong className="brand-arabic">المركز المصري للذكاء الاصطناعي في العمارة والعمران</strong>
-          <small className="brand-english">EGYPTIAN CENTER FOR ARTIFICIAL INTELLIGENCE IN ARCHITECTURE &amp; URBANISM</small>
+    <header className="site-header" dir="rtl">
+      <a className="official-brand" href="#home" aria-label="المركز المصري للذكاء الاصطناعي في العمارة والعمران">
+        <span className="syndicate-mark" aria-hidden="true"><span>م</span></span>
+        <span className="flag-badge" aria-label="مصر">🇪🇬</span>
+        <span className="brand-copy">
+          <strong>نقابة المهندسين المصرية</strong>
+          <span>المركز المصري للذكاء الاصطناعي في العمارة والعمران</span>
         </span>
       </a>
       <nav className="primary-nav" aria-label="التنقل الرئيسي">
-        <a className="active" href="#top">الرئيسية</a>
-        <a href="#studio">الاستوديو</a>
-        <a href="#gallery">روائع التراث</a>
-        <a href="#studio">منصتنا</a>
+        <a className="active" href="#home">الرئيسية</a>
+        <a href="#metrics">الإحصائيات القومية</a>
+        <a href="#studio">استوديو الترميم</a>
+        <a href="#report">تصدير تقرير النقابة</a>
       </nav>
-      <div className="header-tools">
-        <span className="header-status"><i /> النظام نشط</span>
-        <button className="avatar-button" aria-label="حسابي">م</button>
+      <div className="header-tools" dir="ltr">
+        <label className="search-field">
+          <span aria-hidden="true">⌕</span>
+          <input aria-label="البحث" placeholder="البحث" onChange={(event) => onSearch(event.target.value)} />
+        </label>
+        <button className="header-icon" type="button" aria-label="الإشعارات">◌<span className="notification-dot" /></button>
+        <button className="avatar-button" type="button" aria-label="حسابي">م</button>
       </div>
     </header>
   );
