@@ -8,9 +8,7 @@ export const en = {
   // Navbar
   "nav.home": "Home",
   "nav.studio": "Restoration Studio",
-  "nav.styles": "Heritage Styles",
-  "nav.academy": "Academy",
-  "nav.enterprise": "Institutions",
+  "nav.report": "Syndicate Report",
   "nav.cta": "Start Restoration",
   "nav.syndicate": "Egyptian Engineers Syndicate",
   "nav.center": "Egyptian Center for AI in Architecture & Urbanism",
@@ -34,27 +32,28 @@ export const en = {
 
   // Studio
   "studio.label": "AI Facade Restoration Studio",
-  "studio.title": "From raw facade to a royal heritage triptych",
+  "studio.title": "From raw facade to heritage masterpiece",
   "studio.desc":
-    "Upload the current facade, choose a heritage style, describe the restoration, and receive a single 8K presentation board with three distinct heritage restoration options.",
+    "Upload the current facade, describe your brief, and receive one 8K-style image with three coordinated restoration directions in a single call.",
   "studio.inputTitle": "Current Facade",
   "studio.dropHint": "Drag & drop a facade photo, or click to browse",
   "studio.dropSub": "JPG or PNG · compressed before sending",
   "studio.replace": "Replace photo",
   "studio.promptLabel": "Restoration prompt",
   "studio.promptPlaceholder":
-    "e.g. Khedivial style, hashami stone, mashrabiya balconies, warm 2700K night lighting…",
-  "studio.styleLabel": "Heritage style",
-  "studio.styleHint": "Optional — adds a style to your prompt",
+    "e.g. Preserve the existing geometry, use warm limestone, and add shaded balconies with evening light…",
   "studio.button": "Start Restoration",
   "studio.buttonLoading": "Restoring…",
-  "studio.outputTitle": "Restored Facade — 8K Triptych",
-  "studio.outputEmpty": "Your 8K three-panel restoration board will appear here.",
+  "studio.outputTitle": "Generated Triptych — 8K",
+  "studio.outputEmpty": "Your single-call three-panel 8K triptych will appear here.",
   "studio.outputOriginal": "Original",
   "studio.outputRestored": "Restored",
   "studio.triptychTag": "3-panel presentation board",
+  "studio.panel1": "Khedivial Classic",
+  "studio.panel2": "Hashami / Biophilic",
+  "studio.panel3": "Islamic Mashrabiya",
   "studio.reportButton": "Download Official Syndicate Report",
-  "studio.reportHint": "PNG board + JSON metadata",
+  "studio.reportHint": "HTML report with source image, brief, and triptych",
   "studio.errorNoImage": "Please upload a facade photo first.",
   "studio.errorNoPrompt": "Please describe the restoration you want.",
   "studio.errorPayload": "The image is too large. Try a smaller photo.",
@@ -63,36 +62,9 @@ export const en = {
     "The restoration service needs credits. Top up your OpenRouter account to enable generation.",
   "studio.fastBadge": "≈3s generation",
   "studio.eightKBadge": "8K output",
-
-  // Editions / Styles
-  "editions.label": "Heritage Styles",
-  "editions.title": "Heritage languages, one engine",
-  "editions.desc":
-    "Every style runs the same AI restoration pipeline, tuned to a heritage language and its material grammar.",
-  "editions.open": "Open style",
-
-  // Pricing
-  "pricing.label": "Service Plans",
-  "pricing.title": "Access that matches your workflow",
-  "pricing.desc":
-    "Restore single facades, license the studio for a practice, or partner as an institution.",
-
-  // Academy
-  "academy.label": "Academy & Research",
-  "academy.title": "Egyptian AI Academy",
-  "academy.desc": "Professional learning, heritage documentation methods and AI-workflow education.",
-  "academy.structureLabel": "Curriculum",
-  "academy.whoLabel": "Who it's for",
-  "academy.cta": "Request program details",
-
-  // Enterprise
-  "enterprise.label": "Institutional Services",
-  "enterprise.title": "Egyptian Center Enterprise",
-  "enterprise.desc":
-    "Institutional intelligence for ministries, municipalities, universities and consultancies.",
-  "enterprise.whoLabel": "Who it is for",
-  "enterprise.offerLabel": "What we offer",
-  "enterprise.cta": "Request enterprise discussion",
+  "studio.statusDraft": "Architectural brief updated.",
+  "studio.statusUploaded": "Facade uploaded. Add a brief and start the single-call triptych.",
+  "studio.statusComplete": "Triptych generated and ready for engineering review.",
 
   // CTA
   "cta.title": "Ready to restore Egypt's facades?",
@@ -116,9 +88,7 @@ export const en = {
 export const ar: Record<TranslationKey, string> = {
   "nav.home": "الرئيسية",
   "nav.studio": "استوديو الترميم",
-  "nav.styles": "الأنماط التراثية",
-  "nav.academy": "الأكاديمية",
-  "nav.enterprise": "المؤسسات",
+  "nav.report": "تقرير النقابة",
   "nav.cta": "ابدأ الترميم",
   "nav.syndicate": "نقابة المهندسين المصرية",
   "nav.center": "المركز المصري للذكاء الاصطناعي في العمارة والعمران",
@@ -140,27 +110,28 @@ export const ar: Record<TranslationKey, string> = {
   "hero.stat3": "أنماط تراثية",
 
   "studio.label": "استوديو ترميم الواجهات بالذكاء الاصطناعي",
-  "studio.title": "من واجهة خام إلى لوحة تراثية ملكية ثلاثية",
+  "studio.title": "من واجهة خام إلى تحفة تراثية",
   "studio.desc":
-    "ارفع الواجهة الحالية، اختر طرازاً تراثياً، صِف الترميم المطلوب، واحصل على لوحة عرض واحدة بدقة 8K تضم ثلاثة خيارات ترميم تراثية مميزة.",
+    "ارفع الواجهة الحالية، اكتب رؤيتك، واحصل على صورة واحدة بدقة 8K تضم ثلاثة اتجاهات ترميمية متناسقة في طلب واحد.",
   "studio.inputTitle": "الواجهة الحالية",
   "studio.dropHint": "اسحب صورة الواجهة أو انقر للاختيار",
   "studio.dropSub": "JPG أو PNG · يتم ضغطها قبل الإرسال",
   "studio.replace": "تغيير الصورة",
   "studio.promptLabel": "وصف الترميم",
   "studio.promptPlaceholder":
-    "مثال: طراز خديوي، حجر هشمي، بلكونات مشربيات، إضاءة ليلية دافئة 2700K…",
-  "studio.styleLabel": "الطراز التراثي",
-  "studio.styleHint": "اختياري — يضيف الطراز إلى وصفك",
+    "مثال: حافظ على هندسة الواجهة، استخدم الحجر الدافئ، وأضف بلكونات مظللة وإضاءة مسائية…",
   "studio.button": "بدء الترميم",
   "studio.buttonLoading": "جارٍ الترميم…",
-  "studio.outputTitle": "الواجهة المرممة — لوحة ثلاثية 8K",
-  "studio.outputEmpty": "ستظهر هنا لوحة الترميم الثلاثية بدقة 8K.",
+  "studio.outputTitle": "التريبتيك المولد — 8K",
+  "studio.outputEmpty": "ستظهر هنا صورة التريبتيك ذات اللوحات الثلاث المولدة في طلب واحد.",
   "studio.outputOriginal": "الأصلية",
   "studio.outputRestored": "المرممة",
   "studio.triptychTag": "لوحة عرض ثلاثية",
+  "studio.panel1": "الكلاسيكي الخديوي",
+  "studio.panel2": "الهشمي / البيوفيلي",
+  "studio.panel3": "المشربيات الإسلامية",
   "studio.reportButton": "تحميل تقرير النقابة الرسمي",
-  "studio.reportHint": "لوحة PNG + بيانات JSON",
+  "studio.reportHint": "تقرير HTML يتضمن الصورة والوصف والتريبتيك",
   "studio.errorNoImage": "يرجى رفع صورة واجهة أولاً.",
   "studio.errorNoPrompt": "يرجى كتابة وصف للترميم المطلوب.",
   "studio.errorPayload": "الصورة كبيرة جداً. جرّب صورة أصغر.",
@@ -169,30 +140,9 @@ export const ar: Record<TranslationKey, string> = {
     "خدمة الترميم تحتاج رصيداً. أضف رصيداً إلى حساب OpenRouter لتفعيل التوليد.",
   "studio.fastBadge": "توليد خلال ~3 ثوانٍ",
   "studio.eightKBadge": "مخرجات 8K",
-
-  "editions.label": "الأنماط التراثية",
-  "editions.title": "لغات تراثية ومحرك واحد",
-  "editions.desc":
-    "كل طراز يشغّل خط ترميم الذكاء الاصطناعي نفسه، مضبوطاً على لغته التراثية وقواعد مواده.",
-  "editions.open": "فتح الطراز",
-
-  "pricing.label": "باقات الخدمة",
-  "pricing.title": "وصول يناسب سير عملك",
-  "pricing.desc": "رمّم واجهات فردية، أو رخّص الاستوديو لمكتب هندسي، أو شارك كمؤسسة.",
-
-  "academy.label": "الأكاديمية والبحث",
-  "academy.title": "الأكاديمية المصرية للذكاء الاصطناعي",
-  "academy.desc": "تعليم احترافي، ومناهج توثيق التراث، وتعليم سير عمل الذكاء الاصطناعي.",
-  "academy.structureLabel": "المنهج",
-  "academy.whoLabel": "لمن",
-  "academy.cta": "اطلب تفاصيل البرنامج",
-
-  "enterprise.label": "الخدمات المؤسسية",
-  "enterprise.title": "خدمات المركز للمؤسسات",
-  "enterprise.desc": "ذكاء مؤسسي للوزارات والبلديات والجامعات ومكاتب الاستشارات.",
-  "enterprise.whoLabel": "لمن",
-  "enterprise.offerLabel": "ماذا نقدم",
-  "enterprise.cta": "اطلب جلسة مؤسسية",
+  "studio.statusDraft": "تم تحديث الوصف المعماري.",
+  "studio.statusUploaded": "تم رفع الواجهة. أضف وصفاً وابدأ التريبتيك في طلب واحد.",
+  "studio.statusComplete": "تم توليد التريبتيك وهو جاهز للمراجعة الهندسية.",
 
   "cta.title": "مستعد لإحياء واجهات مصر؟",
   "cta.desc": "ارفع صورة وشاهد المحرك يعيد بناءها تحفة تراثية بدقة 8K في ثوانٍ.",

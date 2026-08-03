@@ -32,11 +32,9 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navLinks = [
-    { key: "nav.home" as const, href: "#" },
-    { key: "nav.styles" as const, href: "#editions" },
+    { key: "nav.home" as const, href: "#top" },
     { key: "nav.studio" as const, href: "#studio" },
-    { key: "nav.academy" as const, href: "#academy" },
-    { key: "nav.enterprise" as const, href: "#enterprise" },
+    { key: "nav.report" as const, href: "#report" },
   ];
 
   return (

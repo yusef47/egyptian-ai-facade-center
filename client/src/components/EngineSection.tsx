@@ -1,33 +1,26 @@
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import {
-  Download,
-  ImagePlus,
-  LayoutGrid,
-  Loader2,
-  RefreshCw,
-  Sparkles,
-  Timer,
-  Trophy,
-} from "lucide-react";
-import { useI18n, type Lang } from "@/lib/i18n";
+import { Download, ImagePlus, LayoutGrid, Loader2, RefreshCw, Sparkles, Timer, Trophy } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
 import { TRIPTYCH_PANELS, downloadSyndicateReport } from "@/lib/report";
 
-const STYLES: { id: string; en: string; ar: string }[] = [
-  { id: "khedivial", en: "Khedivial Cairo", ar: "القاهرة الخديوية" },
-  { id: "mashrabiya", en: "Wooden Mashrabiya", ar: "المشربيات الخشبية" },
-  { id: "hashami", en: "Hashami Stone", ar: "الحجر الهشمي" },
-  { id: "pharaonic", en: "Pharaonic Revival", ar: "الإحياء الفرعوني" },
-];
+type Session = {
+  prompt: string;
+  status: string;
+  inputImageDataUrl: string | null;
+  outputImageDataUrl: string | null;
+};
 
-export default function EngineSection() {
+type EngineSectionProps = {
+  onSessionChange?: (session: Session) => void;
+};
+
+export default function EngineSection({ onSessionChange }: EngineSectionProps) {
   const { t, lang } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [lastPrompt, setLastPrompt] = useState("");
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -45,6 +38,12 @@ export default function EngineSection() {
       }
       setImageDataUrl(compressed);
       setResult(null);
+      onSessionChange?.({
+        prompt,
+        status: t("studio.statusUploaded"),
+        inputImageDataUrl: compressed,
+        outputImageDataUrl: null,
+      });
     } catch {
       setError(t("studio.errorGeneric"));
     }
@@ -67,17 +66,17 @@ export default function EngineSection() {
       setError(t("studio.errorNoPrompt"));
       return;
     }
-    const style = STYLES.find((s) => s.id === selectedStyle);
-    const finalPrompt = style
-      ? `${lang === "ar" ? style.ar : style.en} — ${basePrompt}`
-      : basePrompt;
-    setLastPrompt(finalPrompt);
-
     setError(null);
     setLoading(true);
     try {
-      const output = await restoreFacade({ imageDataUrl, prompt: finalPrompt });
+      const output = await restoreFacade({ imageDataUrl, prompt: basePrompt });
       setResult(output);
+      onSessionChange?.({
+        prompt: basePrompt,
+        status: t("studio.statusComplete"),
+        inputImageDataUrl: imageDataUrl,
+        outputImageDataUrl: output,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       if (/credit|balance|quota|402|429/i.test(message)) {
@@ -91,9 +90,6 @@ export default function EngineSection() {
       setLoading(false);
     }
   };
-
-  const styleLabel = (style: (typeof STYLES)[number], lang: Lang) =>
-    lang === "ar" ? style.ar : style.en;
 
   return (
     <section id="studio" className="py-20 bg-navy-light/30 scroll-mt-20">
@@ -179,36 +175,20 @@ export default function EngineSection() {
                 id="restore-prompt"
                 aria-label={t("studio.promptLabel")}
                 value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
+                onChange={(event) => {
+                  const nextPrompt = event.target.value;
+                  setPrompt(nextPrompt);
+                  onSessionChange?.({
+                    prompt: nextPrompt,
+                    status: t("studio.statusDraft"),
+                    inputImageDataUrl: imageDataUrl,
+                    outputImageDataUrl: result,
+                  });
+                }}
                 placeholder={t("studio.promptPlaceholder")}
                 rows={4}
                 className="w-full rounded-lg border border-border bg-navy-light/50 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30 transition-colors resize-none"
               />
-            </div>
-
-            {/* Styles */}
-            <div>
-              <p className="text-foreground text-sm font-medium mb-1">{t("studio.styleLabel")}</p>
-              <p className="text-muted-foreground text-xs mb-3">{t("studio.styleHint")}</p>
-              <div className="flex flex-wrap gap-2">
-                {STYLES.map((style) => (
-                  <button
-                    key={style.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedStyle((prev) => (prev === style.id ? null : style.id))
-                    }
-                    aria-pressed={selectedStyle === style.id}
-                    className={`px-4 py-2 rounded-full text-xs font-medium border transition-all duration-200 ${
-                      selectedStyle === style.id
-                        ? "bg-gold text-navy border-gold"
-                        : "bg-navy-light/50 border-border text-foreground hover:border-gold/40"
-                    }`}
-                  >
-                    {styleLabel(style, lang)}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Submit */}
@@ -272,8 +252,6 @@ export default function EngineSection() {
                         className="w-full max-h-[420px] object-contain bg-black/30"
                       />
                     </div>
-
-                    {/* Triptych panels */}
                     <div className="flex flex-wrap items-center justify-center gap-2">
                       {TRIPTYCH_PANELS.map((panel, index) => (
                         <span
@@ -285,20 +263,23 @@ export default function EngineSection() {
                         </span>
                       ))}
                     </div>
-
-                    {/* Official syndicate report download */}
                     <div className="flex flex-col items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => void downloadSyndicateReport(result, lastPrompt || prompt)}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gold/40 bg-gold/10 text-gold text-sm font-medium hover:bg-gold/20 transition-colors"
+                        onClick={() => void downloadSyndicateReport({
+                          prompt,
+                          status: t("studio.statusComplete"),
+                          createdAt: new Date().toISOString(),
+                          inputImageDataUrl: imageDataUrl,
+                          outputImageDataUrl: result,
+                        })}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-medium text-gold transition-colors hover:bg-gold/20"
                       >
                         <Download size={16} />
                         {t("studio.reportButton")}
                       </button>
                       <span className="text-[11px] text-muted-foreground">{t("studio.reportHint")}</span>
                     </div>
-
                     <div className="flex items-center justify-center gap-3 text-[11px] uppercase tracking-widest text-muted-foreground">
                       <span>{t("studio.outputOriginal")}</span>
                       <span className="text-gold">✦</span>
