@@ -1,5 +1,5 @@
-import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { Download, ImagePlus, LayoutGrid, Loader2, RefreshCw, Sparkles, Timer, Trophy } from "lucide-react";
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { Download, ImagePlus, LayoutGrid, Loader2, Maximize2, RefreshCw, Sparkles, Timer, Trophy, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
@@ -24,7 +24,17 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLightboxOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [lightboxOpen]);
 
   const handleFiles = async (files: FileList | null) => {
     const file = files?.[0];
@@ -38,6 +48,7 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
       }
       setImageDataUrl(compressed);
       setResult(null);
+      setLightboxOpen(false);
       onSessionChange?.({
         prompt,
         status: t("studio.statusUploaded"),
@@ -243,14 +254,24 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
                   </div>
                 ) : result && imageDataUrl ? (
                   <div className="w-full space-y-4">
-                    <div className="relative rounded-lg overflow-hidden border border-gold/20">
-                      <img
-                        src={result}
-                        alt={t("studio.outputRestored")}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        className="w-full max-h-[420px] object-contain bg-black/30"
-                      />
+                    <div className="relative w-full overflow-x-auto rounded-lg border border-gold/20 bg-black/30">
+                      <button
+                        type="button"
+                        aria-label={t("studio.openGenerated")}
+                        onClick={() => setLightboxOpen(true)}
+                        className="group block w-max min-w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                      >
+                        <img
+                          src={result}
+                          alt={t("studio.outputRestored")}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="block h-auto w-auto max-w-none min-w-[1024px] bg-black/30 transition-opacity group-hover:opacity-90"
+                        />
+                        <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto flex w-fit items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3 py-1.5 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                          <Maximize2 size={13} /> {t("studio.openGenerated")}
+                        </span>
+                      </button>
                     </div>
                     <div className="flex flex-wrap items-center justify-center gap-2">
                       {TRIPTYCH_PANELS.map((panel, index) => (
@@ -297,6 +318,38 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
           </div>
         </form>
       </div>
+
+      {lightboxOpen && result && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("studio.lightboxTitle")}
+          className="fixed inset-0 z-50 overflow-auto bg-black/90 p-4 backdrop-blur-sm sm:p-8"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setLightboxOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setLightboxOpen(false);
+          }}
+        >
+          <button
+            type="button"
+            aria-label={t("studio.closeLightbox")}
+            onClick={() => setLightboxOpen(false)}
+            className="fixed right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/70 text-white transition-colors hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold sm:right-8 sm:top-8"
+          >
+            <X size={20} />
+          </button>
+          <div className="flex min-h-full min-w-full w-max items-start justify-center pt-14 sm:pt-16">
+            <img
+              src={result}
+              alt={t("studio.outputRestored")}
+              className="block h-auto w-auto max-w-none"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }

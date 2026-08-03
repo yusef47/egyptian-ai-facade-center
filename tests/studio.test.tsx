@@ -105,4 +105,35 @@ describe("EngineSection restoration studio", () => {
     expect(screen.getByText(/Hashami \/ Biophilic/i)).toBeInTheDocument();
     expect(screen.getByText(/Islamic Mashrabiya/i)).toBeInTheDocument();
   });
+
+  it("opens the generated triptych at native size in a fullscreen lightbox", { timeout: 20000 }, async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ imageDataUrl: "data:image/png;base64,UkVTVUxU" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <EngineSection />
+      </I18nProvider>,
+    );
+
+    const file = new File(["fake-image-bytes"], "facade.jpg", { type: "image/jpeg" });
+    await user.upload(screen.getByLabelText(/Current Facade/i), file);
+    await user.type(screen.getByLabelText(/Restoration prompt/i), "Restore the facade");
+    await user.click(screen.getByRole("button", { name: /Start Restoration/i }));
+
+    const outputTrigger = await screen.findByRole("button", { name: /Open generated triptych/i });
+    await user.click(outputTrigger);
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog.querySelector('img[src="data:image/png;base64,UkVTVUxU"]')).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
 });

@@ -23,5 +23,11 @@ describe("V115 triptych restoration request", () => {
     expect(instruction).toMatch(/Islamic Mashrabiya/i);
     expect(instruction).toMatch(/thin.*gold.*borders/i);
     expect(instruction).toMatch(/side.by.side|panels side by side|left.*center.*right/i);
+    expect(instruction).toMatch(/ULTRA-WIDE PANORAMIC/i);
+    expect(instruction).toMatch(/3:1/);
+    expect(instruction).toMatch(/3072×1024|3072x1024/i);
+    expect(instruction).toMatch(/exactly one-third/i);
+    expect(instruction).toMatch(/same level of detail/i);
+    expect(instruction).toMatch(/Do NOT compress or narrow/i);
   });
 });

@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
   buildOpenRouterRequest,
@@ -167,5 +168,25 @@ describe("output payload trimming", () => {
     const oversized = `data:image/png;base64,${"A".repeat(3_000_000)}`;
     const output = await trimOutputDataUrl(oversized);
     expect(output).toBe(oversized);
+  });
+
+  it("preserves ultra-wide dimensions while compressing oversized images", async () => {
+    const width = 3072;
+    const height = 1024;
+    const pixels = Buffer.alloc(width * height * 3);
+    for (let index = 0; index < pixels.length; index += 3) {
+      pixels[index] = index % 251;
+      pixels[index + 1] = (index * 7) % 251;
+      pixels[index + 2] = (index * 13) % 251;
+    }
+    const source = await sharp(pixels, {
+      raw: { width, height, channels: 3 },
+    }).jpeg({ quality: 100, chromaSubsampling: "4:4:4" }).toBuffer();
+    const output = await trimOutputDataUrl(`data:image/png;base64,${source.toString("base64")}`);
+    const comma = output.indexOf(",");
+    const metadata = await sharp(Buffer.from(output.slice(comma + 1), "base64")).metadata();
+
+    expect(metadata.width).toBe(width);
+    expect(metadata.height).toBe(height);
   });
 });

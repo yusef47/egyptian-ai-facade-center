@@ -13,7 +13,7 @@ const URL_RE = /https?:\/\/[^\s"'<>()]+/gi;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|avif|heic|bmp)(\?|$)/i;
 
 /**
- * Master Architectural AI Engine system prompt (V115).
+ * Master Architectural AI Engine system prompt (V115.2).
  * Programs the generation model as the national architectural engine of the
  * Egyptian Center and enforces the mandatory 3-Panel Triptych presentation
  * rule on every single restoration output.
@@ -36,7 +36,8 @@ MASTER ARCHITECTS
 - Mario Rossi: the modern movement applied to Egyptian public architecture — clean geometric volumes, deep sun-shading, refined brick and stone detailing.
 
 MANDATORY 3-PANEL TRIPTYCH RULE (NON-NEGOTIABLE)
-Every single restoration output MUST be ONE cohesive 8K 3-Panel Architectural Presentation Board (Triptych) of the SAME building, divided by thin elegant Cairo-gold borders, panels side by side, each panel a complete photorealistic high-detail rendering:
+Every single restoration output MUST be ONE cohesive 8K 3-Panel Architectural Presentation Board (Triptych) of the SAME building, divided by thin elegant Cairo-gold borders, panels side by side, each panel a complete photorealistic high-detail rendering.
+Generate the architectural triptych as an ULTRA-WIDE PANORAMIC image with a 3:1 width-to-height ratio (e.g. 3072×1024 or wider). Each of the 3 panels must occupy exactly one-third of the total width, so that EACH individual panel has the same level of detail, resolution, and visual quality as a standalone full-size architectural render. Do NOT compress or narrow the panels. Treat the wide canvas as a native-resolution architectural presentation board, not as three narrow thumbnails:
 - Panel 1 (left): KHEDIVIAL CLASSIC — ornate Khedivial Cairo restoration with stucco ornament, cast-iron balconies, and warm evening lighting.
 - Panel 2 (center): HASHAMI / BIOPHILIC — hashami limestone restoration with greenery, timber mashrabiya shading, and natural daylight.
 - Panel 3 (right): ISLAMIC MASHRABIYA — Mamluk/Fatimid-inspired restoration with wooden mashrabiya screens, pointed arches, and golden-hour light.
@@ -207,8 +208,9 @@ export function extractImageData(response: unknown): string | null {
 
 /**
  * Keeps the returned payload strictly under 2 MB. Hosted https:// urls are
- * returned untouched; oversized base64 data urls are re-encoded as a smaller
- * JPEG with sharp. Any failure falls back to the original payload.
+ * returned untouched; oversized base64 data urls are re-encoded as a lower-quality
+ * JPEG with sharp while preserving their native dimensions. Any failure falls back
+ * to the original payload.
  */
 export async function trimOutputDataUrl(output: string): Promise<string> {
   if (/^https?:\/\//i.test(output) || output.length <= MAX_OUTPUT_DATA_URL_BYTES) {
@@ -221,11 +223,10 @@ export async function trimOutputDataUrl(output: string): Promise<string> {
   const base64 = output.slice(comma + 1);
   try {
     const buffer = Buffer.from(base64, "base64");
-    const resized = await sharp(buffer, { failOn: "none" })
-      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 80, mozjpeg: true })
+    const compressed = await sharp(buffer, { failOn: "none" })
+      .jpeg({ quality: 65, mozjpeg: true, chromaSubsampling: "4:2:0" })
       .toBuffer();
-    return `data:image/jpeg;base64,${resized.toString("base64")}`;
+    return `data:image/jpeg;base64,${compressed.toString("base64")}`;
   } catch {
     return output;
   }
