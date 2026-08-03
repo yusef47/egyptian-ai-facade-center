@@ -13,7 +13,10 @@ describe("Navbar", () => {
     );
     expect(screen.getByText(/Egyptian Engineers Syndicate/i)).toBeInTheDocument();
     expect(screen.getByText(/Egyptian Center for AI in Architecture & Urbanism/i)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Egypt/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Egyptian flag" })).toHaveAttribute(
+      "src",
+      "/logos/egypt-flag.png",
+    );
   });
 
   it("toggles to Arabic and switches the document to RTL", async () => {

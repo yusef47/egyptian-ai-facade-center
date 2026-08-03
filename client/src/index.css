@@ -188,6 +188,53 @@ html[lang="ar"] .font-serif {
   background: #2a3550;
 }
 
+.navbar-syndicate-logo,
+.navbar-center-logo,
+.navbar-flag,
+.hero-syndicate-logo,
+.hero-center-logo,
+.hero-flag {
+  object-position: center;
+}
+
+.navbar-syndicate-logo,
+.navbar-center-logo,
+.navbar-flag {
+  border: 1px solid transparent;
+  transition: box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.navbar-syndicate-logo:hover,
+.navbar-syndicate-logo:focus-visible,
+.navbar-center-logo:hover,
+.navbar-center-logo:focus-visible {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 0 18px rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.navbar-flag {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.hero-branding {
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 639px) {
+  .navbar-brand {
+    gap: 0.5rem;
+  }
+
+  .navbar-center-brand {
+    gap: 0.5rem;
+  }
+
+  .navbar-center-logo {
+    max-width: 64px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

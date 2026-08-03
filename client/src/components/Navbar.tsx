@@ -2,30 +2,11 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
-function SyndicateEmblem({ className = "h-9 w-9" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
-      <circle cx="20" cy="20" r="18" fill="none" stroke="#c5a059" strokeWidth="1.5" />
-      <circle cx="20" cy="20" r="13" fill="none" stroke="#c5a059" strokeWidth="0.8" opacity="0.5" />
-      <path d="M11 25 L17 14 L23 25 Z" fill="#c5a059" opacity="0.9" />
-      <path d="M19 25 L24 16.5 L29 25 Z" fill="#c5a059" opacity="0.55" />
-      <path d="M20 9.5 L21.8 20 L20 30.5 L18.2 20 Z" fill="#f3ead8" opacity="0.9" />
-    </svg>
-  );
-}
-
-function CenterEmblem({ className = "h-9 w-9" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
-      <rect x="4" y="4" width="32" height="32" rx="6" fill="none" stroke="#c5a059" strokeWidth="1.5" />
-      <path d="M11.5 20.5 L20 11.5 L28.5 20.5 Z" fill="none" stroke="#c5a059" strokeWidth="1.2" />
-      <path d="M13.5 30 V22" stroke="#c5a059" strokeWidth="1.2" />
-      <path d="M20 30 V22" stroke="#c5a059" strokeWidth="1.2" />
-      <path d="M26.5 30 V22" stroke="#c5a059" strokeWidth="1.2" />
-      <path d="M10.5 30 H29.5" stroke="#c5a059" strokeWidth="1.2" />
-    </svg>
-  );
-}
+const LOGOS = {
+  syndicate: "/logos/syndicate-logo.png",
+  center: "/logos/center-logo.png",
+  flag: "/logos/egypt-flag.png",
+} as const;
 
 export default function Navbar() {
   const { t, lang, setLang } = useI18n();
@@ -38,96 +19,95 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
+    <nav className="site-navbar fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border" dir="rtl">
       <div className="container flex items-center justify-between gap-4 h-20">
-        {/* Brand */}
-        <a href="#" className="flex items-center gap-3 min-w-0" aria-label={t("nav.center")}>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <SyndicateEmblem />
-            <CenterEmblem />
-          </div>
-          <div className="min-w-0 hidden sm:block">
-            <p className="text-[9px] tracking-[0.22em] uppercase text-gold font-medium whitespace-nowrap">
-              {t("nav.syndicate")}
-            </p>
-            <p className="font-serif text-sm md:text-base font-semibold text-foreground leading-tight truncate max-w-[240px] md:max-w-[400px]">
-              {t("nav.center")}
-            </p>
-          </div>
-          <span
-            className="inline-flex items-center justify-center rounded border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-sm shrink-0"
-            role="img"
-            aria-label="Egypt 🇪🇬"
-          >
-            🇪🇬
+        <a href="#top" className="navbar-brand flex items-center gap-3 min-w-0" aria-label={t("nav.center")}>
+          <img
+            className="navbar-syndicate-logo h-12 w-12 shrink-0 rounded-full object-cover"
+            src={LOGOS.syndicate}
+            alt="Egyptian Engineers Syndicate logo"
+          />
+          <img
+            className="navbar-flag h-7 w-12 shrink-0 rounded border border-gold/40 object-cover shadow-sm"
+            src={LOGOS.flag}
+            alt="Egyptian flag"
+          />
+          <span className="navbar-center-brand flex min-w-0 items-center gap-3">
+            <img
+              className="navbar-center-logo h-12 w-auto max-w-[88px] shrink-0 rounded object-contain"
+              src={LOGOS.center}
+              alt="Egyptian Center for AI in Architecture & Urbanism logo"
+            />
+            <span className="min-w-0 hidden sm:block">
+              <span className="block text-[9px] font-medium uppercase tracking-[0.22em] text-gold whitespace-nowrap">
+                {t("nav.syndicate")}
+              </span>
+              <span className="block max-w-[240px] truncate font-serif text-sm font-semibold leading-tight text-foreground md:max-w-[400px] md:text-base">
+                {t("nav.center")}
+              </span>
+            </span>
           </span>
         </a>
 
-        {/* Desktop Nav */}
-        <div className="hidden lg:flex items-center gap-6">
+        <div className="hidden items-center gap-6 lg:flex">
           {navLinks.map((link) => (
             <a
               key={link.key}
               href={link.href}
-              className="text-muted-foreground text-sm hover:text-gold transition-colors duration-200"
+              className="text-sm text-muted-foreground transition-colors duration-200 hover:text-gold"
             >
               {t(link.key)}
             </a>
           ))}
           <a
             href="#studio"
-            className="px-4 py-2 bg-gold text-navy text-sm font-medium rounded hover:bg-gold-light transition-colors duration-200"
+            className="rounded bg-gold px-4 py-2 text-sm font-medium text-navy transition-colors duration-200 hover:bg-gold-light"
           >
             {t("nav.cta")}
           </a>
         </div>
 
-        {/* Language toggle */}
-        <div
-          className="flex items-center rounded-full border border-gold/40 overflow-hidden shrink-0"
-          role="group"
-          aria-label="Language"
-        >
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="flex items-center overflow-hidden rounded-full border border-gold/40" role="group" aria-label="Language">
+            <button
+              type="button"
+              onClick={() => setLang("en")}
+              aria-pressed={lang === "en"}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                lang === "en" ? "bg-gold text-navy" : "text-muted-foreground hover:text-gold"
+              }`}
+            >
+              {t("nav.langEn")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLang("ar")}
+              aria-pressed={lang === "ar"}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                lang === "ar" ? "bg-gold text-navy" : "text-muted-foreground hover:text-gold"
+              }`}
+            >
+              {t("nav.langAr")}
+            </button>
+          </div>
           <button
+            className="text-foreground lg:hidden"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Menu"
             type="button"
-            onClick={() => setLang("en")}
-            aria-pressed={lang === "en"}
-            className={`px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
-              lang === "en" ? "bg-gold text-navy" : "text-muted-foreground hover:text-gold"
-            }`}
           >
-            {t("nav.langEn")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setLang("ar")}
-            aria-pressed={lang === "ar"}
-            className={`px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
-              lang === "ar" ? "bg-gold text-navy" : "text-muted-foreground hover:text-gold"
-            }`}
-          >
-            {t("nav.langAr")}
+            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
-
-        {/* Mobile Menu Button */}
-        <button
-          className="lg:hidden text-foreground shrink-0"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Menu"
-        >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
       </div>
 
-      {/* Mobile Nav */}
       {mobileOpen && (
-        <div className="lg:hidden bg-background border-b border-border px-4 pb-4">
+        <div className="border-b border-border bg-background px-4 pb-4 lg:hidden">
           {navLinks.map((link) => (
             <a
               key={link.key}
               href={link.href}
-              className="block py-3 text-muted-foreground text-sm hover:text-gold transition-colors"
+              className="block py-3 text-sm text-muted-foreground transition-colors hover:text-gold"
               onClick={() => setMobileOpen(false)}
             >
               {t(link.key)}
@@ -135,7 +115,7 @@ export default function Navbar() {
           ))}
           <a
             href="#studio"
-            className="block mt-2 px-4 py-2 bg-gold text-navy text-sm font-medium rounded text-center"
+            className="mt-2 block rounded bg-gold px-4 py-2 text-center text-sm font-medium text-navy"
             onClick={() => setMobileOpen(false)}
           >
             {t("nav.cta")}
