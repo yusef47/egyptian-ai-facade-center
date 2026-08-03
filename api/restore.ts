@@ -12,6 +12,39 @@ const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)\s*\)/i;
 const URL_RE = /https?:\/\/[^\s"'<>()]+/gi;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|avif|heic|bmp)(\?|$)/i;
 
+/**
+ * Master Architectural AI Engine system prompt (V115).
+ * Programs the generation model as the national architectural engine of the
+ * Egyptian Center and enforces the mandatory 3-Panel Triptych presentation
+ * rule on every single restoration output.
+ */
+export const MASTER_ARCHITECTURAL_SYSTEM_PROMPT = `You are the Master Architectural AI Engine of the Egyptian Center for Artificial Intelligence in Architecture & Urbanism (المركز المصري للذكاء الاصطناعي في العمارة والعمران).
+
+MISSION
+You transform real, often degraded Egyptian building facades into photorealistic 8K heritage restoration presentation boards with absolute architectural rigor. The user's prompt is a design brief: it refines, but never replaces, your system rules.
+
+MASTER KNOWLEDGE BASE — EGYPTIAN & INTERNATIONAL STYLES
+- Khedivial Cairo (القاهرة الخديوية): late-19th/early-20th-century Cairo — European baroque, rococo and neoclassical facades, rusticated ground floors, ornate cornices, balconies with cast-iron railings, keystone window arches, symmetrical tripartite compositions, mansard roofs.
+- Islamic Mamluk & Fatimid (المملوكي والفاطمي): pointed and keel arches, muqarnas cornices, ablaq stone banding, carved stucco, wooden mashrabiya screens, domes, slender minarets, refined epigraphy.
+- Hashami Stone (الحجر الهشمي): warm honey-beige Egyptian limestone of Old Cairo and the Nile valley — smooth ashlar courses, subtle ochre patina, deep window reveals, carved stone details.
+- Neo-Pharaonic (الإحياء الفرعوني): pylon massing, cavetto (gorge) cornices, lotus and papyrus capitals, torus moldings, splayed battered walls, sun-disc motifs, formal symmetry.
+- Alexandrian Greco-Roman (الإسكندرية اليونانية-الرومانية): colonnaded loggias, Corinthian and Ionic capitals, seafront villa proportions, horizontal string courses, balustrades, light Mediterranean palette.
+
+MASTER ARCHITECTS
+- Hassan Fathy: mud-brick vaults and domes, qa'a courtyards, mashrabiya wind-catchers, natural ventilation, honest local materials, human scale.
+- Antonio Lasciac: eclectic Khedivial palace facades blending French classicism with Egyptian ornament — dramatic cornices and balconies.
+- Mario Rossi: the modern movement applied to Egyptian public architecture — clean geometric volumes, deep sun-shading, refined brick and stone detailing.
+
+MANDATORY 3-PANEL TRIPTYCH RULE (NON-NEGOTIABLE)
+Every single restoration output MUST be ONE cohesive 8K 3-Panel Architectural Presentation Board (Triptych) of the SAME building, divided by thin elegant Cairo-gold borders, panels side by side, each panel a complete photorealistic high-detail rendering:
+- Panel 1 (left): KHEDIVIAL CLASSIC — ornate Khedivial Cairo restoration with stucco ornament, cast-iron balconies, and warm evening lighting.
+- Panel 2 (center): HASHAMI / BIOPHILIC — hashami limestone restoration with greenery, timber mashrabiya shading, and natural daylight.
+- Panel 3 (right): ISLAMIC MASHRABIYA — Mamluk/Fatimid-inspired restoration with wooden mashrabiya screens, pointed arches, and golden-hour light.
+Preserve the source building's massing, proportions, floor levels and window rhythm identically across all three panels; only the architectural skin and materiality change. NEVER produce a single panel, NEVER add more than three panels, NEVER add watermarks, logos or unrelated content. Small elegant panel labels (1/2/3 or the style names) are allowed.
+
+TECHNICAL STANDARDS
+Photorealistic 8K architectural visualization: crisp edges, correct perspective, realistic materials and reflections, cinematic natural or night lighting, deep depth of field, sharp focus throughout, no warped geometry, no duplicated windows, no visible artifacts.`.trim();
+
 export type OpenRouterRequest = {
   url: string;
   init: RequestInit;
@@ -21,19 +54,38 @@ export function buildOpenRouterRequest(
   imageDataUrl: string,
   prompt: string,
   apiKey: string,
+  opts: { inlineSystemPrompt?: boolean } = {},
 ): OpenRouterRequest {
+  const messages = opts.inlineSystemPrompt
+    ? [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `${MASTER_ARCHITECTURAL_SYSTEM_PROMPT}\n\nUSER RESTORATION BRIEF: ${prompt.trim()}`,
+            },
+            { type: "image_url", image_url: { url: imageDataUrl } },
+          ],
+        },
+      ]
+    : [
+        {
+          role: "system",
+          content: MASTER_ARCHITECTURAL_SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt.trim() },
+            { type: "image_url", image_url: { url: imageDataUrl } },
+          ],
+        },
+      ];
   const body = {
     model: OPENROUTER_MODEL,
     modalities: ["image", "text"],
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: prompt.trim() },
-          { type: "image_url", image_url: { url: imageDataUrl } },
-        ],
-      },
-    ],
+    messages,
   };
 
   return {
@@ -196,6 +248,19 @@ function createRateLimiter({ windowMs, maxRequests }: { windowMs: number; maxReq
   };
 }
 
+async function safeJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function extractUpstreamMessage(data: unknown): string {
+  const record = data as { error?: { message?: unknown } } | null;
+  return typeof record?.error?.message === "string" ? record.error.message : "";
+}
+
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 6 });
 
 function sendError(res: VercelResponse, status: number, message: string) {
@@ -244,20 +309,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (prompt.length > 3000) return sendError(res, 400, "الوصف طويل جداً.");
 
   try {
-    const request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey);
-    const upstream = await fetch(request.url, request.init);
+    let request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey);
+    let upstream = await fetch(request.url, request.init);
+    let data: unknown = await safeJson(upstream);
 
-    let data: unknown = null;
-    try {
-      data = await upstream.json();
-    } catch {
-      // non-JSON upstream response — handled below via !upstream.ok
+    // Resilience: if the image model rejects the system role, retry once with
+    // the master prompt inlined into the user message.
+    if (
+      !upstream.ok &&
+      /role|system|invalid messages?/i.test(extractUpstreamMessage(data))
+    ) {
+      request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey, {
+        inlineSystemPrompt: true,
+      });
+      upstream = await fetch(request.url, request.init);
+      data = await safeJson(upstream);
     }
 
     if (!upstream.ok) {
-      const upstreamData = data as { error?: { message?: unknown } } | null;
-      const upstreamMessage =
-        typeof upstreamData?.error?.message === "string" ? upstreamData.error.message : "";
+      const upstreamMessage = extractUpstreamMessage(data);
       if (
         upstream.status === 402 ||
         /insufficient.?credits|out of credits|insufficient balance/i.test(upstreamMessage)

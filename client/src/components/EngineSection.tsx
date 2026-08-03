@@ -1,8 +1,18 @@
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { ImagePlus, Loader2, RefreshCw, Sparkles, Timer, Trophy } from "lucide-react";
+import {
+  Download,
+  ImagePlus,
+  LayoutGrid,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Timer,
+  Trophy,
+} from "lucide-react";
 import { useI18n, type Lang } from "@/lib/i18n";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
+import { TRIPTYCH_PANELS, downloadSyndicateReport } from "@/lib/report";
 
 const STYLES: { id: string; en: string; ar: string }[] = [
   { id: "khedivial", en: "Khedivial Cairo", ar: "القاهرة الخديوية" },
@@ -15,8 +25,8 @@ export default function EngineSection() {
   const { t, lang } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [imageName, setImageName] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [lastPrompt, setLastPrompt] = useState("");
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,7 +44,6 @@ export default function EngineSection() {
         return;
       }
       setImageDataUrl(compressed);
-      setImageName(file.name);
       setResult(null);
     } catch {
       setError(t("studio.errorGeneric"));
@@ -62,6 +71,7 @@ export default function EngineSection() {
     const finalPrompt = style
       ? `${lang === "ar" ? style.ar : style.en} — ${basePrompt}`
       : basePrompt;
+    setLastPrompt(finalPrompt);
 
     setError(null);
     setLoading(true);
@@ -239,6 +249,9 @@ export default function EngineSection() {
                   <span className="inline-flex items-center gap-1 rounded border border-gold/30 bg-gold/10 px-2 py-0.5 text-[11px] text-gold">
                     <Trophy size={11} /> {t("studio.eightKBadge")}
                   </span>
+                  <span className="inline-flex items-center gap-1 rounded border border-gold/30 bg-gold/10 px-2 py-0.5 text-[11px] text-gold">
+                    <LayoutGrid size={11} /> {t("studio.triptychTag")}
+                  </span>
                 </div>
               </div>
 
@@ -250,7 +263,7 @@ export default function EngineSection() {
                   </div>
                 ) : result && imageDataUrl ? (
                   <div className="w-full space-y-4">
-                    <div className="relative rounded-lg overflow-hidden border border-border/60">
+                    <div className="relative rounded-lg overflow-hidden border border-gold/20">
                       <img
                         src={result}
                         alt={t("studio.outputRestored")}
@@ -259,6 +272,33 @@ export default function EngineSection() {
                         className="w-full max-h-[420px] object-contain bg-black/30"
                       />
                     </div>
+
+                    {/* Triptych panels */}
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {TRIPTYCH_PANELS.map((panel, index) => (
+                        <span
+                          key={panel.id}
+                          className="inline-flex items-center gap-1.5 rounded border border-gold/30 bg-gold/5 px-2.5 py-1 text-[11px] text-gold"
+                        >
+                          <span className="text-gold/70">{index + 1}</span>
+                          {lang === "ar" ? panel.ar : panel.en}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Official syndicate report download */}
+                    <div className="flex flex-col items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void downloadSyndicateReport(result, lastPrompt || prompt)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gold/40 bg-gold/10 text-gold text-sm font-medium hover:bg-gold/20 transition-colors"
+                      >
+                        <Download size={16} />
+                        {t("studio.reportButton")}
+                      </button>
+                      <span className="text-[11px] text-muted-foreground">{t("studio.reportHint")}</span>
+                    </div>
+
                     <div className="flex items-center justify-center gap-3 text-[11px] uppercase tracking-widest text-muted-foreground">
                       <span>{t("studio.outputOriginal")}</span>
                       <span className="text-gold">✦</span>

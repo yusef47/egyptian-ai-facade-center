@@ -75,4 +75,34 @@ describe("EngineSection restoration studio", () => {
     );
     expect(screen.getByRole("alert").textContent).toMatch(/credit|quota|openrouter/i);
   });
+
+  it("shows the triptych panel labels and the official syndicate report download button", { timeout: 20000 }, async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ imageDataUrl: "data:image/png;base64,UkVTVUxU" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <EngineSection />
+      </I18nProvider>,
+    );
+
+    const file = new File(["fake-image-bytes"], "facade.jpg", { type: "image/jpeg" });
+    await user.upload(screen.getByLabelText(/Current Facade/i), file);
+    await user.type(screen.getByLabelText(/Restoration prompt/i), "Restore the facade");
+    await user.click(screen.getByRole("button", { name: /Start Restoration/i }));
+
+    await waitFor(
+      () => expect(screen.getByText(/Download Official Syndicate Report/i)).toBeInTheDocument(),
+      { timeout: 15000 },
+    );
+    expect(screen.getByText(/3-panel presentation board/i)).toBeInTheDocument();
+    expect(screen.getByText(/Khedivial Classic/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hashami \/ Biophilic/i)).toBeInTheDocument();
+    expect(screen.getByText(/Islamic Mashrabiya/i)).toBeInTheDocument();
+  });
 });
