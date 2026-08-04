@@ -18,22 +18,20 @@ export default function HeroSection() {
   const { t } = useI18n();
 
   return (
-    <section className="relative overflow-hidden pt-32 pb-16">
+    <section data-testid="hero-section" className="hero-section relative overflow-hidden pt-32 pb-16">
       <div className="absolute inset-0 bg-gradient-to-b from-navy-lighter/30 to-background" />
+      <img
+        data-testid="hero-flag-watermark"
+        className="hero-flag-watermark absolute inset-0 h-full w-full object-cover opacity-[0.06] grayscale mix-blend-screen"
+        src="/logos/egypt-flag.png"
+        alt=""
+        aria-hidden="true"
+      />
 
       <div className="container relative z-10">
-        <p className="mb-6 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.3em] text-gold">
-          <Sparkles size={14} className="rtl:rotate-180" />
-          {t("hero.label")}
-        </p>
-
-        <h1 className="mb-6 max-w-4xl font-serif text-4xl font-bold leading-tight text-foreground md:text-5xl lg:text-6xl">
-          {t("hero.title")}
-        </h1>
-
         <div
           data-testid="hero-branding"
-          className="hero-branding mb-8 flex max-w-xl flex-col items-center gap-4 rounded-xl border border-gold/25 bg-navy-light/35 px-6 py-5 shadow-lg shadow-black/10 sm:max-w-2xl"
+          className="hero-branding mx-auto mb-8 flex max-w-xl flex-col items-center gap-4 rounded-xl border border-gold/25 bg-navy-light/35 px-6 py-5 text-center shadow-lg shadow-black/10 sm:max-w-2xl"
           aria-label="Official Egyptian architectural institutions"
         >
           <img
@@ -54,13 +52,27 @@ export default function HeroSection() {
               alt="Egyptian Center for AI in Architecture & Urbanism logo"
             />
           </div>
+          <p className="hero-institution-title max-w-xl font-cairo text-sm font-semibold leading-relaxed text-gold sm:text-base">
+            {t("nav.center")}
+          </p>
         </div>
 
-        <p className="mb-10 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
+        <div className="hero-intro text-center">
+          <p className="mb-6 flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.3em] text-gold">
+            <Sparkles size={14} className="rtl:rotate-180" />
+            {t("hero.label")}
+          </p>
+
+          <h1 className="hero-title mx-auto mb-6 max-w-4xl font-cairo text-4xl font-bold leading-tight text-foreground md:text-5xl lg:text-6xl">
+            {t("hero.title")}
+          </h1>
+        </div>
+
+        <p className="mx-auto mb-10 max-w-2xl text-center text-base leading-relaxed text-muted-foreground md:text-lg">
           {t("hero.subtitle")}
         </p>
 
-        <div className="mb-14 flex flex-wrap gap-4">
+        <div className="mb-14 flex flex-wrap justify-center gap-4">
           <a
             href="#studio"
             className="inline-flex items-center gap-2 rounded bg-gold px-6 py-3 font-medium text-navy transition-all duration-200 hover:bg-gold-light active:scale-[0.97]"
@@ -75,7 +87,7 @@ export default function HeroSection() {
           </a>
         </div>
 
-        <div className="mb-14 grid max-w-3xl grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mx-auto mb-14 grid max-w-3xl grid-cols-1 gap-4 text-center md:grid-cols-3">
           {heroStats.map((stat) => (
             <div key={stat.key} className="flex items-center gap-3 rounded-lg border border-border bg-navy-light/50 px-4 py-3">
               <stat.icon size={16} className="shrink-0 text-gold" />
@@ -84,7 +96,7 @@ export default function HeroSection() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-4 border-t border-border/50 pt-8 md:gap-8">
+        <div className="flex flex-wrap justify-center gap-4 border-t border-border/50 pt-8 text-center md:gap-8">
           {heroBadges.map((badge) => (
             <div key={badge.key} className="flex items-center gap-2">
               <span className="text-gold">✦</span>

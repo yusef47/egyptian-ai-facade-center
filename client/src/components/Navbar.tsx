@@ -32,7 +32,7 @@ export default function Navbar() {
             src={LOGOS.flag}
             alt="Egyptian flag"
           />
-          <span className="navbar-center-brand flex min-w-0 items-center gap-3">
+          <span className="navbar-official-cluster navbar-center-brand flex min-w-0 items-center gap-3">
             <img
               className="navbar-center-logo h-12 w-auto max-w-[88px] shrink-0 rounded object-contain"
               src={LOGOS.center}
@@ -42,7 +42,7 @@ export default function Navbar() {
               <span className="block text-[9px] font-medium uppercase tracking-[0.22em] text-gold whitespace-nowrap">
                 {t("nav.syndicate")}
               </span>
-              <span className="block max-w-[240px] truncate font-serif text-sm font-semibold leading-tight text-foreground md:max-w-[400px] md:text-base">
+              <span className="block max-w-[240px] truncate font-cairo text-sm font-semibold leading-tight text-foreground md:max-w-[400px] md:text-base">
                 {t("nav.center")}
               </span>
             </span>
@@ -65,10 +65,8 @@ export default function Navbar() {
           >
             {t("nav.cta")}
           </a>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-3">
-          <div className="flex items-center overflow-hidden rounded-full border border-gold/40" role="group" aria-label="Language">
+        </div>          <div className="navbar-controls flex shrink-0 items-center gap-3">
+          <div className="navbar-language-toggle flex items-center overflow-hidden rounded-full border border-gold/40" role="group" aria-label="Language">
             <button
               type="button"
               onClick={() => setLang("en")}
@@ -91,7 +89,7 @@ export default function Navbar() {
             </button>
           </div>
           <button
-            className="text-foreground lg:hidden"
+            className="navbar-menu-button text-foreground lg:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label="Menu"
             type="button"

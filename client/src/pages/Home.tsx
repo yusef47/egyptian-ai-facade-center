@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
+import HeroSection from "@/components/HeroSection";
 import EngineSection from "@/components/EngineSection";
 import SyndicateReport from "@/components/SyndicateReport";
 import { downloadSyndicateReport } from "@/lib/report";
@@ -26,6 +27,7 @@ export default function Home() {
     <div id="top" className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main>
+        <HeroSection />
         <EngineSection onSessionChange={setSession} />
         <SyndicateReport
           {...session}

@@ -17,6 +17,7 @@ describe("Navbar", () => {
       "src",
       "/logos/egypt-flag.png",
     );
+    expect(screen.getByRole("navigation")).toHaveClass("site-navbar");
   });
 
   it("toggles to Arabic and switches the document to RTL", async () => {

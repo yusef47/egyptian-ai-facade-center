@@ -12,6 +12,8 @@ describe("V115 simplified home", () => {
     );
 
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByTestId("hero-section")).toBeInTheDocument();
+    expect(screen.getByTestId("hero-flag-watermark")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /from raw facade to heritage masterpiece/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /syndicate report/i })).toBeInTheDocument();
     expect(document.querySelector("#editions")).toBeNull();

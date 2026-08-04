@@ -147,6 +147,26 @@ html[lang="ar"] .font-serif {
   }
 }
 
+/* Official presentation polish */
+.hero-section {
+  isolation: isolate;
+}
+
+.hero-flag-watermark {
+  filter: grayscale(1) saturate(0.65) contrast(0.9);
+  opacity: 0.06;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hero-title {
+  text-wrap: balance;
+}
+
+.hero-institution-title {
+  text-shadow: 0 0 18px rgba(197, 160, 89, 0.12);
+}
+
 /* Studio */
 @keyframes restore-pulse {
   0%,
@@ -208,8 +228,8 @@ html[lang="ar"] .font-serif {
 .navbar-syndicate-logo:focus-visible,
 .navbar-center-logo:hover,
 .navbar-center-logo:focus-visible {
-  border-color: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 0 18px rgba(255, 255, 255, 0.2);
+  border-color: #c5a059;
+  box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.2), 0 0 20px rgba(197, 160, 89, 0.42);
   transform: translateY(-1px);
 }
 
@@ -231,7 +251,51 @@ html[lang="ar"] .font-serif {
   }
 
   .navbar-center-logo {
-    max-width: 64px;
+    max-width: 88px;
+  }
+
+  .navbar-controls {
+    gap: 0.5rem;
+  }
+
+  .navbar-flag {
+    width: 2.5rem;
+  }
+
+  .hero-branding {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .hero-title {
+    font-size: 2.15rem;
+  }
+}
+
+@media (max-width: 399px) {
+  .navbar-brand {
+    gap: 0.25rem;
+  }
+
+  .navbar-center-brand {
+    gap: 0.25rem;
+  }
+
+  .navbar-controls {
+    gap: 0.25rem;
+  }
+
+  .navbar-language-toggle button {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .navbar-menu-button {
+    padding: 0.125rem;
+  }
+
+  .navbar-center-logo {
+    max-width: 72px;
   }
 }
 

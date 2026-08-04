@@ -28,7 +28,7 @@ export const en = {
   "hero.badge4": "8K Photorealism",
   "hero.stat1": "8K Restoration",
   "hero.stat2": "≈3s Generation",
-  "hero.stat3": "Heritage Styles",
+  "hero.stat3": "Heritage Review",
 
   // Studio
   "studio.label": "AI Facade Restoration Studio",
@@ -110,7 +110,7 @@ export const ar: Record<TranslationKey, string> = {
   "hero.badge4": "فوتوغرافية 8K",
   "hero.stat1": "ترميم بدقة 8K",
   "hero.stat2": "توليد خلال ~3 ثوانٍ",
-  "hero.stat3": "أنماط تراثية",
+  "hero.stat3": "مراجعة تراثية",
 
   "studio.label": "استوديو ترميم الواجهات بالذكاء الاصطناعي",
   "studio.title": "من واجهة خام إلى تحفة تراثية",
