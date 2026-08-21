@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildDxfFromRaster } from "../client/src/lib/dxf";
 
 describe("DXF raster vectorization", () => {
-  it("writes an AutoCAD-readable ASCII DXF with editable polylines", () => {
-    const width = 7;
-    const height = 7;
+  it("writes an AutoCAD-readable ASCII DXF with atomic LINE entities", () => {
+    const width = 10;
+    const height = 10;
     const data = new Uint8ClampedArray(width * height * 4).fill(255);
-    for (let y = 2; y <= 4; y += 1) {
-      for (let x = 2; x <= 4; x += 1) {
+    for (let y = 2; y <= 7; y += 1) {
+      for (let x = 2; x <= 7; x += 1) {
         const offset = (y * width + x) * 4;
         data[offset] = 0;
         data[offset + 1] = 0;
@@ -21,9 +21,9 @@ describe("DXF raster vectorization", () => {
     expect(dxf).toContain("0\r\nSECTION\r\n2\r\nHEADER");
     expect(dxf).toContain("$ACADVER\r\n1\r\nAC1009");
     expect(dxf).not.toContain("AC1015");
-    expect(dxf).not.toContain("LWPOLYLINE");
-    expect(dxf).not.toContain("AcDbPolyline");
-    expect(dxf).not.toContain("AcDbEntity");
+    expect(dxf).not.toContain("POLYLINE");
+    expect(dxf).not.toContain("VERTEX");
+    expect(dxf).not.toContain("SEQEND");
     expect(dxf).toContain("0\r\nSECTION\r\n2\r\nTABLES");
     expect(dxf).toContain("2\r\nVPORT");
     expect(dxf).toContain("2\r\nLTYPE");
@@ -33,11 +33,14 @@ describe("DXF raster vectorization", () => {
     expect(dxf).toContain("2\r\nCAD_OUTLINE");
     expect(dxf).toContain("62\r\n7");
     expect(dxf).toContain("0\r\nSECTION\r\n2\r\nENTITIES");
-    expect(dxf).toContain("0\r\nPOLYLINE\r\n8\r\nCAD_OUTLINE\r\n66\r\n1\r\n10\r\n0.00\r\n20\r\n0.00\r\n30\r\n0.00\r\n70\r\n1\r\n");
-    expect(dxf).toContain("0\r\nVERTEX\r\n8\r\nCAD_OUTLINE\r\n");
-    expect(dxf).toContain("0\r\nSEQEND\r\n8\r\nCAD_OUTLINE\r\n");
-    expect(dxf).toContain("\r\n20\r\n5.00\r\n");
-    expect(dxf).not.toContain("5.000");
+
+    const entities = dxf.split("0\r\nLINE\r\n").slice(1);
+    expect(entities.length).toBeGreaterThan(0);
+    for (const entity of entities) {
+      expect(entity).toMatch(/^8\r\nCAD_OUTLINE\r\n10\r\n-?\d+\.\d{2}\r\n20\r\n-?\d+\.\d{2}\r\n11\r\n-?\d+\.\d{2}\r\n21\r\n-?\d+\.\d{2}\r\n/);
+    }
+    expect(dxf).toContain("\r\n20\r\n8.00\r\n");
+    expect(dxf).not.toContain(".000");
 
     const lines = dxf.split("\r\n");
     expect(lines.at(-1)).toBe("");
@@ -46,6 +49,21 @@ describe("DXF raster vectorization", () => {
       expect(lines[index]).toMatch(/^\d+$/);
     }
     expect(dxf).toMatch(/\r\n0\r\nENDSEC\r\n0\r\nEOF\r\n$/);
+  });
+
+  it("rejects raster components whose only segment is shorter than 2.5 pixels", () => {
+    const width = 4;
+    const height = 4;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    for (const x of [1, 2]) {
+      const offset = (1 * width + x) * 4;
+      data[offset] = 0;
+      data[offset + 1] = 0;
+      data[offset + 2] = 0;
+      data[offset + 3] = 255;
+    }
+
+    expect(() => buildDxfFromRaster({ width, height, data })).toThrow(/segment/i);
   });
 
   it("rejects invalid or empty raster sources", () => {

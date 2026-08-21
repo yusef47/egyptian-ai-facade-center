@@ -98,11 +98,11 @@ Every requested board should be composed as one coherent architectural presentat
 
 A single API call is designed to produce this board. The indicative generation estimate is **approximately $0.033 / 1.6 EGP per generation**, but actual pricing depends on the selected provider, model pricing, token/image usage, exchange rate, account plan, and OpenRouter billing changes.
 
-## Floor Plan to CAD studio (V117.2)
+## Floor Plan to CAD studio (V117.3)
 
 The second studio tab, **Floor Plan to CAD**, accepts colored 2D or 3D architectural floor-plan images and sends one CAD-mode request to the same OpenRouter image endpoint. CAD mode uses `google/gemini-3.1-flash-lite-image` with a dedicated high-contrast B&W drafting prompt so the facade triptych instructions are not applied to floor plans.
 
-After the B&W line-art image is returned, the browser caches that generated image in component state. Downloading DXF traces the cached raster locally—without another API request—and emits a conservative AC1009/R12 ASCII DXF containing editable `POLYLINE`/`VERTEX`/`SEQEND` entities with CRLF line endings. The file is designed for AutoCAD 2024/2027 compatibility, but its geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
+After the B&W line-art image is returned, the browser caches that generated image in component state. Downloading DXF traces the cached raster locally—without another API request—and emits a conservative AC1009/R12 ASCII DXF containing only atomic `LINE` entities with CRLF line endings. Contour segments shorter than 2.5 pixels are discarded to reduce raster noise and AutoCAD parsing load. The file is designed for AutoCAD 2024/2027 compatibility, but its geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
 
 ## API contract
 

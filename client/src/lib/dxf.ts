@@ -161,7 +161,33 @@ function dxfTables(): string[] {
   ];
 }
 
-/** Converts an RGBA raster into strict R12 POLYLINE/VERTEX/SEQEND ASCII DXF. */
+const MIN_SEGMENT_LENGTH = 2.5;
+
+function appendLineEntities(lines: string[], contours: Point[][], scale: number): number {
+  let lineCount = 0;
+  for (const contour of contours) {
+    const isClosed = contour.length > 2;
+    const segmentCount = isClosed ? contour.length : contour.length - 1;
+    for (let index = 0; index < segmentCount; index += 1) {
+      const start = contour[index];
+      const end = contour[(index + 1) % contour.length];
+      if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_SEGMENT_LENGTH) continue;
+
+      lines.push(
+        "0", "LINE",
+        "8", "CAD_OUTLINE",
+        "10", (start.x * scale).toFixed(2),
+        "20", (start.y * scale).toFixed(2),
+        "11", (end.x * scale).toFixed(2),
+        "21", (end.y * scale).toFixed(2),
+      );
+      lineCount += 1;
+    }
+  }
+  return lineCount;
+}
+
+/** Converts an RGBA raster into minimal R12 ASCII DXF LINE entities. */
 export function buildDxfFromRaster(source: RasterSource, options: DxfOptions = {}): string {
   validateRaster(source);
   const threshold = options.threshold ?? 180;
@@ -178,28 +204,9 @@ export function buildDxfFromRaster(source: RasterSource, options: DxfOptions = {
     ...dxfTables(),
     "0", "SECTION", "2", "ENTITIES",
   ];
+  const lineCount = appendLineEntities(lines, contours, scale);
 
-  for (const contour of contours) {
-    lines.push(
-      "0", "POLYLINE",
-      "8", "CAD_OUTLINE",
-      "66", "1",
-      "10", "0.00",
-      "20", "0.00",
-      "30", "0.00",
-      "70", contour.length > 2 ? "1" : "0",
-    );
-    for (const point of contour) {
-      lines.push(
-        "0", "VERTEX",
-        "8", "CAD_OUTLINE",
-        "10", (point.x * scale).toFixed(2),
-        "20", (point.y * scale).toFixed(2),
-        "30", "0.00",
-      );
-    }
-    lines.push("0", "SEQEND", "8", "CAD_OUTLINE");
-  }
+  if (lineCount === 0) throw new Error("No sufficiently long line segments found in raster");
 
   lines.push("0", "ENDSEC", "0", "EOF");
   return `${lines.join("\r\n")}\r\n`;
