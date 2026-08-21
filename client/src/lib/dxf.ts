@@ -145,11 +145,9 @@ function formatPairs(rawPairs: readonly string[]): string[] {
 function dxfHeader(width: number, height: number, scale: number): string[] {
   return formatPairs([
     "0", "SECTION", "2", "HEADER",
-    "9", "$ACADVER", "1", "AC1032",
-    "9", "$INSBASE", "10", "0.00", "20", "0.00", "30", "0.00",
-    "9", "$INSUNITS", "70", "0",
-    "9", "$EXTMIN", "10", "0.00", "20", "0.00",
-    "9", "$EXTMAX", "10", (width * scale).toFixed(2), "20", (height * scale).toFixed(2),
+    "9", "$ACADVER", "1", "AC1009",
+    "9", "$EXTMIN", "10", "0.0", "20", "0.0",
+    "9", "$EXTMAX", "10", (width * scale).toFixed(1), "20", (height * scale).toFixed(1),
     "0", "ENDSEC",
   ]);
 }
@@ -157,48 +155,63 @@ function dxfHeader(width: number, height: number, scale: number): string[] {
 function dxfTables(): string[] {
   return formatPairs([
     "0", "SECTION", "2", "TABLES",
-    "0", "TABLE", "2", "VPORT", "70", "1",
-    "0", "VPORT", "2", "*ACTIVE", "70", "0",
-    "10", "0.00", "20", "0.00", "11", "1.00", "21", "1.00",
-    "12", "0.00", "22", "0.00", "13", "0.00", "23", "0.00",
-    "14", "0.00", "24", "0.00", "15", "0.00", "25", "0.00",
-    "16", "0.00", "26", "0.00", "36", "0.00", "37", "0.00",
-    "40", "1.00", "41", "1.00", "42", "50.00", "43", "0.00",
-    "44", "0.00", "50", "0.00", "51", "0.00", "71", "0",
-    "72", "100", "73", "1", "74", "3", "75", "0", "0", "ENDTAB",
     "0", "TABLE", "2", "LTYPE", "70", "1",
-    "0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0.00", "0", "ENDTAB",
-    "0", "TABLE", "2", "LAYER", "70", "2",
+    "0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0.0",
+    "0", "ENDTAB",
+    "0", "TABLE", "2", "LAYER", "70", "1",
     "0", "LAYER", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
-    "0", "LAYER", "2", "CAD_OUTLINE", "70", "0", "62", "7", "6", "CONTINUOUS", "0", "ENDTAB",
+    "0", "ENDTAB",
     "0", "ENDSEC",
   ]);
 }
 
-const MIN_SEGMENT_LENGTH = 2.5;
+const BASE_MIN_SEGMENT_LENGTH = 5;
+const MAX_LINE_ENTITIES = 3000;
 
-function appendLineEntities(lines: string[], contours: Point[][], scale: number): number {
-  let lineCount = 0;
+type Segment = { start: Point; end: Point; length: number };
+
+function collectSegments(contours: Point[][]): Segment[] {
+  const segments: Segment[] = [];
   for (const contour of contours) {
     const isClosed = contour.length > 2;
     const segmentCount = isClosed ? contour.length : contour.length - 1;
     for (let index = 0; index < segmentCount; index += 1) {
       const start = contour[index];
       const end = contour[(index + 1) % contour.length];
-      if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_SEGMENT_LENGTH) continue;
-
-      lines.push(...formatPairs([
-        "0", "LINE",
-        "8", "CAD_OUTLINE",
-        "10", (start.x * scale).toFixed(2),
-        "20", (start.y * scale).toFixed(2),
-        "11", (end.x * scale).toFixed(2),
-        "21", (end.y * scale).toFixed(2),
-      ]));
-      lineCount += 1;
+      segments.push({ start, end, length: Math.hypot(end.x - start.x, end.y - start.y) });
     }
   }
-  return lineCount;
+  return segments;
+}
+
+function selectSegments(contours: Point[][]): Segment[] {
+  const segments = collectSegments(contours);
+  let minimumLength = BASE_MIN_SEGMENT_LENGTH;
+  let selected = segments.filter((segment) => segment.length >= minimumLength);
+
+  if (selected.length > MAX_LINE_ENTITIES) {
+    const ranked = [...selected].sort((a, b) => b.length - a.length);
+    const cutoff = ranked[MAX_LINE_ENTITIES - 1]?.length ?? minimumLength;
+    minimumLength = cutoff + Number.EPSILON;
+    selected = segments.filter((segment) => segment.length >= minimumLength);
+    if (selected.length > MAX_LINE_ENTITIES) {
+      selected = ranked.slice(0, MAX_LINE_ENTITIES);
+    }
+  }
+  return selected;
+}
+
+function appendLineEntities(lines: string[], segments: Segment[], scale: number): void {
+  for (const { start, end } of segments) {
+    lines.push(...formatPairs([
+      "0", "LINE",
+      "8", "0",
+      "10", (start.x * scale).toFixed(1),
+      "20", (start.y * scale).toFixed(1),
+      "11", (end.x * scale).toFixed(1),
+      "21", (end.y * scale).toFixed(1),
+    ]));
+  }
 }
 
 /** Converts an RGBA raster into minimal R12 ASCII DXF LINE entities. */
@@ -218,12 +231,14 @@ export function buildDxfFromRaster(source: RasterSource, options: DxfOptions = {
     ...dxfTables(),
     ...formatPairs(["0", "SECTION", "2", "ENTITIES"]),
   ];
-  const lineCount = appendLineEntities(lines, contours, scale);
+  const segments = selectSegments(contours);
 
-  if (lineCount === 0) throw new Error("No sufficiently long line segments found in raster");
+  if (segments.length === 0) throw new Error("No sufficiently long line segments found in raster");
+
+  appendLineEntities(lines, segments, scale);
 
   lines.push(...formatPairs(["0", "ENDSEC", "0", "EOF"]));
-  return `${lines.join("\r\n")}\r\n`;
+  return `${lines.join("\n")}\n`;
 }
 
 /** Loads a generated image into a canvas and converts its pixels into DXF. */
