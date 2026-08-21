@@ -129,19 +129,33 @@ function componentContours(source: RasterSource, threshold: number, maxContours:
   return contours;
 }
 
+const fmtCode = (code: number) => code.toString().padStart(3, " ");
+
+function formatPairs(rawPairs: readonly string[]): string[] {
+  if (rawPairs.length % 2 !== 0) throw new Error("DXF pair list is incomplete");
+  const formatted: string[] = [];
+  for (let index = 0; index < rawPairs.length; index += 2) {
+    const code = Number(rawPairs[index]);
+    if (!Number.isInteger(code)) throw new Error("DXF group code is invalid");
+    formatted.push(fmtCode(code), rawPairs[index + 1]);
+  }
+  return formatted;
+}
+
 function dxfHeader(width: number, height: number, scale: number): string[] {
-  return [
+  return formatPairs([
     "0", "SECTION", "2", "HEADER",
-    "9", "$ACADVER", "1", "AC1009",
+    "9", "$ACADVER", "1", "AC1032",
+    "9", "$INSBASE", "10", "0.00", "20", "0.00", "30", "0.00",
     "9", "$INSUNITS", "70", "0",
     "9", "$EXTMIN", "10", "0.00", "20", "0.00",
     "9", "$EXTMAX", "10", (width * scale).toFixed(2), "20", (height * scale).toFixed(2),
     "0", "ENDSEC",
-  ];
+  ]);
 }
 
 function dxfTables(): string[] {
-  return [
+  return formatPairs([
     "0", "SECTION", "2", "TABLES",
     "0", "TABLE", "2", "VPORT", "70", "1",
     "0", "VPORT", "2", "*ACTIVE", "70", "0",
@@ -158,7 +172,7 @@ function dxfTables(): string[] {
     "0", "LAYER", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
     "0", "LAYER", "2", "CAD_OUTLINE", "70", "0", "62", "7", "6", "CONTINUOUS", "0", "ENDTAB",
     "0", "ENDSEC",
-  ];
+  ]);
 }
 
 const MIN_SEGMENT_LENGTH = 2.5;
@@ -173,14 +187,14 @@ function appendLineEntities(lines: string[], contours: Point[][], scale: number)
       const end = contour[(index + 1) % contour.length];
       if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_SEGMENT_LENGTH) continue;
 
-      lines.push(
+      lines.push(...formatPairs([
         "0", "LINE",
         "8", "CAD_OUTLINE",
         "10", (start.x * scale).toFixed(2),
         "20", (start.y * scale).toFixed(2),
         "11", (end.x * scale).toFixed(2),
         "21", (end.y * scale).toFixed(2),
-      );
+      ]));
       lineCount += 1;
     }
   }
@@ -202,13 +216,13 @@ export function buildDxfFromRaster(source: RasterSource, options: DxfOptions = {
   const lines = [
     ...dxfHeader(source.width, source.height, scale),
     ...dxfTables(),
-    "0", "SECTION", "2", "ENTITIES",
+    ...formatPairs(["0", "SECTION", "2", "ENTITIES"]),
   ];
   const lineCount = appendLineEntities(lines, contours, scale);
 
   if (lineCount === 0) throw new Error("No sufficiently long line segments found in raster");
 
-  lines.push("0", "ENDSEC", "0", "EOF");
+  lines.push(...formatPairs(["0", "ENDSEC", "0", "EOF"]));
   return `${lines.join("\r\n")}\r\n`;
 }
 
