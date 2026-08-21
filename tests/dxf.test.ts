@@ -18,32 +18,34 @@ describe("DXF raster vectorization", () => {
 
     const dxf = buildDxfFromRaster({ width, height, data });
 
-    expect(dxf).toContain("0\nSECTION\n2\nHEADER");
-    expect(dxf).toContain("$ACADVER\n1\nAC1015");
-    expect(dxf).not.toContain("AC1032");
-    expect(dxf).toContain("0\nSECTION\n2\nTABLES");
-    expect(dxf).toContain("2\nVPORT");
-    expect(dxf).toContain("2\nLTYPE");
-    expect(dxf).toContain("2\nCONTINUOUS");
-    expect(dxf).toContain("2\nLAYER");
-    expect(dxf).toContain("2\n0");
-    expect(dxf).toContain("2\nCAD_OUTLINE");
-    expect(dxf).toContain("62\n7");
-    expect(dxf).toContain("0\nSECTION\n2\nBLOCKS");
-    expect(dxf).toContain("0\nSECTION\n2\nENTITIES");
-    expect(dxf).toContain("0\nLWPOLYLINE");
-    expect(dxf).not.toContain("CAD-FLOOR-PLAN");
-    const entities = dxf.split("0\nLWPOLYLINE\n").slice(1);
-    expect(entities.length).toBeGreaterThan(0);
-    for (let index = 0; index < entities.length; index += 1) {
-      const entity = entities[index];
-      expect(entity).toMatch(/^5\n[0-9A-F]+\n100\nAcDbEntity\n8\nCAD_OUTLINE\n100\nAcDbPolyline\n90\n\d+\n70\n[01]\n/);
-      expect(entity).toContain(`5\n${(0x100 + index).toString(16).toUpperCase()}\n`);
+    expect(dxf).toContain("0\r\nSECTION\r\n2\r\nHEADER");
+    expect(dxf).toContain("$ACADVER\r\n1\r\nAC1009");
+    expect(dxf).not.toContain("AC1015");
+    expect(dxf).not.toContain("LWPOLYLINE");
+    expect(dxf).not.toContain("AcDbPolyline");
+    expect(dxf).not.toContain("AcDbEntity");
+    expect(dxf).toContain("0\r\nSECTION\r\n2\r\nTABLES");
+    expect(dxf).toContain("2\r\nVPORT");
+    expect(dxf).toContain("2\r\nLTYPE");
+    expect(dxf).toContain("2\r\nCONTINUOUS");
+    expect(dxf).toContain("2\r\nLAYER");
+    expect(dxf).toContain("2\r\n0");
+    expect(dxf).toContain("2\r\nCAD_OUTLINE");
+    expect(dxf).toContain("62\r\n7");
+    expect(dxf).toContain("0\r\nSECTION\r\n2\r\nENTITIES");
+    expect(dxf).toContain("0\r\nPOLYLINE\r\n8\r\nCAD_OUTLINE\r\n66\r\n1\r\n10\r\n0.00\r\n20\r\n0.00\r\n30\r\n0.00\r\n70\r\n1\r\n");
+    expect(dxf).toContain("0\r\nVERTEX\r\n8\r\nCAD_OUTLINE\r\n");
+    expect(dxf).toContain("0\r\nSEQEND\r\n8\r\nCAD_OUTLINE\r\n");
+    expect(dxf).toContain("\r\n20\r\n5.00\r\n");
+    expect(dxf).not.toContain("5.000");
+
+    const lines = dxf.split("\r\n");
+    expect(lines.at(-1)).toBe("");
+    expect(lines.slice(0, -1)).not.toContain("");
+    for (let index = 0; index < lines.length - 1; index += 2) {
+      expect(lines[index]).toMatch(/^\d+$/);
     }
-    expect(dxf).toContain("70\n1");
-    expect(dxf).toContain("\n20\n5.000\n");
-    expect(dxf).toMatch(/\n0\nENDSEC\n0\nEOF\n$/);
-    expect((dxf.match(/\n10\n/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(dxf).toMatch(/\r\n0\r\nENDSEC\r\n0\r\nEOF\r\n$/);
   });
 
   it("rejects invalid or empty raster sources", () => {

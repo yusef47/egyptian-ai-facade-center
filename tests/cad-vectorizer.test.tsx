@@ -66,6 +66,7 @@ describe("CadVectorizerSection", () => {
     await user.click(screen.getByRole("button", { name: /Download AutoCAD File/i }));
 
     await waitFor(() => expect(rasterizeImageToDxf).toHaveBeenCalledWith("data:image/png;base64,Q0FE"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalled();
   });
 
