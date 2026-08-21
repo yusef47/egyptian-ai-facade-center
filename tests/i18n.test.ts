@@ -15,6 +15,13 @@ describe("i18n dictionary", () => {
     }
   });
 
+  it("includes complete bilingual V117 CAD studio copy", () => {
+    for (const key of ["nav.facadeTab", "nav.cadTab", "nav.studioTabs", "cad.label", "cad.title", "cad.convertButton", "cad.downloadButton"] as const) {
+      expect(en[key]).toBeTruthy();
+      expect(ar[key]).toBeTruthy();
+    }
+  });
+
   it("keeps the Egyptian center brand strings intact", () => {
     expect(en["nav.center"]).toContain("Egyptian Center");
     expect(ar["nav.center"]).toContain("المركز المصري");

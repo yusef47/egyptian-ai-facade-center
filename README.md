@@ -98,6 +98,12 @@ Every requested board should be composed as one coherent architectural presentat
 
 A single API call is designed to produce this board. The indicative generation estimate is **approximately $0.033 / 1.6 EGP per generation**, but actual pricing depends on the selected provider, model pricing, token/image usage, exchange rate, account plan, and OpenRouter billing changes.
 
+## Floor Plan to CAD studio (V117.0)
+
+The second studio tab, **Floor Plan to CAD**, accepts colored 2D or 3D architectural floor-plan images and sends one CAD-mode request to the same OpenRouter image endpoint. CAD mode uses `google/gemini-3.1-flash-lite-image` with a dedicated high-contrast B&W drafting prompt so the facade triptych instructions are not applied to floor plans.
+
+After the B&W line-art image is returned, the browser traces dark raster contours and downloads an ASCII DXF containing editable `LWPOLYLINE` entities. The file is compatible with AutoCAD 2024, but its geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
+
 ## API contract
 
 ### `POST /api/restore`

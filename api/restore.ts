@@ -5,6 +5,8 @@ export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
 export const OPENROUTER_MODEL = "google/gemini-3.1-flash-lite-image";
 
+export const CAD_SYSTEM_PROMPT = `You are an architectural CAD drafting specialist. Convert the supplied colored or 3D architectural floor plan into a clean, high-contrast 2D black and white CAD drafting style drawing. Preserve the plan's walls, openings, stairs, doors, windows, room boundaries, furniture outlines, dimensions, and overall geometry. Use sharp thin black lines on a pure white background. Remove all color, textures, gradients, shadows, perspective, 3D shading, and decorative rendering. Do not add labels, logos, watermarks, furniture, or geometry that is not supported by the source. Return one clean orthographic floor-plan image suitable for raster-to-vector tracing.\n\nREQUIRED STYLE\nConvert this architectural floor plan to a high-contrast 2D black and white clean CAD drafting style drawing, sharp thin black lines on pure white background, no 3D shading, clean vector line art style.`.trim();
+
 const MAX_DATA_URL_BYTES = 3_500_000; // incoming image payload guard
 const MAX_OUTPUT_DATA_URL_BYTES = 2_000_000; // keep the JSON response well under Vercel's 4.5 MB limit
 
@@ -55,8 +57,10 @@ export function buildOpenRouterRequest(
   imageDataUrl: string,
   prompt: string,
   apiKey: string,
-  opts: { inlineSystemPrompt?: boolean } = {},
+  opts: { inlineSystemPrompt?: boolean; mode?: "facade" | "cad" } = {},
 ): OpenRouterRequest {
+  const systemPrompt = opts.mode === "cad" ? CAD_SYSTEM_PROMPT : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
+  const briefLabel = opts.mode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
   const messages = opts.inlineSystemPrompt
     ? [
         {
@@ -64,7 +68,7 @@ export function buildOpenRouterRequest(
           content: [
             {
               type: "text",
-              text: `${MASTER_ARCHITECTURAL_SYSTEM_PROMPT}\n\nUSER RESTORATION BRIEF: ${prompt.trim()}`,
+              text: `${systemPrompt}\n\n${briefLabel}: ${prompt.trim()}`,
             },
             { type: "image_url", image_url: { url: imageDataUrl } },
           ],
@@ -73,7 +77,7 @@ export function buildOpenRouterRequest(
     : [
         {
           role: "system",
-          content: MASTER_ARCHITECTURAL_SYSTEM_PROMPT,
+          content: systemPrompt,
         },
         {
           role: "user",
@@ -293,10 +297,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const payload = body && typeof body === "object"
-    ? body as { imageDataUrl?: unknown; prompt?: unknown }
+    ? body as { imageDataUrl?: unknown; prompt?: unknown; mode?: unknown }
     : {};
   const imageDataUrl = payload.imageDataUrl;
   const prompt = payload.prompt;
+  const mode = payload.mode === "cad" ? "cad" : "facade";
 
   if (typeof imageDataUrl !== "string" || !imageDataUrl.startsWith("data:image/")) {
     return sendError(res, 400, "يرجى رفع صورة واجهة صالحة.");
@@ -310,7 +315,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (prompt.length > 3000) return sendError(res, 400, "الوصف طويل جداً.");
 
   try {
-    let request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey);
+    let request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey, { mode });
     let upstream = await fetch(request.url, request.init);
     let data: unknown = await safeJson(upstream);
 
@@ -322,6 +327,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ) {
       request = buildOpenRouterRequest(imageDataUrl, prompt, apiKey, {
         inlineSystemPrompt: true,
+        mode,
       });
       upstream = await fetch(request.url, request.init);
       data = await safeJson(upstream);

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { DraftingCompass, Landmark, Menu, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import type { StudioMode } from "@/lib/studio";
 
 const LOGOS = {
   syndicate: "/logos/syndicate-logo.png",
@@ -8,7 +9,12 @@ const LOGOS = {
   flag: "/logos/egypt-flag.png",
 } as const;
 
-export default function Navbar() {
+type NavbarProps = {
+  activeStudio?: StudioMode;
+  onStudioChange?: (mode: StudioMode) => void;
+};
+
+export default function Navbar({ activeStudio = "facade", onStudioChange }: NavbarProps) {
   const { t, lang, setLang } = useI18n();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -65,7 +71,9 @@ export default function Navbar() {
           >
             {t("nav.cta")}
           </a>
-        </div>          <div className="navbar-controls flex shrink-0 items-center gap-3">
+        </div>
+
+        <div className="navbar-controls flex shrink-0 items-center gap-3">
           <div className="navbar-language-toggle flex items-center overflow-hidden rounded-full border border-gold/40" role="group" aria-label="Language">
             <button
               type="button"
@@ -95,6 +103,43 @@ export default function Navbar() {
             type="button"
           >
             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="container overflow-x-auto pb-2 pt-1">
+        <div className="navbar-studio-tabs mx-auto flex min-w-max items-center justify-center gap-1 rounded-lg border border-gold/20 bg-navy-light/50 p-1" role="tablist" aria-label={t("nav.studioTabs")}>
+          <button
+            type="button"
+            id="facade-studio-tab"
+            role="tab"
+            aria-selected={activeStudio === "facade"}
+            aria-controls="facade-studio-panel"
+            onClick={() => onStudioChange?.("facade")}
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-all duration-200 sm:px-4 sm:text-sm ${
+              activeStudio === "facade"
+                ? "bg-gold text-navy shadow-[0_0_16px_rgba(197,160,89,0.2)]"
+                : "text-muted-foreground hover:bg-gold/10 hover:text-gold"
+            }`}
+          >
+            <Landmark size={15} aria-hidden="true" />
+            {t("nav.facadeTab")}
+          </button>
+          <button
+            type="button"
+            id="cad-studio-tab"
+            role="tab"
+            aria-selected={activeStudio === "cad"}
+            aria-controls="cad-studio-panel"
+            onClick={() => onStudioChange?.("cad")}
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-all duration-200 sm:px-4 sm:text-sm ${
+              activeStudio === "cad"
+                ? "bg-gold text-navy shadow-[0_0_16px_rgba(197,160,89,0.2)]"
+                : "text-muted-foreground hover:bg-gold/10 hover:text-gold"
+            }`}
+          >
+            <DraftingCompass size={15} aria-hidden="true" />
+            {t("nav.cadTab")}
           </button>
         </div>
       </div>

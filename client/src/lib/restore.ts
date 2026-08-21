@@ -1,6 +1,7 @@
 export interface RestoreRequest {
   imageDataUrl: string;
   prompt: string;
+  mode?: "facade" | "cad";
 }
 
 export interface RestoreResult {
@@ -10,9 +11,9 @@ export interface RestoreResult {
 const IMAGE_REFERENCE_RE = /^(data:image\/|https?:\/\/)/i;
 
 /**
- * Calls the Vercel serverless route /api/restore with the compressed
- * image data URL and the architectural prompt, returning the restored
- * facade image (either a hosted https:// URL or a data:image/... string).
+ * Calls the Vercel serverless route /api/restore with the compressed image,
+ * architectural prompt, and optional studio mode. Returns either a hosted
+ * https:// URL or a data:image/... string.
  */
 export async function restoreFacade(request: RestoreRequest): Promise<string> {
   const response = await fetch("/api/restore", {
