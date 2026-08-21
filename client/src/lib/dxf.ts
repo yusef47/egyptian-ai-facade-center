@@ -1,33 +1,21 @@
-export type RasterSource = {
+export type SvgDxfOptions = {
   width: number;
   height: number;
-  data: Uint8ClampedArray;
-};
-
-type DxfOptions = {
-  threshold?: number;
-  maxContours?: number;
-  simplifyTolerance?: number;
   scale?: number;
 };
 
 type Point = { x: number; y: number };
+type Segment = { start: Point; end: Point; length: number };
+type Path = { points: Point[]; closed: boolean };
+type PathToken = { kind: "command"; value: string } | { kind: "number"; value: number };
+type PotraceApi = {
+  loadFromCanvas?: (canvas: HTMLCanvasElement) => Promise<string>;
+  default?: { loadFromCanvas?: (canvas: HTMLCanvasElement) => Promise<string> };
+};
 
-function luminance(data: Uint8ClampedArray, offset: number): number {
-  const red = data[offset] ?? 255;
-  const green = data[offset + 1] ?? red;
-  const blue = data[offset + 2] ?? red;
-  return red * 0.299 + green * 0.587 + blue * 0.114;
-}
-
-function validateRaster(source: RasterSource): void {
-  if (!Number.isInteger(source.width) || !Number.isInteger(source.height) || source.width < 1 || source.height < 1) {
-    throw new Error("Invalid raster dimensions");
-  }
-  if (source.data.length < source.width * source.height * 4) {
-    throw new Error("Raster data is incomplete");
-  }
-}
+const BASE_MIN_SEGMENT_LENGTH = 5;
+const MAX_LINE_ENTITIES = 5000;
+const RDP_EPSILON = 2;
 
 function pointDistanceToSegment(point: Point, start: Point, end: Point): number {
   const dx = end.x - start.x;
@@ -57,76 +45,174 @@ function simplify(points: Point[], tolerance: number): Point[] {
   ];
 }
 
-function componentContours(source: RasterSource, threshold: number, maxContours: number, tolerance: number): Point[][] {
-  const { width, height, data } = source;
-  const pixelCount = width * height;
-  const dark = new Uint8Array(pixelCount);
-  for (let index = 0; index < pixelCount; index += 1) {
-    dark[index] = luminance(data, index * 4) <= threshold ? 1 : 0;
+function tokenizePathData(data: string): PathToken[] {
+  const tokens: PathToken[] = [];
+  const tokenPattern = /([a-zA-Z])|([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenPattern.exec(data)) !== null) {
+    if (match[1]) tokens.push({ kind: "command", value: match[1] });
+    else if (match[2]) tokens.push({ kind: "number", value: Number(match[2]) });
   }
+  return tokens;
+}
 
-  const visited = new Uint8Array(pixelCount);
-  const contours: Point[][] = [];
-  const neighbors = [
-    [-1, -1], [0, -1], [1, -1],
-    [-1, 0],           [1, 0],
-    [-1, 1],  [0, 1],  [1, 1],
-  ] as const;
+function flattenCubic(start: Point, control1: Point, control2: Point, end: Point): Point[] {
+  const points: Point[] = [];
+  const subdivisions = 12;
+  for (let step = 1; step <= subdivisions; step += 1) {
+    const t = step / subdivisions;
+    const inverse = 1 - t;
+    points.push({
+      x: inverse ** 3 * start.x + 3 * inverse ** 2 * t * control1.x + 3 * inverse * t ** 2 * control2.x + t ** 3 * end.x,
+      y: inverse ** 3 * start.y + 3 * inverse ** 2 * t * control1.y + 3 * inverse * t ** 2 * control2.y + t ** 3 * end.y,
+    });
+  }
+  return points;
+}
 
-  for (let start = 0; start < pixelCount && contours.length < maxContours; start += 1) {
-    if (!dark[start] || visited[start]) continue;
-    const queue = [start];
-    const boundary: Point[] = [];
-    visited[start] = 1;
+function flattenQuadratic(start: Point, control: Point, end: Point): Point[] {
+  const points: Point[] = [];
+  const subdivisions = 8;
+  for (let step = 1; step <= subdivisions; step += 1) {
+    const t = step / subdivisions;
+    const inverse = 1 - t;
+    points.push({
+      x: inverse ** 2 * start.x + 2 * inverse * t * control.x + t ** 2 * end.x,
+      y: inverse ** 2 * start.y + 2 * inverse * t * control.y + t ** 2 * end.y,
+    });
+  }
+  return points;
+}
 
-    for (let cursor = 0; cursor < queue.length; cursor += 1) {
-      const current = queue[cursor];
-      const x = current % width;
-      const y = Math.floor(current / width);
-      let isBoundary = false;
-      for (const [dx, dy] of neighbors) {
-        const nextX = x + dx;
-        const nextY = y + dy;
-        if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) {
-          isBoundary = true;
-          continue;
-        }
-        const next = nextY * width + nextX;
-        if (dark[next]) {
-          if (!visited[next]) {
-            visited[next] = 1;
-            queue.push(next);
-          }
-        } else {
-          isBoundary = true;
-        }
-      }
-      if (isBoundary) boundary.push({ x, y });
+function parsePathData(data: string): Path[] {
+  const tokens = tokenizePathData(data);
+  const paths: Path[] = [];
+  let tokenIndex = 0;
+  let command = "";
+  let current: Point = { x: 0, y: 0 };
+  let subpathStart: Point = { x: 0, y: 0 };
+  let activePath: Path | null = null;
+
+  const ensurePath = (point: Point) => {
+    if (!activePath) {
+      activePath = { points: [point], closed: false };
+      paths.push(activePath);
+      subpathStart = point;
     }
+  };
+  const readNumber = (): number => {
+    const token = tokens[tokenIndex];
+    if (!token || token.kind !== "number") throw new Error("Malformed Potrace path data");
+    tokenIndex += 1;
+    return token.value;
+  };
+  const readPoint = (relative: boolean): Point => {
+    const point = { x: readNumber(), y: readNumber() };
+    return relative ? { x: current.x + point.x, y: current.y + point.y } : point;
+  };
 
-    if (boundary.length < 2) continue;
-    const center = boundary.reduce(
-      (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
-      { x: 0, y: 0 },
-    );
-    center.x /= boundary.length;
-    center.y /= boundary.length;
-    boundary.sort(
-      (a, b) => Math.atan2(a.y - center.y, a.x - center.x) - Math.atan2(b.y - center.y, b.x - center.x),
-    );
-
-    const contour = boundary.map((point) => ({ x: point.x, y: height - point.y }));
-    if (contour.length > 2) {
-      const simplified = simplify([...contour, { ...contour[0] }], tolerance);
-      if (simplified.length > 1 && simplified[0].x === simplified.at(-1)?.x && simplified[0].y === simplified.at(-1)?.y) {
-        simplified.pop();
+  while (tokenIndex < tokens.length) {
+    const token = tokens[tokenIndex];
+    if (token.kind === "command") {
+      command = token.value;
+      tokenIndex += 1;
+      if (command.toLowerCase() === "z") {
+        if (activePath) {
+          activePath.closed = true;
+          current = subpathStart;
+        }
+        command = "";
       }
-      contours.push(simplified);
-    } else {
-      contours.push(simplify(contour, tolerance));
+      continue;
+    }
+    if (!command) throw new Error("Potrace path data is missing a command");
+
+    const relative = command === command.toLowerCase();
+    switch (command.toUpperCase()) {
+      case "M": {
+        const point = readPoint(relative);
+        activePath = { points: [point], closed: false };
+        paths.push(activePath);
+        current = point;
+        subpathStart = point;
+        command = relative ? "l" : "L";
+        break;
+      }
+      case "L": {
+        const point = readPoint(relative);
+        ensurePath(current);
+        activePath?.points.push(point);
+        current = point;
+        break;
+      }
+      case "H": {
+        const x = readNumber();
+        const point = { x: relative ? current.x + x : x, y: current.y };
+        ensurePath(current);
+        activePath?.points.push(point);
+        current = point;
+        break;
+      }
+      case "V": {
+        const y = readNumber();
+        const point = { x: current.x, y: relative ? current.y + y : y };
+        ensurePath(current);
+        activePath?.points.push(point);
+        current = point;
+        break;
+      }
+      case "C": {
+        const control1 = readPoint(relative);
+        const control2 = readPoint(relative);
+        const end = readPoint(relative);
+        ensurePath(current);
+        activePath?.points.push(...flattenCubic(current, control1, control2, end));
+        current = end;
+        break;
+      }
+      case "Q": {
+        const control = readPoint(relative);
+        const end = readPoint(relative);
+        ensurePath(current);
+        activePath?.points.push(...flattenQuadratic(current, control, end));
+        current = end;
+        break;
+      }
+      default:
+        throw new Error(`Unsupported Potrace path command: ${command}`);
     }
   }
-  return contours;
+  return paths;
+}
+
+function extractPaths(svg: string): Path[] {
+  const paths: Path[] = [];
+  const pathPattern = /<path\b[^>]*\bd\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pathPattern.exec(svg)) !== null) {
+    paths.push(...parsePathData(match[1] ?? match[2] ?? ""));
+  }
+  return paths.map((path) => {
+    const points = simplify(path.points, RDP_EPSILON);
+    if (path.closed && points.length > 1 && points[0].x === points.at(-1)?.x && points[0].y === points.at(-1)?.y) {
+      points.pop();
+    }
+    return { points, closed: path.closed };
+  }).filter((path) => path.points.length >= 2);
+}
+
+function collectSegments(paths: Path[]): Segment[] {
+  const segments: Segment[] = [];
+  for (const path of paths) {
+    const segmentCount = path.closed ? path.points.length : path.points.length - 1;
+    for (let index = 0; index < segmentCount; index += 1) {
+      const start = path.points[index];
+      const end = path.points[(index + 1) % path.points.length];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (length >= BASE_MIN_SEGMENT_LENGTH) segments.push({ start, end, length });
+    }
+  }
+  return segments;
 }
 
 const fmtCode = (code: number) => code.toString().padStart(3, " ");
@@ -165,83 +251,50 @@ function dxfTables(): string[] {
   ]);
 }
 
-const BASE_MIN_SEGMENT_LENGTH = 5;
-const MAX_LINE_ENTITIES = 3000;
+function serializeSegments(segments: Segment[], options: SvgDxfOptions): string {
+  const scale = Number.isFinite(options.scale) && (options.scale ?? 1) > 0 ? options.scale ?? 1 : 1;
+  const selected = segments.length > MAX_LINE_ENTITIES
+    ? [...segments].sort((a, b) => b.length - a.length).slice(0, MAX_LINE_ENTITIES)
+    : segments;
+  if (selected.length === 0) throw new Error("No sufficiently long line segments found in traced geometry");
 
-type Segment = { start: Point; end: Point; length: number };
-
-function collectSegments(contours: Point[][]): Segment[] {
-  const segments: Segment[] = [];
-  for (const contour of contours) {
-    const isClosed = contour.length > 2;
-    const segmentCount = isClosed ? contour.length : contour.length - 1;
-    for (let index = 0; index < segmentCount; index += 1) {
-      const start = contour[index];
-      const end = contour[(index + 1) % contour.length];
-      segments.push({ start, end, length: Math.hypot(end.x - start.x, end.y - start.y) });
-    }
-  }
-  return segments;
-}
-
-function selectSegments(contours: Point[][]): Segment[] {
-  const segments = collectSegments(contours);
-  let minimumLength = BASE_MIN_SEGMENT_LENGTH;
-  let selected = segments.filter((segment) => segment.length >= minimumLength);
-
-  if (selected.length > MAX_LINE_ENTITIES) {
-    const ranked = [...selected].sort((a, b) => b.length - a.length);
-    const cutoff = ranked[MAX_LINE_ENTITIES - 1]?.length ?? minimumLength;
-    minimumLength = cutoff + Number.EPSILON;
-    selected = segments.filter((segment) => segment.length >= minimumLength);
-    if (selected.length > MAX_LINE_ENTITIES) {
-      selected = ranked.slice(0, MAX_LINE_ENTITIES);
-    }
-  }
-  return selected;
-}
-
-function appendLineEntities(lines: string[], segments: Segment[], scale: number): void {
-  for (const { start, end } of segments) {
+  const lines = [
+    ...dxfHeader(options.width, options.height, scale),
+    ...dxfTables(),
+    ...formatPairs(["0", "SECTION", "2", "ENTITIES"]),
+  ];
+  for (const { start, end } of selected) {
     lines.push(...formatPairs([
       "0", "LINE",
       "8", "0",
       "10", (start.x * scale).toFixed(1),
-      "20", (start.y * scale).toFixed(1),
+      "20", ((options.height - start.y) * scale).toFixed(1),
       "11", (end.x * scale).toFixed(1),
-      "21", (end.y * scale).toFixed(1),
+      "21", ((options.height - end.y) * scale).toFixed(1),
     ]));
   }
-}
-
-/** Converts an RGBA raster into minimal R12 ASCII DXF LINE entities. */
-export function buildDxfFromRaster(source: RasterSource, options: DxfOptions = {}): string {
-  validateRaster(source);
-  const threshold = options.threshold ?? 180;
-  const maxContours = Math.max(1, Math.floor(options.maxContours ?? 250));
-  const tolerance = Math.max(0, options.simplifyTolerance ?? 0.75);
-  const scale = Number.isFinite(options.scale) && (options.scale ?? 1) > 0 ? options.scale ?? 1 : 1;
-  const contours = componentContours(source, threshold, maxContours, tolerance)
-    .filter((contour) => contour.length >= 2);
-
-  if (contours.length === 0) throw new Error("No dark contours found in raster");
-
-  const lines = [
-    ...dxfHeader(source.width, source.height, scale),
-    ...dxfTables(),
-    ...formatPairs(["0", "SECTION", "2", "ENTITIES"]),
-  ];
-  const segments = selectSegments(contours);
-
-  if (segments.length === 0) throw new Error("No sufficiently long line segments found in raster");
-
-  appendLineEntities(lines, segments, scale);
-
   lines.push(...formatPairs(["0", "ENDSEC", "0", "EOF"]));
   return `${lines.join("\n")}\n`;
 }
 
-/** Loads a generated image into a canvas and converts its pixels into DXF. */
+/** Converts ordered Potrace SVG paths into the verified AC1009 LINE DXF format. */
+export function buildDxfFromSvg(svg: string, options: SvgDxfOptions): string {
+  if (!Number.isFinite(options.width) || !Number.isFinite(options.height) || options.width <= 0 || options.height <= 0) {
+    throw new Error("Invalid traced geometry dimensions");
+  }
+  const paths = extractPaths(svg);
+  if (paths.length === 0) throw new Error("Potrace SVG contains no usable paths");
+  return serializeSegments(collectSegments(paths), options);
+}
+
+async function loadPotraceSvg(canvas: HTMLCanvasElement): Promise<string> {
+  const module = await import("potrace-wasm") as PotraceApi;
+  const loadFromCanvas = module.loadFromCanvas ?? module.default?.loadFromCanvas;
+  if (!loadFromCanvas) throw new Error("Potrace-WASM loader is unavailable");
+  return loadFromCanvas(canvas);
+}
+
+/** Loads a generated image, thresholds it, traces it with Potrace-WASM, and returns DXF. */
 export function rasterizeImageToDxf(imageUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     if (typeof Image === "undefined" || typeof document === "undefined") {
@@ -251,22 +304,47 @@ export function rasterizeImageToDxf(imageUrl: string): Promise<string> {
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = image.naturalWidth || image.width;
-        canvas.height = image.naturalHeight || image.height;
-        if (!canvas.width || !canvas.height) throw new Error("Generated image has no dimensions");
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        if (!context) throw new Error("Canvas 2D context is unavailable");
-        context.drawImage(image, 0, 0);
-        resolve(buildDxfFromRaster({
-          width: canvas.width,
-          height: canvas.height,
-          data: context.getImageData(0, 0, canvas.width, canvas.height).data,
-        }));
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error("Unable to vectorize generated image"));
-      }
+      void (async () => {
+        try {
+          const width = image.naturalWidth || image.width;
+          const height = image.naturalHeight || image.height;
+          if (!width || !height) throw new Error("Generated image has no dimensions");
+
+          const sourceCanvas = document.createElement("canvas");
+          sourceCanvas.width = width;
+          sourceCanvas.height = height;
+          const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
+          if (!sourceContext) throw new Error("Canvas 2D context is unavailable");
+          sourceContext.drawImage(image, 0, 0);
+          const sourceData = sourceContext.getImageData(0, 0, width, height).data;
+
+          const binaryCanvas = document.createElement("canvas");
+          binaryCanvas.width = width;
+          binaryCanvas.height = height;
+          const binaryContext = binaryCanvas.getContext("2d", { willReadFrequently: true });
+          if (!binaryContext) throw new Error("Binary canvas 2D context is unavailable");
+          const binaryImage = binaryContext.createImageData(width, height);
+          for (let index = 0; index < width * height; index += 1) {
+            const sourceOffset = index * 4;
+            const targetOffset = sourceOffset;
+            const red = sourceData[sourceOffset] ?? 255;
+            const green = sourceData[sourceOffset + 1] ?? red;
+            const blue = sourceData[sourceOffset + 2] ?? red;
+            const isBlack = red * 299 + green * 587 + blue * 114 < 128000;
+            const value = isBlack ? 0 : 255;
+            binaryImage.data[targetOffset] = value;
+            binaryImage.data[targetOffset + 1] = value;
+            binaryImage.data[targetOffset + 2] = value;
+            binaryImage.data[targetOffset + 3] = 255;
+          }
+          binaryContext.putImageData(binaryImage, 0, 0);
+
+          const svg = await loadPotraceSvg(binaryCanvas);
+          resolve(buildDxfFromSvg(svg, { width, height }));
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error("Unable to trace generated CAD image"));
+        }
+      })();
     };
     image.onerror = () => reject(new Error("Unable to load generated CAD image"));
     image.src = imageUrl;
