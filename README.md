@@ -102,7 +102,7 @@ A single API call is designed to produce this board. The indicative generation e
 
 The second studio tab, **Floor Plan to CAD**, accepts colored 2D or 3D architectural floor-plan images and sends one CAD-mode request to the same OpenRouter image endpoint. CAD mode uses `google/gemini-3.1-flash-lite-image` with a dedicated high-contrast B&W drafting prompt so the facade triptych instructions are not applied to floor plans.
 
-After the B&W line-art image is returned, the browser traces dark raster contours and downloads an ASCII DXF containing editable `LWPOLYLINE` entities. The file is compatible with AutoCAD 2024, but its geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
+After the B&W line-art image is returned, the browser traces dark raster contours and downloads an AutoCAD-compatible AC1015 ASCII DXF containing editable `LWPOLYLINE` entities. The file is compatible with AutoCAD 2024, but its geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
 
 ## API contract
 

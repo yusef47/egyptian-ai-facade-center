@@ -19,11 +19,30 @@ describe("DXF raster vectorization", () => {
     const dxf = buildDxfFromRaster({ width, height, data });
 
     expect(dxf).toContain("0\nSECTION\n2\nHEADER");
-    expect(dxf).toContain("$ACADVER\n1\nAC1032");
+    expect(dxf).toContain("$ACADVER\n1\nAC1015");
+    expect(dxf).not.toContain("AC1032");
+    expect(dxf).toContain("0\nSECTION\n2\nTABLES");
+    expect(dxf).toContain("2\nVPORT");
+    expect(dxf).toContain("2\nLTYPE");
+    expect(dxf).toContain("2\nCONTINUOUS");
+    expect(dxf).toContain("2\nLAYER");
+    expect(dxf).toContain("2\n0");
+    expect(dxf).toContain("2\nCAD_OUTLINE");
+    expect(dxf).toContain("62\n7");
+    expect(dxf).toContain("0\nSECTION\n2\nBLOCKS");
     expect(dxf).toContain("0\nSECTION\n2\nENTITIES");
     expect(dxf).toContain("0\nLWPOLYLINE");
+    expect(dxf).not.toContain("CAD-FLOOR-PLAN");
+    const entities = dxf.split("0\nLWPOLYLINE\n").slice(1);
+    expect(entities.length).toBeGreaterThan(0);
+    for (let index = 0; index < entities.length; index += 1) {
+      const entity = entities[index];
+      expect(entity).toMatch(/^5\n[0-9A-F]+\n100\nAcDbEntity\n8\nCAD_OUTLINE\n100\nAcDbPolyline\n90\n\d+\n70\n[01]\n/);
+      expect(entity).toContain(`5\n${(0x100 + index).toString(16).toUpperCase()}\n`);
+    }
     expect(dxf).toContain("70\n1");
-    expect(dxf).toContain("0\nENDSEC\n0\nEOF");
+    expect(dxf).toContain("\n20\n5.000\n");
+    expect(dxf).toMatch(/\n0\nENDSEC\n0\nEOF\n$/);
     expect((dxf.match(/\n10\n/g) ?? []).length).toBeGreaterThanOrEqual(4);
   });
 
