@@ -23,7 +23,7 @@ export const QUADRANT_FILE_NAMES: Record<QuadrantId, string> = {
 };
 
 export const QUADRANT_UPSCALE = 4;
-const BINARY_THRESHOLD = 130;
+const BINARY_THRESHOLD = 180;
 
 /**
  * Loads the cached 2x2 CAD image, crops a single quadrant, and returns it as a

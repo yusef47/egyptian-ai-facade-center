@@ -50,15 +50,16 @@ describe("DXF Potrace path vectorization", () => {
     expect(countLines(dxf)).toBeLessThanOrEqual(5000);
   });
 
-  it("filters small text-like paths but keeps long thin structural paths", () => {
+  it("uses gentle filtering so small interior partitions remain exportable", () => {
     const svg = [
-      '<path d="M 1 1 L 7 1 L 7 7 L 1 7 Z"/>',
-      '<path d="M 5 5 L 105 5 L 105 6 L 5 6 Z"/>',
+      '<path d="M 1 1 L 7 1 L 7 5 L 1 5 Z"/>',
+      '<path d="M 20 5 L 40 5"/>',
     ].join("");
-    const dxf = buildDxfFromSvg(`<svg>${svg}</svg>`, { width: 120, height: 20 });
+    const dxf = buildDxfFromSvg(`<svg>${svg}</svg>`, { width: 60, height: 20 });
 
-    expect(countLines(dxf)).toBe(1);
-    expect(dxf).toContain(" 10\n5.0\n 20\n15.0\n 11\n105.0\n 21\n15.0");
+    expect(countLines(dxf)).toBe(3);
+    expect(dxf).toContain(" 10\n1.0\n 20\n19.0\n 11\n7.0\n 21\n19.0");
+    expect(dxf).toContain(" 10\n20.0\n 20\n15.0\n 11\n40.0\n 21\n15.0");
   });
 
   it("snaps near-horizontal and near-vertical segments to CAD orthogonal geometry", () => {
@@ -71,12 +72,13 @@ describe("DXF Potrace path vectorization", () => {
     expect(entities[1]).toContain(" 10\n60.0\n 20\n68.0\n 11\n60.0\n 21\n18.0\n");
   });
 
-  it("preserves preview orientation by flipping only the image Y axis", () => {
-    const svg = '<svg><path d="M 2 3 L 52 3"/></svg>';
+  it("preserves preview orientation without mirroring X coordinates", () => {
+    const svg = '<svg><path d="M 4 6 L 44 18"/></svg>';
     const dxf = buildDxfFromSvg(svg, { width: 60, height: 30 });
 
-    expect(dxf).toContain(" 10\n2.0\n 20\n27.0\n 11\n52.0\n 21\n27.0\n");
-    expect(dxf).not.toContain(" 10\n18.0\n");
+    expect(dxf).toContain(" 10\n4.0\n 20\n24.0\n 11\n44.0\n 21\n12.0\n");
+    expect(dxf).not.toContain(" 10\n56.0\n");
+    expect(dxf).not.toContain(" 11\n16.0\n");
   });
 
   it("merges nearby parallel segments into a single centerline", () => {

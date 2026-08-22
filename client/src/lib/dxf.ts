@@ -16,11 +16,12 @@ type PotraceApi = {
 const BASE_MIN_SEGMENT_LENGTH = 5;
 const MAX_LINE_ENTITIES = 5000;
 const RDP_EPSILON = 2;
-const MIN_PATH_BBOX_AREA = 150;
-const MIN_PATH_LENGTH = 40;
+const MIN_PATH_BBOX_AREA = 30;
+const MIN_PATH_LENGTH = 20;
 const ORTHO_SNAP_ANGLE_DEGREES = 12;
 const PARALLEL_MERGE_DISTANCE = 3;
 const AXIS_EPSILON = 1e-9;
+const BINARY_THRESHOLD = 180;
 
 function pointDistanceToSegment(point: Point, start: Point, end: Point): number {
   const dx = end.x - start.x;
@@ -204,6 +205,60 @@ function extractPaths(svg: string): Path[] {
     }
     return { points, closed: path.closed };
   }).filter((path) => path.points.length >= 2);
+}
+
+function thinBinaryRaster(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  const result = new Uint8ClampedArray(data);
+  const pixelIsBlack = (x: number, y: number) => result[(y * width + x) * 4] === 0;
+  const markForDeletion = (step: 1 | 2): number[] => {
+    const deleted: number[] = [];
+    for (let y = 1; y < height - 1; y += 1) {
+      for (let x = 1; x < width - 1; x += 1) {
+        if (!pixelIsBlack(x, y)) continue;
+        const neighbors = [
+          pixelIsBlack(x, y - 1),
+          pixelIsBlack(x + 1, y - 1),
+          pixelIsBlack(x + 1, y),
+          pixelIsBlack(x + 1, y + 1),
+          pixelIsBlack(x, y + 1),
+          pixelIsBlack(x - 1, y + 1),
+          pixelIsBlack(x - 1, y),
+          pixelIsBlack(x - 1, y - 1),
+        ];
+        const neighborCount = neighbors.filter(Boolean).length;
+        let transitions = 0;
+        for (let index = 0; index < neighbors.length; index += 1) {
+          if (!neighbors[index] && neighbors[(index + 1) % neighbors.length]) transitions += 1;
+        }
+        const [north, , east, , south, , west] = neighbors;
+        const condition = step === 1
+          ? !north || !east || !south
+          : !north || !east || !west;
+        const secondCondition = step === 1
+          ? !east || !south || !west
+          : !north || !south || !west;
+        if (neighborCount >= 2 && neighborCount <= 6 && transitions === 1 && condition && secondCondition) {
+          deleted.push((y * width + x) * 4);
+        }
+      }
+    }
+    return deleted;
+  };
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const step of [1, 2] as const) {
+      const deleted = markForDeletion(step);
+      if (deleted.length > 0) changed = true;
+      for (const offset of deleted) {
+        result[offset] = 255;
+        result[offset + 1] = 255;
+        result[offset + 2] = 255;
+      }
+    }
+  }
+  return result;
 }
 
 function pathLength(path: Path): number {
@@ -402,6 +457,7 @@ function serializeSegments(segments: Segment[], options: SvgDxfOptions): string 
     lines.push(...formatPairs([
       "0", "LINE",
       "8", "0",
+      // Keep X unchanged; invert only the image-space Y axis for AutoCAD.
       "10", (start.x * scale).toFixed(1),
       "20", ((options.height - start.y) * scale).toFixed(1),
       "11", (end.x * scale).toFixed(1),
@@ -467,13 +523,15 @@ export function rasterizeImageToDxf(imageUrl: string, options: Pick<SvgDxfOption
             const green = sourceData[sourceOffset + 1] ?? red;
             const blue = sourceData[sourceOffset + 2] ?? red;
             const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
-            const isBlack = luminance < 130;
+            const isBlack = luminance < BINARY_THRESHOLD;
             const value = isBlack ? 0 : 255;
             binaryImage.data[targetOffset] = value;
             binaryImage.data[targetOffset + 1] = value;
             binaryImage.data[targetOffset + 2] = value;
             binaryImage.data[targetOffset + 3] = 255;
           }
+          const thinnedData = thinBinaryRaster(binaryImage.data, width, height);
+          binaryImage.data.set(thinnedData);
           binaryContext.putImageData(binaryImage, 0, 0);
 
           const svg = await loadPotraceSvg(binaryCanvas);

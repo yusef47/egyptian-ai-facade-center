@@ -14,12 +14,12 @@ afterEach(() => {
 });
 
 describe("Potrace raster pipeline", () => {
-  it("thresholds 129 to black and 130 to white before tracing", async () => {
+  it("thresholds 179 to black and 180 to white before tracing", async () => {
     loadFromCanvas.mockResolvedValue('<svg viewBox="0 0 10 10"><path d="M 0 0 L 10 0 L 10 10 L 0 10 Z"/></svg>');
 
     const sourceData = new Uint8ClampedArray([
-      129, 129, 129, 255,
-      130, 130, 130, 255,
+      179, 179, 179, 255,
+      180, 180, 180, 255,
     ]);
     const binaryData = new Uint8ClampedArray(8);
     const sourceContext = {
@@ -61,6 +61,55 @@ describe("Potrace raster pipeline", () => {
     const tracedCanvas = loadFromCanvas.mock.calls[0]?.[0] as HTMLCanvasElement;
     expect(tracedCanvas.width).toBe(2);
     expect(tracedCanvas.height).toBe(1);
+  });
+
+  it("thins a two-pixel horizontal wall stroke before Potrace", async () => {
+    loadFromCanvas.mockResolvedValue('<svg viewBox="0 0 40 8"><path d="M 2 3 L 30 3"/></svg>');
+    const sourceData = new Uint8ClampedArray(40 * 8 * 4).fill(255);
+    for (const y of [3, 4]) {
+      for (let x = 2; x <= 29; x += 1) {
+        const offset = (y * 40 + x) * 4;
+        sourceData[offset] = 0;
+        sourceData[offset + 1] = 0;
+        sourceData[offset + 2] = 0;
+      }
+    }
+    const binaryData = new Uint8ClampedArray(sourceData.length);
+    const sourceContext = { drawImage: vi.fn(), getImageData: vi.fn(() => ({ data: sourceData })) };
+    const binaryContext = {
+      createImageData: vi.fn(() => ({ data: binaryData })),
+      putImageData: vi.fn(),
+    };
+    const canvases = [
+      { width: 0, height: 0, getContext: vi.fn(() => sourceContext) },
+      { width: 0, height: 0, getContext: vi.fn(() => binaryContext) },
+    ];
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+      if (tagName === "canvas") return canvases.shift() as unknown as HTMLCanvasElement;
+      return document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+    }) as typeof document.createElement);
+    class FakeImage {
+      naturalWidth = 40;
+      naturalHeight = 8;
+      width = 40;
+      height = 8;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+    }
+    vi.stubGlobal("Image", FakeImage);
+
+    await rasterizeImageToDxf("data:image/png;base64,CAD");
+
+    const blackPixelsByRow = [3, 4].map((y) => {
+      let count = 0;
+      for (let x = 0; x < 40; x += 1) {
+        if (binaryData[(y * 40 + x) * 4] === 0) count += 1;
+      }
+      return count;
+    });
+    expect(blackPixelsByRow.filter((count) => count > 0)).toHaveLength(1);
+    expect(blackPixelsByRow.reduce((sum, count) => sum + count, 0)).toBe(26);
   });
 
   it("rejects Potrace failures instead of falling back to raster chords", async () => {
