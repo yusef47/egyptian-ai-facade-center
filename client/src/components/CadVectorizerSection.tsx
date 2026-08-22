@@ -1,21 +1,34 @@
 import { useRef, useState, type DragEvent } from "react";
-import { Download, FileCode2, ImagePlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Archive, Download, FileCode2, ImagePlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { rasterizeImageToDxf } from "@/lib/dxf";
 import { restoreFacade } from "@/lib/restore";
+import {
+  QUADRANTS,
+  QUADRANT_FILE_NAMES,
+  cropImageToQuadrant,
+  zipTextFiles,
+  type QuadrantId,
+} from "@/lib/cadExport";
 
-export const CAD_LINE_ART_PROMPT =
-  "convert this architectural floor plan to a high-contrast 2D black and white clean CAD drafting style drawing, sharp thin black lines on pure white background, no 3D shading, clean vector line art style";
+export const CAD_QUADRANT_PROMPT =
+  "Based on this architectural floor plan, generate a single large image divided into a 2x2 grid containing 4 professional architectural drawings. All in black and white clean CAD line art style with sharp thin black lines on pure white background:\n\nTOP-LEFT QUADRANT: Clean 2D CAD floor plan (remove all text labels, keep only walls, doors, windows, stairs as thin black lines)\nTOP-RIGHT QUADRANT: Front elevation drawing showing the building exterior facade with windows, doors, roof, and floor levels\nBOTTOM-LEFT QUADRANT: Architectural cross-section drawing showing interior room heights, floor slabs, cut walls, stairs, and roof structure\nBOTTOM-RIGHT QUADRANT: 3D perspective wireframe line drawing of the building from a 3/4 bird's eye view\n\nDraw thin separator lines between the 4 quadrants. Label each quadrant: PLAN, ELEVATION, SECTION, PERSPECTIVE. All drawings must be consistent with each other and derived from the uploaded floor plan.";
 
-function downloadDxf(content: string): void {
-  const blob = new Blob([content], { type: "application/dxf" });
+const QUADRANT_DOWNLOAD_KEYS: Record<QuadrantId, "cad.downloadPlan" | "cad.downloadElevation" | "cad.downloadSection" | "cad.downloadPerspective"> = {
+  plan: "cad.downloadPlan",
+  elevation: "cad.downloadElevation",
+  section: "cad.downloadSection",
+  perspective: "cad.downloadPerspective",
+};
+
+function downloadBlob(blob: Blob, filename: string): void {
   const objectUrl = typeof URL.createObjectURL === "function"
     ? URL.createObjectURL(blob)
-    : `data:application/dxf;charset=utf-8,${encodeURIComponent(content)}`;
+    : `data:application/octet-stream;charset=utf-8,${encodeURIComponent(blob.toString())}`;
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
-  anchor.download = "egyptian-center-floor-plan.dxf";
+  anchor.download = filename;
   anchor.click();
   if (objectUrl.startsWith("blob:") && typeof URL.revokeObjectURL === "function") {
     URL.revokeObjectURL(objectUrl);
@@ -29,7 +42,8 @@ export default function CadVectorizerSection() {
   const [result, setResult] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingQuadrant, setDownloadingQuadrant] = useState<QuadrantId | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
 
@@ -67,7 +81,7 @@ export default function CadVectorizerSection() {
     try {
       const output = await restoreFacade({
         imageDataUrl,
-        prompt: CAD_LINE_ART_PROMPT,
+        prompt: CAD_QUADRANT_PROMPT,
         mode: "cad",
       });
       setResult(output);
@@ -80,18 +94,41 @@ export default function CadVectorizerSection() {
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownloadQuadrant = async (quadrant: QuadrantId) => {
     if (!result) return;
     setError(null);
-    setDownloading(true);
+    setDownloadingQuadrant(quadrant);
     try {
-      const dxf = await rasterizeImageToDxf(result);
-      downloadDxf(dxf);
+      const cropped = await cropImageToQuadrant(result, quadrant);
+      const dxf = await rasterizeImageToDxf(cropped);
+      downloadBlob(new Blob([dxf], { type: "application/dxf" }), QUADRANT_FILE_NAMES[quadrant]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       setError(message || t("cad.errorEmptyDxf"));
     } finally {
-      setDownloading(false);
+      setDownloadingQuadrant(null);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!result) return;
+    setError(null);
+    setDownloadingAll(true);
+    try {
+      const files = await Promise.all(
+        QUADRANTS.map(async (quadrant) => {
+          const cropped = await cropImageToQuadrant(result, quadrant);
+          const content = await rasterizeImageToDxf(cropped);
+          return { name: QUADRANT_FILE_NAMES[quadrant], content };
+        }),
+      );
+      const blob = await zipTextFiles(files);
+      downloadBlob(blob, "egyptian-center-cad-4-views.zip");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      setError(message || t("cad.errorEmptyDxf"));
+    } finally {
+      setDownloadingAll(false);
     }
   };
 
@@ -169,26 +206,40 @@ export default function CadVectorizerSection() {
             <div className="flex h-full min-h-[420px] flex-col rounded-xl border border-gold/25 bg-navy-light/40 p-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h3 className="font-cairo text-lg font-semibold text-foreground">{t("cad.outputTitle")}</h3>
-                <span className="inline-flex items-center gap-1.5 rounded border border-gold/30 bg-gold/10 px-2.5 py-1 text-[11px] text-gold"><FileCode2 size={13} /> DXF</span>
+                <span className="inline-flex items-center gap-1.5 rounded border border-gold/30 bg-gold/10 px-2.5 py-1 text-[11px] text-gold"><FileCode2 size={13} /> 4 × DXF</span>
               </div>
               <div className="flex flex-1 items-center justify-center overflow-auto rounded-lg border border-border/60 bg-white p-4">
                 {loading ? (
                   <div className="flex flex-col items-center gap-3 text-slate-600"><Loader2 size={30} className="animate-spin text-gold-dark" /><span className="text-sm">{t("cad.convertLoading")}</span></div>
                 ) : result ? (
-                  <img src={result} alt="Generated B&W CAD line art" className="block h-auto max-h-[560px] w-auto max-w-full object-contain" referrerPolicy="no-referrer" />
+                  <img src={result} alt="Generated 4 architectural views" className="block h-auto max-h-[560px] w-auto max-w-full object-contain" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="max-w-xs text-center text-slate-600"><Sparkles size={28} className="mx-auto mb-3 text-gold-dark/60" /><p className="text-sm">{t("cad.outputEmpty")}</p></div>
                 )}
               </div>
               <div className="mt-5 space-y-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {QUADRANTS.map((quadrant) => (
+                    <button
+                      key={quadrant}
+                      type="button"
+                      onClick={() => void handleDownloadQuadrant(quadrant)}
+                      disabled={!result || downloadingAll || downloadingQuadrant !== null}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-gold/50 bg-gold/10 px-4 py-2.5 text-sm font-semibold text-gold transition hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {downloadingQuadrant === quadrant ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                      {downloadingQuadrant === quadrant ? t("cad.downloadQuadrantLoading") : t(QUADRANT_DOWNLOAD_KEYS[quadrant])}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
-                  onClick={() => void handleDownload()}
-                  disabled={!result || downloading}
+                  onClick={() => void handleDownloadAll()}
+                  disabled={!result || downloadingAll || downloadingQuadrant !== null}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gold/50 bg-gold/10 px-5 py-3 font-semibold text-gold transition hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {downloading ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}
-                  {downloading ? t("cad.downloadLoading") : t("cad.downloadButton")}
+                  {downloadingAll ? <Loader2 size={17} className="animate-spin" /> : <Archive size={17} />}
+                  {downloadingAll ? t("cad.downloadAllLoading") : t("cad.downloadAll")}
                 </button>
                 <p className="text-center text-xs text-muted-foreground">{t("cad.downloadHint")}</p>
                 <p className="border-t border-gold/15 pt-3 text-center text-xs leading-relaxed text-muted-foreground">{t("cad.reviewNote")}</p>

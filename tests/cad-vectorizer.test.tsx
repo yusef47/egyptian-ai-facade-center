@@ -4,14 +4,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import CadVectorizerSection from "../client/src/components/CadVectorizerSection";
 import { I18nProvider } from "../client/src/lib/i18n";
 
-const { rasterizeImageToDxf } = vi.hoisted(() => ({ rasterizeImageToDxf: vi.fn() }));
+const { rasterizeImageToDxf, cropImageToQuadrant, zipTextFiles } = vi.hoisted(() => ({
+  rasterizeImageToDxf: vi.fn(),
+  cropImageToQuadrant: vi.fn(),
+  zipTextFiles: vi.fn(),
+}));
 vi.mock("../client/src/lib/dxf", () => ({
   rasterizeImageToDxf,
+}));
+vi.mock("../client/src/lib/cadExport", () => ({
+  QUADRANTS: ["plan", "elevation", "section", "perspective"],
+  QUADRANT_FILE_NAMES: {
+    plan: "plan.dxf",
+    elevation: "elevation.dxf",
+    section: "section.dxf",
+    perspective: "perspective.dxf",
+  },
+  cropImageToQuadrant,
+  zipTextFiles,
 }));
 
 afterEach(() => {
   vi.unstubAllGlobals();
   rasterizeImageToDxf.mockReset();
+  cropImageToQuadrant.mockReset();
+  zipTextFiles.mockReset();
 });
 
 function renderCad() {
@@ -22,37 +39,40 @@ function renderCad() {
   );
 }
 
+function stubSuccessfulGeneration() {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ imageDataUrl: "data:image/png;base64,Q0FE" }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("CadVectorizerSection", () => {
-  it("uploads a plan, requests B&W CAD line art, and renders the result", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ imageDataUrl: "data:image/png;base64,Q0FE" }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it("uploads a plan and requests the single-call 2x2 quadrant generation", async () => {
+    const fetchMock = stubSuccessfulGeneration();
     const user = userEvent.setup();
 
     renderCad();
     const file = new File(["fake-plan"], "floor-plan.png", { type: "image/png" });
     await user.upload(screen.getByLabelText(/Floor plan image/i), file);
-    await user.click(screen.getByRole("button", { name: /Convert to B&W CAD LineArt/i }));
+    await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/restore");
     const body = JSON.parse(String(init.body)) as { mode: string; prompt: string; imageDataUrl: string };
     expect(body.mode).toBe("cad");
-    expect(body.prompt).toMatch(/high-contrast 2D black and white clean CAD drafting style drawing/i);
+    expect(body.prompt).toMatch(/2x2 grid/i);
+    expect(body.prompt).toMatch(/PLAN, ELEVATION, SECTION, PERSPECTIVE/i);
     expect(body.imageDataUrl).toMatch(/^data:/);
-    expect(screen.getByAltText("Generated B&W CAD line art")).toBeInTheDocument();
+    expect(screen.getByAltText("Generated 4 architectural views")).toBeInTheDocument();
   });
 
-  it("downloads a real DXF file after the CAD image is generated", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ imageDataUrl: "data:image/png;base64,Q0FE" }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    rasterizeImageToDxf.mockResolvedValue("0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF");
+  it("crops one quadrant and downloads its DXF without refetching the API", async () => {
+    const fetchMock = stubSuccessfulGeneration();
+    rasterizeImageToDxf.mockResolvedValue("  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF\n");
+    cropImageToQuadrant.mockResolvedValue("data:image/png;base64,CROPPED_PLAN");
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const user = userEvent.setup();
 
@@ -61,11 +81,37 @@ describe("CadVectorizerSection", () => {
       screen.getByLabelText(/Floor plan image/i),
       new File(["fake-plan"], "floor-plan.png", { type: "image/png" }),
     );
-    await user.click(screen.getByRole("button", { name: /Convert to B&W CAD LineArt/i }));
-    await screen.findByAltText("Generated B&W CAD line art");
-    await user.click(screen.getByRole("button", { name: /Download AutoCAD File/i }));
+    await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
+    await screen.findByAltText("Generated 4 architectural views");
+    await user.click(screen.getByRole("button", { name: /Download Plan DXF/i }));
 
-    await waitFor(() => expect(rasterizeImageToDxf).toHaveBeenCalledWith("data:image/png;base64,Q0FE"));
+    await waitFor(() => expect(cropImageToQuadrant).toHaveBeenCalledWith("data:image/png;base64,Q0FE", "plan"));
+    await waitFor(() => expect(rasterizeImageToDxf).toHaveBeenCalledWith("data:image/png;base64,CROPPED_PLAN"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalled();
+  });
+
+  it("downloads all four quadrants as a single ZIP", async () => {
+    const fetchMock = stubSuccessfulGeneration();
+    cropImageToQuadrant.mockImplementation(async (_url: string, quadrant: string) => `data:image/png;base64,${quadrant}`);
+    rasterizeImageToDxf.mockImplementation(async (url: string) => `DXF:${url}`);
+    zipTextFiles.mockResolvedValue(new Blob(["zip"], { type: "application/zip" }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const user = userEvent.setup();
+
+    renderCad();
+    await user.upload(
+      screen.getByLabelText(/Floor plan image/i),
+      new File(["fake-plan"], "floor-plan.png", { type: "image/png" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
+    await screen.findByAltText("Generated 4 architectural views");
+    await user.click(screen.getByRole("button", { name: /Download All \(ZIP\)/i }));
+
+    await waitFor(() => expect(zipTextFiles).toHaveBeenCalledTimes(1));
+    expect(cropImageToQuadrant).toHaveBeenCalledTimes(4);
+    const files = zipTextFiles.mock.calls[0][0] as { name: string; content: string }[];
+    expect(files.map((file) => file.name)).toEqual(["plan.dxf", "elevation.dxf", "section.dxf", "perspective.dxf"]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalled();
   });
@@ -83,7 +129,7 @@ describe("CadVectorizerSection", () => {
       screen.getByLabelText(/Floor plan image/i),
       new File(["fake-plan"], "floor-plan.png", { type: "image/png" }),
     );
-    await user.click(screen.getByRole("button", { name: /Convert to B&W CAD LineArt/i }));
+    await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("CAD service unavailable"));
   });

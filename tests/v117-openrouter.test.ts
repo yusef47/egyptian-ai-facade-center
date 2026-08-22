@@ -18,8 +18,8 @@ describe("V117 CAD OpenRouter request", () => {
       : system?.content.find((part) => part.type === "text")?.text ?? "";
 
     expect(instruction).toBe(CAD_SYSTEM_PROMPT);
-    expect(instruction).toContain("high-contrast 2D black and white clean CAD drafting style drawing");
-    expect(instruction).toContain("no 3D shading");
+    expect(instruction).toContain("2x2 grid");
+    expect(instruction).toContain("3D shading");
     expect(instruction).not.toContain("3-Panel Architectural Presentation Board");
   });
 

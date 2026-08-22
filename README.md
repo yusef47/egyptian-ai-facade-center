@@ -98,11 +98,20 @@ Every requested board should be composed as one coherent architectural presentat
 
 A single API call is designed to produce this board. The indicative generation estimate is **approximately $0.033 / 1.6 EGP per generation**, but actual pricing depends on the selected provider, model pricing, token/image usage, exchange rate, account plan, and OpenRouter billing changes.
 
-## Floor Plan to CAD studio (V118.0)
+## Floor Plan to CAD studio — Quadrant workflow (V119.0)
 
-The second studio tab, **Floor Plan to CAD**, accepts colored 2D or 3D architectural floor-plan images and sends one CAD-mode request to the same OpenRouter image endpoint. CAD mode uses `google/gemini-3.1-flash-lite-image` with a dedicated high-contrast B&W drafting prompt so the facade triptych instructions are not applied to floor plans.
+The second studio tab, **Floor Plan to CAD**, accepts colored 2D or 3D architectural floor-plan images and sends one CAD-mode request to the same OpenRouter image endpoint. A single API call generates **all four architectural views** in one 2×2 quadrant image:
 
-After the B&W line-art image is returned, the browser caches that generated image in component state. Downloading DXF traces the cached raster locally—without another API request—and runs the binary image through `potrace-wasm` (GPL-2.0), flattening ordered SVG contours and simplifying them with RDP epsilon 2.0 before emitting the verified minimal AC1009 ASCII DXF template. The output has no VPORT table, only LTYPE/LAYER tables, atomic `LINE` entities on layer `0`, three-character group codes, LF line endings, inverted Y coordinates, one-decimal precision, and a hard cap of 5,000 LINE entities. The geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
+| Quadrant | Position | Content |
+| --- | --- | --- |
+| PLAN | Top-left | Clean 2D floor plan with walls, doors, windows, stairs |
+| ELEVATION | Top-right | Front elevation showing exterior facade, windows, roof |
+| SECTION | Bottom-left | Cross-section showing interior heights, slabs, stairs |
+| PERSPECTIVE | Bottom-right | 3D wireframe from a ¾ bird's-eye view |
+
+Cost per generation: **approximately $0.033 / 1.6 EGP** (single call = one image = four views).
+
+The browser caches the generated image in React component state. The **Download DXF** buttons for each quadrant crop that quadrant from the cached image locally—without another API request—and run it through `potrace-wasm` (GPL-2.0). The **Download All (ZIP)** button processes all four quadrants and bundles them into a single ZIP archive via `jszip`. Each DXF uses the verified minimal AC1009 ASCII template: no VPORT table, LTYPE/LAYER tables only, atomic `LINE` entities on layer `0`, three-character padded group codes, LF line endings, inverted Y coordinates, one-decimal precision, and a hard cap of 5,000 LINE entities. The geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
 
 ## API contract
 
@@ -271,7 +280,9 @@ Vercel then creates a deployment from the updated `main` branch.
 │       ├── lib/
 │       │   ├── i18n.tsx           # EN/AR translations and RTL state
 │       │   ├── restore.ts         # Client request/response helper
-│       │   └── report.ts           # Syndicate report download helpers
+│       │   ├── report.ts           # Syndicate report download helpers
+│       │   ├── dxf.ts             # Potrace-to-AC1009 DXF vectorization
+│       │   └── cadExport.ts       # Quadrant cropping and ZIP bundling
 │       ├── pages/                 # Routed application pages
 │       └── index.css               # Global visual system and fonts
 ├── tests/                         # Vitest and React Testing Library tests
