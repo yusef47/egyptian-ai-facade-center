@@ -99,6 +99,12 @@ export const en = {
   "cad.errorGeneric": "CAD conversion failed. Please try again.",
   "cad.errorPayload": "The floor plan image is too large. Try a smaller image.",
   "cad.errorEmptyDxf": "No usable dark contours were found for DXF export.",
+  "cad.zipProgressStart": "Starting vectorization…",
+  "cad.zipProgressPlan": "Processing Plan (1/4)…",
+  "cad.zipProgressElevation": "Processing Elevation (2/4)…",
+  "cad.zipProgressSection": "Processing Section (3/4)…",
+  "cad.zipProgressPerspective": "Processing Perspective (4/4)…",
+  "cad.zipPartialFailure": "Some quadrants timed out. The ZIP contains only the successful files.",
 
   // CTA
   "cta.title": "Ready to restore Egypt's facades?",
@@ -210,6 +216,12 @@ export const ar: Record<TranslationKey, string> = {
   "cad.errorGeneric": "فشل تحويل المخطط إلى كاد. حاول مرة أخرى.",
   "cad.errorPayload": "صورة المخطط كبيرة جداً. جرّب صورة أصغر.",
   "cad.errorEmptyDxf": "لم يتم العثور على حدود داكنة صالحة لتصدير DXF.",
+  "cad.zipProgressStart": "جارٍ بدء التحليل…",
+  "cad.zipProgressPlan": "جارٍ معالجة المخطط (1/4)…",
+  "cad.zipProgressElevation": "جارٍ معالجة الواجهة (2/4)…",
+  "cad.zipProgressSection": "جارٍ معالجة المقطع (3/4)…",
+  "cad.zipProgressPerspective": "جارٍ معالجة المنظور (4/4)…",
+  "cad.zipPartialFailure": "انتهت مهلة بعض الأجزاء. يحتوي الملف على الملفات الناجحة فقط.",
 
   "cta.title": "مستعد لإحياء واجهات مصر؟",
   "cta.desc": "ارفع صورة وشاهد المحرك يعيد بناءها تحفة تراثية بدقة 8K في ثوانٍ.",

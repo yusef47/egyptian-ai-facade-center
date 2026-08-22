@@ -8,6 +8,7 @@ import {
   QUADRANTS,
   QUADRANT_FILE_NAMES,
   cropImageToQuadrant,
+  withTimeout,
   zipTextFiles,
   type QuadrantId,
 } from "@/lib/cadExport";
@@ -15,11 +16,20 @@ import {
 export const CAD_QUADRANT_PROMPT =
   "Based on this architectural floor plan, generate a single large image divided into a 2x2 grid containing 4 professional architectural drawings. All in black and white clean CAD line art style with sharp thin black lines on pure white background:\n\nTOP-LEFT QUADRANT: Clean 2D CAD floor plan (remove all text labels, keep only walls, doors, windows, stairs as thin black lines)\nTOP-RIGHT QUADRANT: Front elevation drawing showing the building exterior facade with windows, doors, roof, and floor levels\nBOTTOM-LEFT QUADRANT: Architectural cross-section drawing showing interior room heights, floor slabs, cut walls, stairs, and roof structure\nBOTTOM-RIGHT QUADRANT: 3D perspective wireframe line drawing of the building from a 3/4 bird's eye view\n\nDraw thin separator lines between the 4 quadrants. Label each quadrant: PLAN, ELEVATION, SECTION, PERSPECTIVE. All drawings must be consistent with each other and derived from the uploaded floor plan.";
 
+const VECTORIZE_TIMEOUT_MS = 30_000;
+
 const QUADRANT_DOWNLOAD_KEYS: Record<QuadrantId, "cad.downloadPlan" | "cad.downloadElevation" | "cad.downloadSection" | "cad.downloadPerspective"> = {
   plan: "cad.downloadPlan",
   elevation: "cad.downloadElevation",
   section: "cad.downloadSection",
   perspective: "cad.downloadPerspective",
+};
+
+const ZIP_PROGRESS_KEYS: Record<QuadrantId, "cad.zipProgressPlan" | "cad.zipProgressElevation" | "cad.zipProgressSection" | "cad.zipProgressPerspective"> = {
+  plan: "cad.zipProgressPlan",
+  elevation: "cad.zipProgressElevation",
+  section: "cad.zipProgressSection",
+  perspective: "cad.zipProgressPerspective",
 };
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -44,6 +54,7 @@ export default function CadVectorizerSection() {
   const [loading, setLoading] = useState(false);
   const [downloadingQuadrant, setDownloadingQuadrant] = useState<QuadrantId | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [zipProgress, setZipProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
 
@@ -100,7 +111,7 @@ export default function CadVectorizerSection() {
     setDownloadingQuadrant(quadrant);
     try {
       const cropped = await cropImageToQuadrant(result, quadrant);
-      const dxf = await rasterizeImageToDxf(cropped);
+      const dxf = await withTimeout(rasterizeImageToDxf(cropped), VECTORIZE_TIMEOUT_MS, `Vectorize ${quadrant}`);
       downloadBlob(new Blob([dxf], { type: "application/dxf" }), QUADRANT_FILE_NAMES[quadrant]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -114,22 +125,50 @@ export default function CadVectorizerSection() {
     if (!result) return;
     setError(null);
     setDownloadingAll(true);
-    try {
-      const files = await Promise.all(
-        QUADRANTS.map(async (quadrant) => {
-          const cropped = await cropImageToQuadrant(result, quadrant);
-          const content = await rasterizeImageToDxf(cropped);
-          return { name: QUADRANT_FILE_NAMES[quadrant], content };
-        }),
-      );
-      const blob = await zipTextFiles(files);
-      downloadBlob(blob, "egyptian-center-cad-4-views.zip");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      setError(message || t("cad.errorEmptyDxf"));
-    } finally {
-      setDownloadingAll(false);
+    setZipProgress(t("cad.zipProgressStart"));
+
+    const successfulFiles: { name: string; content: string }[] = [];
+    const failedQuadrants: QuadrantId[] = [];
+
+    for (let index = 0; index < QUADRANTS.length; index += 1) {
+      const quadrant = QUADRANTS[index];
+      setZipProgress(t(ZIP_PROGRESS_KEYS[quadrant]));
+
+      // Yield to the browser between quadrants to prevent UI freezing
+      if (index > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      try {
+        const cropped = await cropImageToQuadrant(result, quadrant);
+        const content = await withTimeout(
+          rasterizeImageToDxf(cropped),
+          VECTORIZE_TIMEOUT_MS,
+          `Vectorize ${quadrant} for ZIP`,
+        );
+        successfulFiles.push({ name: QUADRANT_FILE_NAMES[quadrant], content });
+      } catch {
+        failedQuadrants.push(quadrant);
+      }
     }
+
+    if (failedQuadrants.length > 0) {
+      setError(t("cad.zipPartialFailure"));
+    }
+
+    if (successfulFiles.length === 0) {
+      if (!error) setError(t("cad.errorEmptyDxf"));
+    } else {
+      try {
+        const blob = await zipTextFiles(successfulFiles);
+        downloadBlob(blob, "egyptian-center-cad-4-views.zip");
+      } catch {
+        setError(t("cad.errorEmptyDxf"));
+      }
+    }
+
+    setZipProgress(null);
+    setDownloadingAll(false);
   };
 
   return (
@@ -241,6 +280,9 @@ export default function CadVectorizerSection() {
                   {downloadingAll ? <Loader2 size={17} className="animate-spin" /> : <Archive size={17} />}
                   {downloadingAll ? t("cad.downloadAllLoading") : t("cad.downloadAll")}
                 </button>
+                {downloadingAll && zipProgress && (
+                  <p role="status" className="text-center text-xs font-medium text-gold">{zipProgress}</p>
+                )}
                 <p className="text-center text-xs text-muted-foreground">{t("cad.downloadHint")}</p>
                 <p className="border-t border-gold/15 pt-3 text-center text-xs leading-relaxed text-muted-foreground">{t("cad.reviewNote")}</p>
               </div>

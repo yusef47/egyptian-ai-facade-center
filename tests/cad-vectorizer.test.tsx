@@ -4,10 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import CadVectorizerSection from "../client/src/components/CadVectorizerSection";
 import { I18nProvider } from "../client/src/lib/i18n";
 
-const { rasterizeImageToDxf, cropImageToQuadrant, zipTextFiles } = vi.hoisted(() => ({
+const { rasterizeImageToDxf, cropImageToQuadrant, zipTextFiles, withTimeout } = vi.hoisted(() => ({
   rasterizeImageToDxf: vi.fn(),
   cropImageToQuadrant: vi.fn(),
   zipTextFiles: vi.fn(),
+  withTimeout: vi.fn(),
 }));
 vi.mock("../client/src/lib/dxf", () => ({
   rasterizeImageToDxf,
@@ -22,6 +23,7 @@ vi.mock("../client/src/lib/cadExport", () => ({
   },
   cropImageToQuadrant,
   zipTextFiles,
+  withTimeout,
 }));
 
 afterEach(() => {
@@ -29,6 +31,7 @@ afterEach(() => {
   rasterizeImageToDxf.mockReset();
   cropImageToQuadrant.mockReset();
   zipTextFiles.mockReset();
+  withTimeout.mockReset();
 });
 
 function renderCad() {
@@ -51,6 +54,7 @@ function stubSuccessfulGeneration() {
 describe("CadVectorizerSection", () => {
   it("uploads a plan and requests the single-call 2x2 quadrant generation", async () => {
     const fetchMock = stubSuccessfulGeneration();
+    withTimeout.mockImplementation(async (promise: Promise<unknown>) => promise);
     const user = userEvent.setup();
 
     renderCad();
@@ -73,6 +77,7 @@ describe("CadVectorizerSection", () => {
     const fetchMock = stubSuccessfulGeneration();
     rasterizeImageToDxf.mockResolvedValue("  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF\n");
     cropImageToQuadrant.mockResolvedValue("data:image/png;base64,CROPPED_PLAN");
+    withTimeout.mockImplementation(async (promise: Promise<unknown>) => promise);
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const user = userEvent.setup();
 
@@ -91,10 +96,11 @@ describe("CadVectorizerSection", () => {
     expect(click).toHaveBeenCalled();
   });
 
-  it("downloads all four quadrants as a single ZIP", async () => {
+  it("downloads all four quadrants as a single ZIP sequentially", async () => {
     const fetchMock = stubSuccessfulGeneration();
     cropImageToQuadrant.mockImplementation(async (_url: string, quadrant: string) => `data:image/png;base64,${quadrant}`);
     rasterizeImageToDxf.mockImplementation(async (url: string) => `DXF:${url}`);
+    withTimeout.mockImplementation(async (promise: Promise<unknown>) => promise);
     zipTextFiles.mockResolvedValue(new Blob(["zip"], { type: "application/zip" }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const user = userEvent.setup();
@@ -106,7 +112,7 @@ describe("CadVectorizerSection", () => {
     );
     await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
     await screen.findByAltText("Generated 4 architectural views");
-    await user.click(screen.getByRole("button", { name: /Download All \(ZIP\)/i }));
+    await user.click(screen.getByText("Download All (ZIP)"));
 
     await waitFor(() => expect(zipTextFiles).toHaveBeenCalledTimes(1));
     expect(cropImageToQuadrant).toHaveBeenCalledTimes(4);
@@ -122,6 +128,7 @@ describe("CadVectorizerSection", () => {
       status: 502,
       json: async () => ({ error: "CAD service unavailable" }),
     }));
+    withTimeout.mockImplementation(async (promise: Promise<unknown>) => promise);
     const user = userEvent.setup();
 
     renderCad();

@@ -62,6 +62,17 @@ export function cropImageToQuadrant(imageUrl: string, quadrant: QuadrantId): Pro
   });
 }
 
+/** Races a promise against a timeout, rejecting if the deadline is exceeded. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 /** Bundles text files into a single ZIP blob for a one-click multi-file download. */
 export async function zipTextFiles(files: readonly { name: string; content: string }[]): Promise<Blob> {
   const zip = new JSZip();
