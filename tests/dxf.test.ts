@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDxfFromSvg } from "../client/src/lib/dxf";
+import { buildDxfFromSvg, previewPointToDxf } from "../client/src/lib/dxf";
 
 function countLines(dxf: string): number {
   return dxf.split("  0\nLINE\n").length - 1;
@@ -79,6 +79,18 @@ describe("DXF Potrace path vectorization", () => {
     expect(dxf).toContain(" 10\n4.0\n 20\n24.0\n 11\n44.0\n 21\n12.0\n");
     expect(dxf).not.toContain(" 10\n56.0\n");
     expect(dxf).not.toContain(" 11\n16.0\n");
+  });
+
+  it("keeps top-left preview geometry at the top-left of the DXF", () => {
+    const svg = '<svg><path d="M 3 2 L 35 2 M 3 28 L 35 28"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 40, height: 30 });
+
+    expect(dxf).toContain(" 10\n3.0\n 20\n28.0\n 11\n35.0\n 21\n28.0\n");
+    expect(dxf).toContain(" 10\n3.0\n 20\n2.0\n 11\n35.0\n 21\n2.0\n");
+  });
+
+  it("defines the exact preview-to-DXF transform", () => {
+    expect(previewPointToDxf({ x: 7, y: 4 }, 100, 0.25)).toEqual({ x: 1.75, y: 24 });
   });
 
   it("merges nearby parallel segments into a single centerline", () => {

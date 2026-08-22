@@ -19,7 +19,14 @@ describe("V117 CAD OpenRouter request", () => {
 
     expect(instruction).toBe(CAD_SYSTEM_PROMPT);
     expect(instruction).toContain("2x2 grid");
-    expect(instruction).toContain("3D shading");
+    expect(instruction).toContain("NO grayscale shading");
+    expect(instruction).toContain("expert AI Architectural CAD Generator");
+    expect(instruction).toContain("directly parsed by a CAD Vectorizer");
+    expect(instruction).toContain("pure, razor-sharp black lines");
+    expect(instruction).toContain("100% solid white background");
+    expect(instruction).toContain("solid black rectangular blocks");
+    expect(instruction).toContain("structural concrete columns");
+    expect(instruction).toContain("crisp, horizontal, and clearly legible");
     expect(instruction).not.toContain("3-Panel Architectural Presentation Board");
   });
 

@@ -406,6 +406,14 @@ function mergeParallelSegments(segments: Segment[], maxDistance: number): Segmen
 
 const fmtCode = (code: number) => code.toString().padStart(3, " ");
 
+/** Maps a browser preview pixel into AutoCAD coordinates without mirroring X. */
+export function previewPointToDxf(point: Point, canvasHeight: number, scale = 1): Point {
+  return {
+    x: point.x * scale,
+    y: (canvasHeight - point.y) * scale,
+  };
+}
+
 function formatPairs(rawPairs: readonly string[]): string[] {
   if (rawPairs.length % 2 !== 0) throw new Error("DXF pair list is incomplete");
   const formatted: string[] = [];
@@ -457,11 +465,17 @@ function serializeSegments(segments: Segment[], options: SvgDxfOptions): string 
     lines.push(...formatPairs([
       "0", "LINE",
       "8", "0",
-      // Keep X unchanged; invert only the image-space Y axis for AutoCAD.
-      "10", (start.x * scale).toFixed(1),
-      "20", ((options.height - start.y) * scale).toFixed(1),
-      "11", (end.x * scale).toFixed(1),
-      "21", ((options.height - end.y) * scale).toFixed(1),
+      ...(() => {
+        // Keep X unchanged; invert only the image-space Y axis for AutoCAD.
+        const dxfStart = previewPointToDxf(start, options.height, scale);
+        const dxfEnd = previewPointToDxf(end, options.height, scale);
+        return [
+          "10", dxfStart.x.toFixed(1),
+          "20", dxfStart.y.toFixed(1),
+          "11", dxfEnd.x.toFixed(1),
+          "21", dxfEnd.y.toFixed(1),
+        ];
+      })(),
     ]));
   }
   lines.push(...formatPairs(["0", "ENDSEC", "0", "EOF"]));

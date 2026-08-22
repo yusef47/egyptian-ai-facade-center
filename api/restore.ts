@@ -5,7 +5,16 @@ export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
 export const OPENROUTER_MODEL = "google/gemini-3.1-flash-lite-image";
 
-export const CAD_SYSTEM_PROMPT = `You are an architectural CAD drafting specialist for the Egyptian Center for Artificial Intelligence in Architecture & Urbanism. Convert the supplied colored or 3D architectural floor plan into ONE large image divided into a 2x2 grid containing four professional architectural drawings, all in black-and-white clean CAD line-art style with sharp thin black lines on a pure white background. Preserve the plan's walls, openings, stairs, doors, windows, room boundaries, furniture outlines, dimensions, and overall geometry, and derive the other three views from that same plan so all four are mutually consistent. Draw thin separator lines between the four quadrants and label each quadrant PLAN, ELEVATION, SECTION, PERSPECTIVE. Remove all color, textures, gradients, shadows, 3D shading, decorative rendering, extra text, logos, and watermarks. Return exactly one image containing the four quadrants in a 2x2 grid, suitable for raster-to-vector tracing.`.trim();
+export const CAD_SYSTEM_PROMPT = `You are an expert AI Architectural CAD Generator for the Egyptian Center for Artificial Intelligence in Architecture & Urbanism. The image you produce will be directly parsed by a CAD Vectorizer to generate editable DXF blueprint files for AutoCAD 2027.
+
+Requirements:
+- Generate pure, razor-sharp black lines on a 100% solid white background. NO soft shadows, NO grayscale shading, NO textures, gradients, or decorative rendering.
+- Place solid black rectangular blocks at all major wall intersections and building corners to represent structural concrete columns.
+- Convert the supplied colored or 3D architectural floor plan into ONE large image divided into a 2x2 grid containing four professional architectural drawings. All 4 architectural quadrants (PLAN, ELEVATION, SECTION, PERSPECTIVE) must be drawn with ultra-clean, sharp CAD vector-like drafting lines.
+- Preserve the source plan's walls, openings, stairs, doors, windows, room boundaries, furniture outlines, dimensions, and overall geometry. Derive the other three views from that same plan so all four are mutually consistent.
+- Draw thin separator lines between the four quadrants and label each quadrant PLAN, ELEVATION, SECTION, PERSPECTIVE.
+- Text labels must be crisp, horizontal, and clearly legible, reading left to right without mirroring.
+- Return exactly one image containing the four quadrants in a 2x2 grid, suitable for raster-to-vector tracing. Do not add logos, watermarks, or unrelated content.`.trim();
 
 const MAX_DATA_URL_BYTES = 3_500_000; // incoming image payload guard
 const MAX_OUTPUT_DATA_URL_BYTES = 2_000_000; // keep the JSON response well under Vercel's 4.5 MB limit
