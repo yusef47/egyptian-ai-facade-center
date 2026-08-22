@@ -16,6 +16,9 @@ type PotraceApi = {
 const BASE_MIN_SEGMENT_LENGTH = 5;
 const MAX_LINE_ENTITIES = 5000;
 const RDP_EPSILON = 2;
+const MIN_PATH_BBOX_AREA = 150;
+const MIN_PATH_LENGTH = 40;
+const ORTHO_SNAP_ANGLE_DEGREES = 12;
 
 function pointDistanceToSegment(point: Point, start: Point, end: Point): number {
   const dx = end.x - start.x;
@@ -201,15 +204,45 @@ function extractPaths(svg: string): Path[] {
   }).filter((path) => path.points.length >= 2);
 }
 
+function pathLength(path: Path): number {
+  const segmentCount = path.closed ? path.points.length : path.points.length - 1;
+  let length = 0;
+  for (let index = 0; index < segmentCount; index += 1) {
+    const start = path.points[index];
+    const end = path.points[(index + 1) % path.points.length];
+    length += Math.hypot(end.x - start.x, end.y - start.y);
+  }
+  return length;
+}
+
+function isSmallArtifact(path: Path): boolean {
+  if (path.points.length < 2) return true;
+  const xs = path.points.map((point) => point.x);
+  const ys = path.points.map((point) => point.y);
+  const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  return area < MIN_PATH_BBOX_AREA && pathLength(path) < MIN_PATH_LENGTH;
+}
+
+function snapSegment(start: Point, end: Point): { start: Point; end: Point } {
+  const deltaX = end.x - start.x;
+  const deltaY = end.y - start.y;
+  const angle = Math.atan2(Math.abs(deltaY), Math.abs(deltaX)) * (180 / Math.PI);
+  if (angle <= ORTHO_SNAP_ANGLE_DEGREES) return { start, end: { ...end, y: start.y } };
+  if (angle >= 90 - ORTHO_SNAP_ANGLE_DEGREES) return { start, end: { ...end, x: start.x } };
+  return { start, end };
+}
+
 function collectSegments(paths: Path[]): Segment[] {
   const segments: Segment[] = [];
   for (const path of paths) {
+    if (isSmallArtifact(path)) continue;
     const segmentCount = path.closed ? path.points.length : path.points.length - 1;
     for (let index = 0; index < segmentCount; index += 1) {
-      const start = path.points[index];
-      const end = path.points[(index + 1) % path.points.length];
-      const length = Math.hypot(end.x - start.x, end.y - start.y);
-      if (length >= BASE_MIN_SEGMENT_LENGTH) segments.push({ start, end, length });
+      const rawStart = path.points[index];
+      const rawEnd = path.points[(index + 1) % path.points.length];
+      const snapped = snapSegment(rawStart, rawEnd);
+      const length = Math.hypot(snapped.end.x - snapped.start.x, snapped.end.y - snapped.start.y);
+      if (length >= BASE_MIN_SEGMENT_LENGTH) segments.push({ ...snapped, length });
     }
   }
   return segments;

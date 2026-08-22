@@ -7,13 +7,13 @@ function countLines(dxf: string): number {
 
 describe("DXF Potrace path vectorization", () => {
   it("writes ordered SVG contours as the verified minimal AC1009 LINE format", () => {
-    const svg = '<svg viewBox="0 0 10 10"><path d="M 2 2 L 8 2 L 8 8 L 2 8 Z"/></svg>';
-    const dxf = buildDxfFromSvg(svg, { width: 10, height: 10 });
+    const svg = '<svg viewBox="0 0 40 40"><path d="M 2 2 L 38 2 L 38 38 L 2 38 Z"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 40, height: 40 });
 
     expect(dxf).toContain("  0\nSECTION\n  2\nHEADER");
     expect(dxf).toContain("  9\n$ACADVER\n  1\nAC1009");
     expect(dxf).toContain("  9\n$EXTMIN\n 10\n0.0\n 20\n0.0");
-    expect(dxf).toContain("  9\n$EXTMAX\n 10\n10.0\n 20\n10.0");
+    expect(dxf).toContain("  9\n$EXTMAX\n 10\n40.0\n 20\n40.0");
     expect(dxf).not.toContain("\r");
     expect(dxf).not.toContain("VPORT");
     expect(dxf).not.toContain("CAD_OUTLINE");
@@ -26,13 +26,13 @@ describe("DXF Potrace path vectorization", () => {
     for (const entity of entities) {
       expect(entity).toMatch(/^  8\n0\n 10\n-?\d+\.\d\n 20\n-?\d+\.\d\n 11\n-?\d+\.\d\n 21\n-?\d+\.\d\n/);
     }
-    expect(dxf).toContain("\n 20\n8.0\n");
+    expect(dxf).toContain("\n 20\n2.0\n");
     expect(dxf).toMatch(/\n  0\nENDSEC\n  0\nEOF\n$/);
   });
 
   it("flattens cubic paths while preserving their ordered contour direction", () => {
-    const svg = '<svg viewBox="0 0 10 10"><path d="M 1 1 C 1 8 8 8 8 1 Z"/></svg>';
-    const dxf = buildDxfFromSvg(svg, { width: 10, height: 10 });
+    const svg = '<svg viewBox="0 0 40 40"><path d="M 1 1 C 1 30 30 30 38 1 Z"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 40, height: 40 });
 
     expect(countLines(dxf)).toBeGreaterThan(2);
     expect(dxf).not.toMatch(/\d+\.\d{2}/);
@@ -41,13 +41,42 @@ describe("DXF Potrace path vectorization", () => {
 
   it("caps traced geometry at 5000 LINE entities", () => {
     const paths = Array.from({ length: 1300 }, (_, index) => {
-      const x = (index % 65) * 10;
-      const y = Math.floor(index / 65) * 10;
-      return `<path d="M ${x} ${y} L ${x + 6} ${y} L ${x + 6} ${y + 6} L ${x} ${y + 6} Z"/>`;
+      const x = (index % 65) * 20;
+      const y = Math.floor(index / 65) * 20;
+      return `<path d="M ${x} ${y} L ${x + 12} ${y} L ${x + 12} ${y + 12} L ${x} ${y + 12} Z"/>`;
     }).join("");
-    const dxf = buildDxfFromSvg(`<svg>${paths}</svg>`, { width: 650, height: 200 });
+    const dxf = buildDxfFromSvg(`<svg>${paths}</svg>`, { width: 1300, height: 400 });
 
     expect(countLines(dxf)).toBeLessThanOrEqual(5000);
+  });
+
+  it("filters small text-like paths but keeps long thin structural paths", () => {
+    const svg = [
+      '<path d="M 1 1 L 7 1 L 7 7 L 1 7 Z"/>',
+      '<path d="M 5 5 L 105 5 L 105 6 L 5 6 Z"/>',
+    ].join("");
+    const dxf = buildDxfFromSvg(`<svg>${svg}</svg>`, { width: 120, height: 20 });
+
+    expect(countLines(dxf)).toBe(2);
+    expect(dxf).toContain(" 10\n5.0\n 20\n15.0\n 11\n105.0\n 21\n15.0");
+  });
+
+  it("snaps near-horizontal and near-vertical segments to CAD orthogonal geometry", () => {
+    const svg = '<svg><path d="M 1 2 L 51 7 M 60 2 L 65 52"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 80, height: 70 });
+    const entities = dxf.split("  0\nLINE\n").slice(1);
+
+    expect(entities).toHaveLength(2);
+    expect(entities[0]).toContain(" 10\n1.0\n 20\n68.0\n 11\n51.0\n 21\n68.0\n");
+    expect(entities[1]).toContain(" 10\n60.0\n 20\n68.0\n 11\n60.0\n 21\n18.0\n");
+  });
+
+  it("preserves preview orientation by flipping only the image Y axis", () => {
+    const svg = '<svg><path d="M 2 3 L 52 3"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 60, height: 30 });
+
+    expect(dxf).toContain(" 10\n2.0\n 20\n27.0\n 11\n52.0\n 21\n27.0\n");
+    expect(dxf).not.toContain(" 10\n18.0\n");
   });
 
   it("rejects SVG without usable ordered paths", () => {

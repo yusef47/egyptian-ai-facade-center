@@ -152,16 +152,14 @@ export default function CadVectorizerSection() {
       }
     }
 
-    if (failedQuadrants.length > 0) {
-      setError(t("cad.zipPartialFailure"));
-    }
-
+    const hasFailures = failedQuadrants.length > 0;
     if (successfulFiles.length === 0) {
-      if (!error) setError(t("cad.errorEmptyDxf"));
+      setError(t("cad.errorEmptyDxf"));
     } else {
       try {
         const blob = await zipTextFiles(successfulFiles);
         downloadBlob(blob, "egyptian-center-cad-4-views.zip");
+        if (hasFailures) setError(t("cad.zipPartialFailure"));
       } catch {
         setError(t("cad.errorEmptyDxf"));
       }

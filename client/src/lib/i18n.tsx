@@ -104,7 +104,7 @@ export const en = {
   "cad.zipProgressElevation": "Processing Elevation (2/4)…",
   "cad.zipProgressSection": "Processing Section (3/4)…",
   "cad.zipProgressPerspective": "Processing Perspective (4/4)…",
-  "cad.zipPartialFailure": "Some quadrants timed out. The ZIP contains only the successful files.",
+  "cad.zipPartialFailure": "Some quadrants could not be vectorized. The ZIP contains only the successful files.",
 
   // CTA
   "cta.title": "Ready to restore Egypt's facades?",
@@ -221,7 +221,7 @@ export const ar: Record<TranslationKey, string> = {
   "cad.zipProgressElevation": "جارٍ معالجة الواجهة (2/4)…",
   "cad.zipProgressSection": "جارٍ معالجة المقطع (3/4)…",
   "cad.zipProgressPerspective": "جارٍ معالجة المنظور (4/4)…",
-  "cad.zipPartialFailure": "انتهت مهلة بعض الأجزاء. يحتوي الملف على الملفات الناجحة فقط.",
+  "cad.zipPartialFailure": "تعذر تحويل بعض الأجزاء. يحتوي الملف على الملفات الناجحة فقط.",
 
   "cta.title": "مستعد لإحياء واجهات مصر؟",
   "cta.desc": "ارفع صورة وشاهد المحرك يعيد بناءها تحفة تراثية بدقة 8K في ثوانٍ.",

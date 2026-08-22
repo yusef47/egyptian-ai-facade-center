@@ -122,6 +122,57 @@ describe("CadVectorizerSection", () => {
     expect(click).toHaveBeenCalled();
   });
 
+  it("skips a failed quadrant and still creates a ZIP from successful quadrants", async () => {
+    const fetchMock = stubSuccessfulGeneration();
+    cropImageToQuadrant.mockImplementation(async (_url: string, quadrant: string) => `data:image/png;base64,${quadrant}`);
+    rasterizeImageToDxf
+      .mockResolvedValueOnce("DXF:plan")
+      .mockRejectedValueOnce(new Error("elevation failed"))
+      .mockResolvedValueOnce("DXF:section")
+      .mockResolvedValueOnce("DXF:perspective");
+    withTimeout.mockImplementation(async (promise: Promise<unknown>) => promise);
+    zipTextFiles.mockResolvedValue(new Blob(["zip"], { type: "application/zip" }));
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const user = userEvent.setup();
+
+    renderCad();
+    await user.upload(
+      screen.getByLabelText(/Floor plan image/i),
+      new File(["fake-plan"], "floor-plan.png", { type: "image/png" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
+    await screen.findByAltText("Generated 4 architectural views");
+    await user.click(screen.getByText("Download All (ZIP)"));
+
+    await waitFor(() => expect(zipTextFiles).toHaveBeenCalledTimes(1));
+    const files = zipTextFiles.mock.calls[0][0] as { name: string; content: string }[];
+    expect(files.map((file) => file.name)).toEqual(["plan.dxf", "section.dxf", "perspective.dxf"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Some quadrants (could not be vectorized|timed out)/i);
+  });
+
+  it("keeps individual downloads available after a ZIP failure", async () => {
+    const fetchMock = stubSuccessfulGeneration();
+    cropImageToQuadrant.mockResolvedValue("data:image/png;base64,CROPPED");
+    rasterizeImageToDxf.mockRejectedValue(new Error("trace failed"));
+    withTimeout.mockImplementation(async (promise: Promise<unknown>) => promise);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const user = userEvent.setup();
+
+    renderCad();
+    await user.upload(
+      screen.getByLabelText(/Floor plan image/i),
+      new File(["fake-plan"], "floor-plan.png", { type: "image/png" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Generate 4 Architectural Views/i }));
+    await screen.findByAltText("Generated 4 architectural views");
+    await user.click(screen.getByText("Download All (ZIP)"));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: /Download Plan DXF/i })).not.toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a translated inline error when generation fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
