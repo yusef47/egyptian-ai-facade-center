@@ -57,7 +57,7 @@ describe("DXF Potrace path vectorization", () => {
     ].join("");
     const dxf = buildDxfFromSvg(`<svg>${svg}</svg>`, { width: 120, height: 20 });
 
-    expect(countLines(dxf)).toBe(2);
+    expect(countLines(dxf)).toBe(1);
     expect(dxf).toContain(" 10\n5.0\n 20\n15.0\n 11\n105.0\n 21\n15.0");
   });
 
@@ -77,6 +77,22 @@ describe("DXF Potrace path vectorization", () => {
 
     expect(dxf).toContain(" 10\n2.0\n 20\n27.0\n 11\n52.0\n 21\n27.0\n");
     expect(dxf).not.toContain(" 10\n18.0\n");
+  });
+
+  it("merges nearby parallel segments into a single centerline", () => {
+    const svg = '<svg><path d="M 2 10 L 42 10 M 2 12 L 42 12 M 60 10 L 110 10"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 120, height: 30 });
+
+    expect(countLines(dxf)).toBe(2);
+    expect(dxf).toContain(" 10\n2.0\n 20\n19.0\n 11\n42.0\n 21\n19.0\n");
+    expect(dxf).toContain(" 10\n60.0\n 20\n20.0\n 11\n110.0\n 21\n20.0\n");
+  });
+
+  it("scales four-times traced coordinates back to native quadrant units", () => {
+    const svg = '<svg><path d="M 8 12 L 168 12"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 200, height: 200, scale: 0.25 });
+
+    expect(dxf).toContain(" 10\n2.0\n 20\n47.0\n 11\n42.0\n 21\n47.0\n");
   });
 
   it("rejects SVG without usable ordered paths", () => {

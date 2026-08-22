@@ -7,6 +7,7 @@ import { restoreFacade } from "@/lib/restore";
 import {
   QUADRANTS,
   QUADRANT_FILE_NAMES,
+  QUADRANT_UPSCALE,
   cropImageToQuadrant,
   withTimeout,
   zipTextFiles,
@@ -17,6 +18,7 @@ export const CAD_QUADRANT_PROMPT =
   "Based on this architectural floor plan, generate a single large image divided into a 2x2 grid containing 4 professional architectural drawings. All in black and white clean CAD line art style with sharp thin black lines on pure white background:\n\nTOP-LEFT QUADRANT: Clean 2D CAD floor plan (remove all text labels, keep only walls, doors, windows, stairs as thin black lines)\nTOP-RIGHT QUADRANT: Front elevation drawing showing the building exterior facade with windows, doors, roof, and floor levels\nBOTTOM-LEFT QUADRANT: Architectural cross-section drawing showing interior room heights, floor slabs, cut walls, stairs, and roof structure\nBOTTOM-RIGHT QUADRANT: 3D perspective wireframe line drawing of the building from a 3/4 bird's eye view\n\nDraw thin separator lines between the 4 quadrants. Label each quadrant: PLAN, ELEVATION, SECTION, PERSPECTIVE. All drawings must be consistent with each other and derived from the uploaded floor plan.";
 
 const VECTORIZE_TIMEOUT_MS = 30_000;
+const QUADRANT_DXF_SCALE = 1 / QUADRANT_UPSCALE;
 
 const QUADRANT_DOWNLOAD_KEYS: Record<QuadrantId, "cad.downloadPlan" | "cad.downloadElevation" | "cad.downloadSection" | "cad.downloadPerspective"> = {
   plan: "cad.downloadPlan",
@@ -111,7 +113,7 @@ export default function CadVectorizerSection() {
     setDownloadingQuadrant(quadrant);
     try {
       const cropped = await cropImageToQuadrant(result, quadrant);
-      const dxf = await withTimeout(rasterizeImageToDxf(cropped), VECTORIZE_TIMEOUT_MS, `Vectorize ${quadrant}`);
+      const dxf = await withTimeout(rasterizeImageToDxf(cropped, { scale: QUADRANT_DXF_SCALE }), VECTORIZE_TIMEOUT_MS, `Vectorize ${quadrant}`);
       downloadBlob(new Blob([dxf], { type: "application/dxf" }), QUADRANT_FILE_NAMES[quadrant]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -142,7 +144,7 @@ export default function CadVectorizerSection() {
       try {
         const cropped = await cropImageToQuadrant(result, quadrant);
         const content = await withTimeout(
-          rasterizeImageToDxf(cropped),
+          rasterizeImageToDxf(cropped, { scale: QUADRANT_DXF_SCALE }),
           VECTORIZE_TIMEOUT_MS,
           `Vectorize ${quadrant} for ZIP`,
         );

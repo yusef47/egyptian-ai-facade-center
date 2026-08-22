@@ -23,10 +23,17 @@ describe("QUADRANTS", () => {
 
 describe("cropImageToQuadrant", () => {
   function mockCanvas(drawImage: ReturnType<typeof vi.fn>) {
+    const imageData = { data: new Uint8ClampedArray([129, 129, 129, 255, 130, 130, 130, 255]) };
     const canvas = {
       width: 0,
       height: 0,
-      getContext: vi.fn(() => ({ drawImage })),
+      getContext: vi.fn(() => ({
+        drawImage,
+        imageSmoothingEnabled: false,
+        imageSmoothingQuality: "low",
+        getImageData: vi.fn(() => imageData),
+        putImageData: vi.fn(),
+      })),
       toDataURL: vi.fn((_type?: string) => "data:image/png;base64,CROP"),
     };
     vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
@@ -59,12 +66,15 @@ describe("cropImageToQuadrant", () => {
     const url = await cropImageToQuadrant("data:image/png;base64,X", "perspective");
 
     expect(url).toBe("data:image/png;base64,CROP");
-    expect(canvas.width).toBe(200);
-    expect(canvas.height).toBe(100);
+    expect(canvas.width).toBe(800);
+    expect(canvas.height).toBe(400);
     expect(drawImage).toHaveBeenCalledTimes(1);
     const args = drawImage.mock.calls[0] as unknown[];
     // drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh)
-    expect(args.slice(1)).toEqual([200, 100, 200, 100, 0, 0, 200, 100]);
+    expect(args.slice(1)).toEqual([200, 100, 200, 100, 0, 0, 800, 400]);
+    const context = canvas.getContext.mock.results[0]?.value as { imageSmoothingEnabled: boolean; imageSmoothingQuality: string };
+    expect(context.imageSmoothingEnabled).toBe(true);
+    expect(context.imageSmoothingQuality).toBe("high");
   });
 
   it("crops the top-left plan quadrant", async () => {
@@ -75,6 +85,7 @@ describe("cropImageToQuadrant", () => {
     await cropImageToQuadrant("data:image/png;base64,X", "plan");
     const args = drawImage.mock.calls[0] as unknown[];
     expect(args.slice(1, 5)).toEqual([0, 0, 200, 100]);
+    expect(args.slice(5)).toEqual([0, 0, 800, 400]);
   });
 });
 

@@ -14,12 +14,12 @@ afterEach(() => {
 });
 
 describe("Potrace raster pipeline", () => {
-  it("thresholds 127 to black and 128 to white before tracing", async () => {
+  it("thresholds 129 to black and 130 to white before tracing", async () => {
     loadFromCanvas.mockResolvedValue('<svg viewBox="0 0 10 10"><path d="M 0 0 L 10 0 L 10 10 L 0 10 Z"/></svg>');
 
     const sourceData = new Uint8ClampedArray([
-      127, 127, 127, 255,
-      128, 128, 128, 255,
+      129, 129, 129, 255,
+      130, 130, 130, 255,
     ]);
     const binaryData = new Uint8ClampedArray(8);
     const sourceContext = {
@@ -57,6 +57,10 @@ describe("Potrace raster pipeline", () => {
     expect(loadFromCanvas).toHaveBeenCalledTimes(1);
     expect(binaryContext.putImageData).toHaveBeenCalledTimes(1);
     expect(Array.from(binaryData)).toEqual([0, 0, 0, 255, 255, 255, 255, 255]);
+    expect(canvases).toHaveLength(0);
+    const tracedCanvas = loadFromCanvas.mock.calls[0]?.[0] as HTMLCanvasElement;
+    expect(tracedCanvas.width).toBe(2);
+    expect(tracedCanvas.height).toBe(1);
   });
 
   it("rejects Potrace failures instead of falling back to raster chords", async () => {

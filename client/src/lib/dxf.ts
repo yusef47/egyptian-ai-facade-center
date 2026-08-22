@@ -19,6 +19,8 @@ const RDP_EPSILON = 2;
 const MIN_PATH_BBOX_AREA = 150;
 const MIN_PATH_LENGTH = 40;
 const ORTHO_SNAP_ANGLE_DEGREES = 12;
+const PARALLEL_MERGE_DISTANCE = 3;
+const AXIS_EPSILON = 1e-9;
 
 function pointDistanceToSegment(point: Point, start: Point, end: Point): number {
   const dx = end.x - start.x;
@@ -215,12 +217,13 @@ function pathLength(path: Path): number {
   return length;
 }
 
-function isSmallArtifact(path: Path): boolean {
+function isSmallArtifact(path: Path, scale: number): boolean {
   if (path.points.length < 2) return true;
   const xs = path.points.map((point) => point.x);
   const ys = path.points.map((point) => point.y);
-  const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
-  return area < MIN_PATH_BBOX_AREA && pathLength(path) < MIN_PATH_LENGTH;
+  const nativeArea = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)) * scale ** 2;
+  const nativeLength = pathLength(path) * scale;
+  return nativeArea < MIN_PATH_BBOX_AREA && nativeLength < MIN_PATH_LENGTH;
 }
 
 function snapSegment(start: Point, end: Point): { start: Point; end: Point } {
@@ -232,10 +235,10 @@ function snapSegment(start: Point, end: Point): { start: Point; end: Point } {
   return { start, end };
 }
 
-function collectSegments(paths: Path[]): Segment[] {
+function collectSegments(paths: Path[], scale: number): Segment[] {
   const segments: Segment[] = [];
   for (const path of paths) {
-    if (isSmallArtifact(path)) continue;
+    if (isSmallArtifact(path, scale)) continue;
     const segmentCount = path.closed ? path.points.length : path.points.length - 1;
     for (let index = 0; index < segmentCount; index += 1) {
       const rawStart = path.points[index];
@@ -246,6 +249,104 @@ function collectSegments(paths: Path[]): Segment[] {
     }
   }
   return segments;
+}
+
+type Axis = "horizontal" | "vertical";
+type AxisSegment = Segment & { axis: Axis; constant: number; from: number; to: number };
+
+function toAxisSegment(segment: Segment): AxisSegment | null {
+  if (Math.abs(segment.start.y - segment.end.y) <= AXIS_EPSILON) {
+    const from = Math.min(segment.start.x, segment.end.x);
+    const to = Math.max(segment.start.x, segment.end.x);
+    return { ...segment, axis: "horizontal", constant: segment.start.y, from, to };
+  }
+  if (Math.abs(segment.start.x - segment.end.x) <= AXIS_EPSILON) {
+    const from = Math.min(segment.start.y, segment.end.y);
+    const to = Math.max(segment.start.y, segment.end.y);
+    return { ...segment, axis: "vertical", constant: segment.start.x, from, to };
+  }
+  return null;
+}
+
+function axisSegmentToSegment(segment: AxisSegment): Segment {
+  const start = segment.axis === "horizontal"
+    ? { x: segment.from, y: segment.constant }
+    : { x: segment.constant, y: segment.from };
+  const end = segment.axis === "horizontal"
+    ? { x: segment.to, y: segment.constant }
+    : { x: segment.constant, y: segment.to };
+  return { start, end, length: segment.to - segment.from };
+}
+
+function mergeAxisSegments(segments: AxisSegment[], maxDistance: number): Segment[] {
+  const buckets = new Map<number, AxisSegment[]>();
+  const bucketSize = Math.max(maxDistance, AXIS_EPSILON);
+  const bucketKey = (constant: number) => Math.floor(constant / bucketSize);
+  const remove = (segment: AxisSegment) => {
+    const key = bucketKey(segment.constant);
+    const bucket = buckets.get(key);
+    if (!bucket) return;
+    const index = bucket.indexOf(segment);
+    if (index >= 0) bucket.splice(index, 1);
+    if (bucket.length === 0) buckets.delete(key);
+  };
+  const findMerge = (candidate: AxisSegment): AxisSegment | null => {
+    const key = bucketKey(candidate.constant);
+    for (let offset = -1; offset <= 1; offset += 1) {
+      const bucket = buckets.get(key + offset);
+      if (!bucket) continue;
+      for (const existing of bucket) {
+        const close = Math.abs(existing.constant - candidate.constant) <= maxDistance;
+        const overlaps = existing.from <= candidate.to && candidate.from <= existing.to;
+        if (close && overlaps) return existing;
+      }
+    }
+    return null;
+  };
+
+  for (const original of segments) {
+    let candidate = original;
+    let existing: AxisSegment | null;
+    while ((existing = findMerge(candidate)) !== null) {
+      remove(existing);
+      candidate = {
+        ...candidate,
+        constant: (candidate.constant + existing.constant) / 2,
+        from: Math.min(candidate.from, existing.from),
+        to: Math.max(candidate.to, existing.to),
+      };
+      candidate.start = candidate.axis === "horizontal"
+        ? { x: candidate.from, y: candidate.constant }
+        : { x: candidate.constant, y: candidate.from };
+      candidate.end = candidate.axis === "horizontal"
+        ? { x: candidate.to, y: candidate.constant }
+        : { x: candidate.constant, y: candidate.to };
+      candidate.length = candidate.to - candidate.from;
+    }
+    const key = bucketKey(candidate.constant);
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(candidate);
+    buckets.set(key, bucket);
+  }
+
+  return Array.from(buckets.values()).flat().map(axisSegmentToSegment);
+}
+
+function mergeParallelSegments(segments: Segment[], maxDistance: number): Segment[] {
+  const axisSegments: AxisSegment[] = [];
+  const otherSegments: Segment[] = [];
+  for (const segment of segments) {
+    const axisSegment = toAxisSegment(segment);
+    if (axisSegment) axisSegments.push(axisSegment);
+    else otherSegments.push(segment);
+  }
+  const horizontal = axisSegments.filter((segment) => segment.axis === "horizontal");
+  const vertical = axisSegments.filter((segment) => segment.axis === "vertical");
+  return [
+    ...otherSegments,
+    ...mergeAxisSegments(horizontal, maxDistance),
+    ...mergeAxisSegments(vertical, maxDistance),
+  ];
 }
 
 const fmtCode = (code: number) => code.toString().padStart(3, " ");
@@ -286,9 +387,10 @@ function dxfTables(): string[] {
 
 function serializeSegments(segments: Segment[], options: SvgDxfOptions): string {
   const scale = Number.isFinite(options.scale) && (options.scale ?? 1) > 0 ? options.scale ?? 1 : 1;
-  const selected = segments.length > MAX_LINE_ENTITIES
-    ? [...segments].sort((a, b) => b.length - a.length).slice(0, MAX_LINE_ENTITIES)
-    : segments;
+  const merged = mergeParallelSegments(segments, PARALLEL_MERGE_DISTANCE / scale);
+  const selected = merged.length > MAX_LINE_ENTITIES
+    ? [...merged].sort((a, b) => b.length - a.length).slice(0, MAX_LINE_ENTITIES)
+    : merged;
   if (selected.length === 0) throw new Error("No sufficiently long line segments found in traced geometry");
 
   const lines = [
@@ -317,7 +419,8 @@ export function buildDxfFromSvg(svg: string, options: SvgDxfOptions): string {
   }
   const paths = extractPaths(svg);
   if (paths.length === 0) throw new Error("Potrace SVG contains no usable paths");
-  return serializeSegments(collectSegments(paths), options);
+  const scale = Number.isFinite(options.scale) && (options.scale ?? 1) > 0 ? options.scale ?? 1 : 1;
+  return serializeSegments(collectSegments(paths, scale), options);
 }
 
 async function loadPotraceSvg(canvas: HTMLCanvasElement): Promise<string> {
@@ -328,7 +431,7 @@ async function loadPotraceSvg(canvas: HTMLCanvasElement): Promise<string> {
 }
 
 /** Loads a generated image, thresholds it, traces it with Potrace-WASM, and returns DXF. */
-export function rasterizeImageToDxf(imageUrl: string): Promise<string> {
+export function rasterizeImageToDxf(imageUrl: string, options: Pick<SvgDxfOptions, "scale"> = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     if (typeof Image === "undefined" || typeof document === "undefined") {
       reject(new Error("Browser image APIs are unavailable"));
@@ -363,7 +466,8 @@ export function rasterizeImageToDxf(imageUrl: string): Promise<string> {
             const red = sourceData[sourceOffset] ?? 255;
             const green = sourceData[sourceOffset + 1] ?? red;
             const blue = sourceData[sourceOffset + 2] ?? red;
-            const isBlack = red * 299 + green * 587 + blue * 114 < 128000;
+            const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+            const isBlack = luminance < 130;
             const value = isBlack ? 0 : 255;
             binaryImage.data[targetOffset] = value;
             binaryImage.data[targetOffset + 1] = value;
@@ -373,7 +477,7 @@ export function rasterizeImageToDxf(imageUrl: string): Promise<string> {
           binaryContext.putImageData(binaryImage, 0, 0);
 
           const svg = await loadPotraceSvg(binaryCanvas);
-          resolve(buildDxfFromSvg(svg, { width, height }));
+          resolve(buildDxfFromSvg(svg, { width, height, scale: options.scale }));
         } catch (error) {
           reject(error instanceof Error ? error : new Error("Unable to trace generated CAD image"));
         }

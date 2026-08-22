@@ -22,6 +22,9 @@ export const QUADRANT_FILE_NAMES: Record<QuadrantId, string> = {
   perspective: "perspective.dxf",
 };
 
+export const QUADRANT_UPSCALE = 4;
+const BINARY_THRESHOLD = 130;
+
 /**
  * Loads the cached 2x2 CAD image, crops a single quadrant, and returns it as a
  * PNG data URL for local Potrace vectorization. Purely client-side.
@@ -47,11 +50,37 @@ export function cropImageToQuadrant(imageUrl: string, quadrant: QuadrantId): Pro
         const sourceY = row * quadrantHeight;
 
         const canvas = document.createElement("canvas");
-        canvas.width = quadrantWidth;
-        canvas.height = quadrantHeight;
-        const context = canvas.getContext("2d");
+        canvas.width = quadrantWidth * QUADRANT_UPSCALE;
+        canvas.height = quadrantHeight * QUADRANT_UPSCALE;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
         if (!context) throw new Error("Canvas 2D context is unavailable");
-        context.drawImage(image, sourceX, sourceY, quadrantWidth, quadrantHeight, 0, 0, quadrantWidth, quadrantHeight);
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(
+          image,
+          sourceX,
+          sourceY,
+          quadrantWidth,
+          quadrantHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+        for (let index = 0; index < pixels.data.length; index += 4) {
+          const red = pixels.data[index] ?? 255;
+          const green = pixels.data[index + 1] ?? red;
+          const blue = pixels.data[index + 2] ?? red;
+          const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+          const value = luminance < BINARY_THRESHOLD ? 0 : 255;
+          pixels.data[index] = value;
+          pixels.data[index + 1] = value;
+          pixels.data[index + 2] = value;
+          pixels.data[index + 3] = 255;
+        }
+        context.putImageData(pixels, 0, 0);
         resolve(canvas.toDataURL("image/png"));
       } catch (error) {
         reject(error instanceof Error ? error : new Error("Unable to crop CAD quadrant"));

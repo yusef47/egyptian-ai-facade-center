@@ -15,6 +15,7 @@ vi.mock("../client/src/lib/dxf", () => ({
 }));
 vi.mock("../client/src/lib/cadExport", () => ({
   QUADRANTS: ["plan", "elevation", "section", "perspective"],
+  QUADRANT_UPSCALE: 4,
   QUADRANT_FILE_NAMES: {
     plan: "plan.dxf",
     elevation: "elevation.dxf",
@@ -91,7 +92,7 @@ describe("CadVectorizerSection", () => {
     await user.click(screen.getByRole("button", { name: /Download Plan DXF/i }));
 
     await waitFor(() => expect(cropImageToQuadrant).toHaveBeenCalledWith("data:image/png;base64,Q0FE", "plan"));
-    await waitFor(() => expect(rasterizeImageToDxf).toHaveBeenCalledWith("data:image/png;base64,CROPPED_PLAN"));
+    await waitFor(() => expect(rasterizeImageToDxf).toHaveBeenCalledWith("data:image/png;base64,CROPPED_PLAN", { scale: 0.25 }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalled();
   });
