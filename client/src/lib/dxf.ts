@@ -7,6 +7,7 @@ export type SvgDxfOptions = {
 type Point = { x: number; y: number };
 type Segment = { start: Point; end: Point; length: number };
 type Path = { points: Point[]; closed: boolean };
+type SvgTransform = { sx: number; sy: number; tx: number; ty: number };
 type PathToken = { kind: "command"; value: string } | { kind: "number"; value: number };
 type PotraceApi = {
   loadFromCanvas?: (canvas: HTMLCanvasElement) => Promise<string>;
@@ -191,7 +192,27 @@ function parsePathData(data: string): Path[] {
   return paths;
 }
 
+/**
+ * Parses the SVG group transform that Potrace-WASM emits:
+ * `translate(0,H) scale(0.1,-0.1)` maps Y-UP path units (tenths of a pixel,
+ * origin at the image BOTTOM) into standard Y-down pixel coordinates.
+ */
+function parseSvgTransform(svg: string): SvgTransform {
+  const identity: SvgTransform = { sx: 1, sy: 1, tx: 0, ty: 0 };
+  const attribute = svg.match(/<g\b[^>]*transform="([^"]*)"/i)?.[1]
+    ?? svg.match(/<svg\b[^>]*transform="([^"]*)"/i)?.[1];
+  if (!attribute) return identity;
+  const translate = attribute.match(/translate\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*\)/);
+  const scale = attribute.match(/scale\(\s*([-+0-9.eE]+)(?:\s*,\s*([-+0-9.eE]+))?\s*\)/);
+  const tx = translate ? Number(translate[1]) : 0;
+  const ty = translate ? Number(translate[2]) : 0;
+  const sx = scale ? Number(scale[1]) : 1;
+  const sy = scale ? (scale[2] !== undefined ? Number(scale[2]) : sx) : 1;
+  return { sx, sy, tx, ty };
+}
+
 function extractPaths(svg: string): Path[] {
+  const transform = parseSvgTransform(svg);
   const paths: Path[] = [];
   const pathPattern = /<path\b[^>]*\bd\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
   let match: RegExpExecArray | null;
@@ -199,7 +220,11 @@ function extractPaths(svg: string): Path[] {
     paths.push(...parsePathData(match[1] ?? match[2] ?? ""));
   }
   return paths.map((path) => {
-    const points = simplify(path.points, RDP_EPSILON);
+    const mapped = path.points.map((point) => ({
+      x: point.x * transform.sx + transform.tx,
+      y: point.y * transform.sy + transform.ty,
+    }));
+    const points = simplify(mapped, RDP_EPSILON);
     if (path.closed && points.length > 1 && points[0].x === points.at(-1)?.x && points[0].y === points.at(-1)?.y) {
       points.pop();
     }

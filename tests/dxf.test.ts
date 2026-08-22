@@ -93,6 +93,32 @@ describe("DXF Potrace path vectorization", () => {
     expect(previewPointToDxf({ x: 7, y: 4 }, 100, 0.25)).toEqual({ x: 1.75, y: 24 });
   });
 
+  it("decodes the potrace-wasm Y-up SVG transform into pixel coordinates", () => {
+    // Real potrace-wasm output wraps paths in translate(0,H) scale(0.1,-0.1):
+    // path units are tenths of a pixel with Y pointing UP (0 = image bottom).
+    const svg = '<svg viewBox="0 0 100 50"><g transform="translate(0.000000,50.000000) scale(0.100000,-0.100000)"><path d="M 0 500 L 1000 500 L 1000 400 L 0 400 Z"/></g></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 100, height: 50 });
+
+    // Image top (path y=500 -> pixel y=0) must land at the top of the viewport.
+    expect(dxf).toContain(" 10\n0.0\n 20\n50.0\n 11\n100.0\n 21\n50.0\n");
+    // Image bottom (path y=400 -> pixel y=10) must land below the top edge.
+    expect(dxf).toContain(" 10\n0.0\n 20\n40.0\n 11\n100.0\n 21\n40.0\n");
+    // X is preserved without mirroring: left edge stays at 0, right edge at 100.
+    expect(dxf).toContain(" 10\n0.0\n 20\n50.0\n 11\n0.0\n 21\n40.0\n");
+    expect(dxf).toContain(" 10\n100.0\n 20\n50.0\n 11\n100.0\n 21\n40.0\n");
+    expect(countLines(dxf)).toBe(4);
+  });
+
+  it("exports an F-shape with correct left-to-right and top-to-bottom reading", () => {
+    const svg = '<svg><path d="M 2 2 L 38 2 M 2 2 L 2 28 M 2 15 L 23 15"/></svg>';
+    const dxf = buildDxfFromSvg(svg, { width: 40, height: 30 });
+
+    // Top bar of the F stays at the top of the DXF; bottom leg stays at the bottom.
+    expect(dxf).toContain(" 10\n2.0\n 20\n28.0\n 11\n38.0\n 21\n28.0\n");
+    expect(dxf).toContain(" 10\n2.0\n 20\n28.0\n 11\n2.0\n 21\n2.0\n");
+    expect(dxf).toContain(" 10\n2.0\n 20\n15.0\n 11\n23.0\n 21\n15.0\n");
+  });
+
   it("merges nearby parallel segments into a single centerline", () => {
     const svg = '<svg><path d="M 2 10 L 42 10 M 2 12 L 42 12 M 60 10 L 110 10"/></svg>';
     const dxf = buildDxfFromSvg(svg, { width: 120, height: 30 });

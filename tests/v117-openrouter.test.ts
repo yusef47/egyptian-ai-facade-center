@@ -26,7 +26,12 @@ describe("V117 CAD OpenRouter request", () => {
     expect(instruction).toContain("100% solid white background");
     expect(instruction).toContain("solid black rectangular blocks");
     expect(instruction).toContain("structural concrete columns");
-    expect(instruction).toContain("crisp, horizontal, and clearly legible");
+    expect(instruction).toContain("Do NOT generate ANY text");
+    expect(instruction).toContain("ABSOLUTELY ZERO LETTERS OR NUMBERS");
+    expect(instruction).toContain("FFL");
+    expect(instruction).toContain("PLAN, ELEVATION, SECTION, PERSPECTIVE");
+    expect(instruction).not.toContain("label each quadrant PLAN");
+    expect(instruction).not.toContain("crisp, horizontal, and clearly legible");
     expect(instruction).not.toContain("3-Panel Architectural Presentation Board");
   });
 
