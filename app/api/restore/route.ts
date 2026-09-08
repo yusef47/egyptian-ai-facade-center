@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { executeRestore } from "../../../server/openrouter-engine";
+import { executeRestore } from "../../../lib/openrouter-engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

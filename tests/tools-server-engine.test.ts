@@ -8,7 +8,7 @@ import {
   buildOpenRouterRequest,
   resolveToolRequest,
   validateRestorePayload,
-} from "../server/openrouter-engine";
+} from "../lib/openrouter-engine";
 
 describe("server engine toolId contract", () => {
   it("defaults to the exterior tool and facade prompt mode", () => {

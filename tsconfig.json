@@ -5,7 +5,7 @@
     "components/**/*",
     "client/src/**/*",
     "shared/**/*",
-    "server/**/*",
+    "lib/**/*",
     "api/**/*",
     "tests/**/*",
     ".next/types/**/*.ts"

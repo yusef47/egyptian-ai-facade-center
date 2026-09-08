@@ -9,7 +9,7 @@ import {
   extractImageData,
   extractImageUrlFromText,
   trimOutputDataUrl,
-} from "../server/openrouter-engine";
+} from "../lib/openrouter-engine";
 
 export {
   CAD_SYSTEM_PROMPT,

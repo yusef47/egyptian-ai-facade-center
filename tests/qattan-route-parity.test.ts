@@ -31,7 +31,7 @@ describe("Qattan App Router route parity", () => {
 
     const sourceText = [
       "app/api/restore/route.ts",
-      "server/openrouter-engine.ts",
+      "lib/openrouter-engine.ts",
       "api/restore.ts",
     ]
       .filter((file) => existsSync(file))

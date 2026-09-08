@@ -3,7 +3,7 @@ import {
   CAD_SYSTEM_PROMPT,
   OPENROUTER_MODEL,
   buildOpenRouterRequest,
-} from "../server/openrouter-engine";
+} from "../lib/openrouter-engine";
 
 describe("Qattan restore engine contract", () => {
   it("keeps CAD mode and the zero-text prompt server-side", () => {

@@ -359,7 +359,8 @@ export async function executeRestore(
   body: unknown,
   options: { apiKey: string | undefined; clientKey: string },
 ): Promise<RestoreServiceResult> {
-  const { apiKey, clientKey } = options;
+  const { apiKey: apiKeyFromOptions, clientKey } = options;
+  const apiKey = apiKeyFromOptions ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return { ok: false, status: 500, message: "لم يتم إعداد مفتاح OpenRouter على الخادم." };
   }

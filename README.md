@@ -81,7 +81,7 @@ Browser
 
 Next App Router
   └── /api/restore
-        └── server/openrouter-engine.ts
+        └── lib/openrouter-engine.ts
               └── OpenRouter → Gemini multimodal image generation
 ```
 
@@ -219,7 +219,7 @@ The primary Next.js route is:
 Shared server behavior is implemented in:
 
 ```text
-/server/openrouter-engine.ts
+/lib/openrouter-engine.ts
 ```
 
 The compatibility adapter at `api/restore.ts` remains available for the existing Vercel/server contract, while the deployed Next App Router uses `app/api/restore/route.ts`.
