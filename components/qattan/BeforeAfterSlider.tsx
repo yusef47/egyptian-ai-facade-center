@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useReducedMotion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 
 type BeforeAfterSliderProps = {
   beforeLabel: string;
@@ -9,9 +10,59 @@ type BeforeAfterSliderProps = {
   afterSrc?: string;
 };
 
-export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, afterSrc }: BeforeAfterSliderProps) {
+const SCAN_DURATION_MS = 5200;
+
+/**
+ * Plays an automatic two-pass laser sweep on mount (0→100→0→50) so the
+ * transformation demos itself before the user drags. The scan starts
+ * only after mount (in an effect) so server and client render the same
+ * initial HTML, and any pointer or keyboard interaction cancels it.
+ */
+function useAutoScan(enabled: boolean) {
   const [value, setValue] = useState(50);
+  const [scanning, setScanning] = useState(false);
+  const frameRef = useRef(0);
+
+  useEffect(() => {
+    if (enabled) setScanning(true);
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!scanning) return undefined;
+    let start = 0;
+    const tick = (timestamp: number) => {
+      if (!start) start = timestamp;
+      const progress = Math.min((timestamp - start) / SCAN_DURATION_MS, 1);
+      let position: number;
+      if (progress < 0.35) {
+        position = (progress / 0.35) * 100;
+      } else if (progress < 0.7) {
+        position = 100 - ((progress - 0.35) / 0.35) * 100;
+      } else {
+        position = ((progress - 0.7) / 0.3) * 50;
+      }
+      setValue(position);
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        setValue(50);
+        setScanning(false);
+      }
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [scanning]);
+
+  const cancel = () => setScanning(false);
+  return { value, setValue, scanning, cancel };
+}
+
+export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, afterSrc }: BeforeAfterSliderProps) {
+  const reduceMotion = (useReducedMotion() ?? false) || typeof requestAnimationFrame === "undefined";
+  const { value, setValue, scanning, cancel } = useAutoScan(!reduceMotion);
+
   const updateFromKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    cancel();
     const current = Number(event.currentTarget.value);
     if (event.key === "ArrowRight" || event.key === "ArrowUp") {
       event.preventDefault();
@@ -31,6 +82,7 @@ export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, 
   return (
     <div className="qattan-comparison" data-before-after="true">
       <div className="qattan-comparison-canvas" aria-hidden="true">
+        {scanning && <span className="qattan-laser-scan" style={{ left: `${value}%` }} />}
         <div className="qattan-architecture-scene qattan-scene-before">
           <div className="qattan-scene-sky" />
           <div className="qattan-scene-ground" />
@@ -62,9 +114,13 @@ export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, 
           value={value}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={value}
-          onChange={(event) => setValue(Number(event.target.value))}
+          aria-valuenow={Math.round(value)}
+          onChange={(event) => {
+            cancel();
+            setValue(Number(event.target.value));
+          }}
           onKeyDown={updateFromKey}
+          onPointerDown={cancel}
         />
       </label>
     </div>

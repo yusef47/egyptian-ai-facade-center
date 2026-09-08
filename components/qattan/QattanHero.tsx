@@ -1,8 +1,15 @@
 "use client";
 
-import { motion } from "framer-motion";
+import {
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+} from "framer-motion";
 import { ArrowUpRight, Download, Upload, WandSparkles } from "lucide-react";
 import Link from "next/link";
+import { type MouseEvent, type PointerEvent } from "react";
+import { TiltCard } from "./TiltCard";
 import { useQattan } from "./QattanProviders";
 
 const heroLine = {
@@ -53,15 +60,98 @@ function AnimatedHeadline({ title }: { title: string }) {
   );
 }
 
+const PARTICLES = Array.from({ length: 12 }, (_, index) => ({
+  id: index,
+  left: `${6 + ((index * 7.9) % 88)}%`,
+  size: 3 + (index % 3) * 1.6,
+  duration: 6.5 + (index % 5) * 0.9,
+  delay: -(index % 7) * 0.9,
+  gold: index % 3 !== 1,
+}));
+
+/** Twelve soft gold/cyan micro-particles drifting upward for luxury depth. */
+function GoldenDust() {
+  const reduceMotion = useReducedMotion() ?? false;
+  if (reduceMotion) return null;
+  return (
+    <div className="qattan-hero-particles" aria-hidden="true">
+      {PARTICLES.map((particle) => (
+        <motion.span
+          key={particle.id}
+          className="qattan-particle"
+          style={{
+            left: particle.left,
+            width: particle.size,
+            height: particle.size,
+            background: particle.gold ? "#e3c27e" : "#59d8ff",
+            boxShadow: particle.gold
+              ? "0 0 8px rgba(227,194,126,.9)"
+              : "0 0 8px rgba(89,216,255,.9)",
+          }}
+          animate={{ y: [0, -60, 0], opacity: [0, 0.7, 0] }}
+          transition={{
+            duration: particle.duration,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: particle.delay,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Slow-dashing CAD-style blueprint lines drawing themselves in the background. */
+function BlueprintLines() {
+  return (
+    <svg
+      className="qattan-blueprint-svg"
+      viewBox="0 0 800 600"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true"
+    >
+      <g fill="none" strokeWidth="1.2" opacity=".5">
+        <path className="qattan-blueprint-line" stroke="#4a6fb0" d="M40 520 H760" />
+        <path className="qattan-blueprint-line" stroke="#4a6fb0" d="M120 460 H680 V420 H200" />
+        <path className="qattan-blueprint-line qattan-blueprint-line-slow" stroke="#c5a059" d="M80 120 H400 V80 H720" />
+        <path className="qattan-blueprint-line qattan-blueprint-line-slow" stroke="#4a6fb0" d="M640 200 V330 H540" />
+        <path className="qattan-blueprint-line" stroke="#c5a059" d="M60 260 H180 V340" />
+      </g>
+    </svg>
+  );
+}
+
 export function QattanHero() {
   const { copy } = useQattan();
+  const reduceMotion = useReducedMotion() ?? false;
+
+  const rawX = useMotionValue(0);
+  const rawY = useMotionValue(0);
+  const spotX = useSpring(rawX, { stiffness: 140, damping: 22 });
+  const spotY = useSpring(rawY, { stiffness: 140, damping: 22 });
+
+  const handleHeroMove = (event: MouseEvent<HTMLElement>) => {
+    if (reduceMotion) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    rawX.set(event.clientX - rect.left);
+    rawY.set(event.clientY - rect.top);
+  };
+
   return (
-    <section className="qattan-hero">
+    <section className="qattan-hero" onMouseMove={handleHeroMove}>
       <div className="qattan-hero-backdrop" aria-hidden="true">
         <div className="qattan-hero-grid-pattern" />
+        <BlueprintLines />
         <div className="qattan-hero-glow" />
         <div className="qattan-hero-orb" />
         <div className="qattan-hero-orb qattan-hero-orb-two" />
+        {!reduceMotion && (
+          <motion.span
+            className="qattan-hero-spotlight"
+            style={{ left: spotX, top: spotY }}
+          />
+        )}
+        <GoldenDust />
       </div>
       <div className="qattan-container qattan-hero-grid">
         <div className="qattan-hero-copy">
@@ -114,14 +204,12 @@ export function QattanHero() {
           transition={{ duration: 0.8, delay: 0.35, ease: [0.23, 1, 0.32, 1] }}
         >
           <div className="qattan-hero-grid-lines" aria-hidden="true" />
-          <motion.div
-            className="qattan-hero-card qattan-hero-input-card"
-            animate={{ y: [-8, 8, -8] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <span className="qattan-hero-card-label"><Upload size={13} /> {copy.hero.visualInput}</span>
-            <div className="qattan-hero-plan"><i /><i /><i /><i /><i /><i /><i /></div>
-          </motion.div>
+          <div className="qattan-hero-input-card">
+            <TiltCard className="qattan-hero-card" baseRotate={-4}>
+              <span className="qattan-hero-card-label"><Upload size={13} /> {copy.hero.visualInput}</span>
+              <div className="qattan-hero-plan"><i /><i /><i /><i /><i /><i /><i /></div>
+            </TiltCard>
+          </div>
           <motion.div
             className="qattan-hero-arrow"
             aria-hidden="true"
@@ -130,14 +218,12 @@ export function QattanHero() {
           >
             <WandSparkles size={20} />
           </motion.div>
-          <motion.div
-            className="qattan-hero-card qattan-hero-output-card"
-            animate={{ y: [8, -8, 8] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-          >
-            <span className="qattan-hero-card-label"><Download size={13} /> {copy.hero.visualOutput}</span>
-            <div className="qattan-hero-render"><i /><i /><i /><i /></div>
-          </motion.div>
+          <div className="qattan-hero-output-card">
+            <TiltCard className="qattan-hero-card" baseRotate={4}>
+              <span className="qattan-hero-card-label"><Download size={13} /> {copy.hero.visualOutput}</span>
+              <div className="qattan-hero-render"><i /><i /><i /><i /></div>
+            </TiltCard>
+          </div>
           <motion.span
             className="qattan-hero-coordinate"
             animate={{ opacity: [0.55, 1, 0.55] }}

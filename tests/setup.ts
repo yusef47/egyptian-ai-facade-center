@@ -19,6 +19,23 @@ if (typeof globalThis.IntersectionObserver === "undefined") {
   globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver;
 }
 
+// jsdom lacks matchMedia; Framer Motion's useReducedMotion needs it.
+if (typeof window !== "undefined" && typeof window.matchMedia === "undefined") {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 afterEach(() => {
   cleanup();
 });
