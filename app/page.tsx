@@ -1,5 +1,5 @@
-import QattanMarketingPage from "../components/qattan/QattanMarketingPage";
+import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  return <QattanMarketingPage locale="ar" />;
+  redirect("/en");
 }

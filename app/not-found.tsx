@@ -2,13 +2,21 @@ import Link from "next/link";
 
 export default function NotFound() {
   return (
-    <main className="qattan-not-found" dir="rtl">
-      <p className="qattan-eyebrow">Qattan AI / قطان AI</p>
-      <h1>الصفحة غير موجودة</h1>
-      <p>ارجع إلى الاستوديو المعماري لاستكشاف أدوات التصور والتصميم.</p>
-      <Link className="qattan-button qattan-button-primary" href="/ar">
-        العودة إلى الصفحة الرئيسية
-      </Link>
+    <main className="qattan-not-found" lang="en" dir="ltr">
+      <p className="qattan-eyebrow">Qattan AI</p>
+      <h1>Page not found</h1>
+      <p>
+        Return to the architectural studio to explore the visualization and
+        design tools.
+      </p>
+      <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+        <Link className="qattan-button qattan-button-primary" href="/en">
+          Back to home
+        </Link>
+        <Link className="qattan-button qattan-button-secondary" href="/ar">
+          الصفحة الرئيسية
+        </Link>
+      </div>
     </main>
   );
 }
