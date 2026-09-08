@@ -1,16 +1,18 @@
 "use client";
 
-import { Check, Clock3, SlidersHorizontal } from "lucide-react";
+import { motion } from "framer-motion";
+import { Check, SlidersHorizontal } from "lucide-react";
 import { useQattan } from "./QattanProviders";
-import type { StudioMode } from "./qattan-content";
+import { QATTAN_TOOLS } from "@tools/registry";
+import type { ToolId } from "@tools/registry";
 
 type StudioControlRailProps = {
-  mode: StudioMode;
-  onModeChange: (mode: StudioMode) => void;
+  mode: ToolId;
+  onModeChange: (mode: ToolId) => void;
 };
 
 export default function StudioControlRail({ mode, onModeChange }: StudioControlRailProps) {
-  const { copy } = useQattan();
+  const { copy, locale } = useQattan();
 
   return (
     <aside className="qattan-studio-rail qattan-studio-control-rail" aria-label={copy.nav.tools}>
@@ -22,9 +24,9 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
         </div>
       </div>
       <div className="qattan-studio-mode-list" role="list">
-        {copy.tools.items.map((tool) => {
-          const live = tool.status === "live";
+        {QATTAN_TOOLS.map((tool, index) => {
           const selected = tool.id === mode;
+          const title = locale === "ar" ? tool.title.ar : tool.title.en;
           return (
             <button
               type="button"
@@ -33,14 +35,22 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
               aria-pressed={selected}
               onClick={() => onModeChange(tool.id)}
             >
+              {selected && (
+                <motion.span
+                  layoutId="qattan-studio-mode-highlight"
+                  className="qattan-studio-mode-highlight"
+                  aria-hidden="true"
+                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                />
+              )}
               <span className="qattan-studio-mode-copy">
-                <span className="qattan-studio-mode-title">{tool.title}</span>
-                <span className={`qattan-status ${live ? "qattan-status-live" : "qattan-status-planned"}`}>
-                  {live ? <Check size={11} aria-hidden="true" /> : <Clock3 size={11} aria-hidden="true" />}
-                  {live ? copy.studio.live : copy.studio.planned}
+                <span className="qattan-studio-mode-title">{title}</span>
+                <span className="qattan-status qattan-status-live">
+                  <Check size={11} aria-hidden="true" />
+                  {copy.studio.live}
                 </span>
               </span>
-              <span className="qattan-studio-mode-index" aria-hidden="true">{String(copy.tools.items.indexOf(tool) + 1).padStart(2, "0")}</span>
+              <span className="qattan-studio-mode-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
             </button>
           );
         })}

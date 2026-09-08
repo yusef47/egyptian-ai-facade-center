@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { motion } from "framer-motion";
+import { useCallback, useState } from "react";
 import { I18nProvider } from "@/lib/i18n";
+import { getToolById, type QattanTool, type ToolId } from "@tools/registry";
 import { QattanHeader } from "./QattanHeader";
 import { QattanProviders, useQattan } from "./QattanProviders";
 import StudioControlRail from "./StudioControlRail";
@@ -9,15 +11,36 @@ import StudioHistoryRail, { type StudioHistoryItem } from "./StudioHistoryRail";
 import StudioViewport, { type StudioSession } from "./StudioViewport";
 import type { QattanLocale, StudioMode } from "./qattan-content";
 
-const LIVE_MODES: StudioMode[] = ["facade", "cad"];
+/** Any legacy studio mode plus the unified registry tool ids. */
+export type StudioModeInput = StudioMode | ToolId;
 
-function isLiveMode(mode: StudioMode): boolean {
-  return LIVE_MODES.includes(mode);
+const LEGACY_MODE_MAP: Record<string, ToolId> = { cad: "floorplan" };
+
+/**
+ * Normalizes legacy deep links: /studio?mode=facade keeps the heritage
+ * triptych engine, /studio?mode=cad maps onto the unified floorplan tool,
+ * and every registry id passes through unchanged.
+ */
+export function resolveStudioMode(mode: StudioModeInput): ToolId | "facade" {
+  if (mode === "facade") return "facade";
+  const mapped = LEGACY_MODE_MAP[mode];
+  if (mapped) return mapped;
+  return getToolById(mode as ToolId) ? (mode as ToolId) : "exterior";
 }
 
-function QattanStudioContent({ initialMode }: { initialMode: StudioMode }) {
-  const { copy } = useQattan();
-  const [mode, setMode] = useState<StudioMode>(initialMode);
+const viewportReveal = {
+  initial: { opacity: 0, y: 16, filter: "blur(6px)" },
+  animate: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.45, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] },
+  },
+};
+
+function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) {
+  const { copy, locale } = useQattan();
+  const [mode, setMode] = useState<ToolId | "facade">(resolveStudioMode(initialMode));
   const [session, setSession] = useState<StudioSession>({
     prompt: "",
     status: "",
@@ -26,29 +49,40 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioMode }) {
   });
   const [history, setHistory] = useState<StudioHistoryItem[]>([]);
 
-  const handleSessionChange = (nextSession: StudioSession) => {
-    setSession(nextSession);
-    const outputImageDataUrl = nextSession.outputImageDataUrl;
-    if (!outputImageDataUrl) return;
-    setHistory((current) => {
-      if (current[0]?.imageDataUrl === outputImageDataUrl) return current;
-      return [
-        {
-          id: `${Date.now()}-${current.length}`,
-          mode: "facade" as const,
-          prompt: nextSession.prompt,
-          imageDataUrl: outputImageDataUrl,
-        },
-        ...current,
-      ].slice(0, 8);
-    });
-  };
+  const activeTool: QattanTool | undefined = mode === "facade" ? undefined : getToolById(mode);
+  const activeToolTitle =
+    mode === "facade"
+      ? copy.studio.facade
+      : locale === "ar"
+        ? activeTool?.title.ar ?? mode
+        : activeTool?.title.en ?? mode;
 
-  const handleModeChange = (nextMode: StudioMode) => {
+  const handleSessionChange = useCallback(
+    (nextSession: StudioSession) => {
+      setSession(nextSession);
+      const outputImageDataUrl = nextSession.outputImageDataUrl;
+      if (!outputImageDataUrl) return;
+      setHistory((current) => {
+        if (current[0]?.imageDataUrl === outputImageDataUrl) return current;
+        return [
+          {
+            id: `${Date.now()}-${current.length}`,
+            mode: mode === "facade" ? "facade" : mode,
+            toolTitle: activeToolTitle,
+            prompt: nextSession.prompt,
+            imageDataUrl: outputImageDataUrl,
+          },
+          ...current,
+        ].slice(0, 8);
+      });
+    },
+    [mode, activeToolTitle],
+  );
+
+  const handleModeChange = useCallback((nextMode: ToolId) => {
     setMode(nextMode);
-    if (!isLiveMode(nextMode)) return;
     setSession((current) => ({ ...current, status: "" }));
-  };
+  }, []);
 
   return (
     <div className="qattan-page qattan-studio-page">
@@ -68,17 +102,25 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioMode }) {
           </div>
         </section>
 
-        <section className="qattan-studio-shell qattan-container" aria-label={copy.nav.studio}>
+        <motion.section
+          className="qattan-studio-shell qattan-studio-container"
+          aria-label={copy.nav.studio}
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+        >
           <div className="qattan-studio-layout">
-            <StudioControlRail mode={mode} onModeChange={handleModeChange} />
-            <StudioViewport
-              mode={mode}
-              onFacadeSessionChange={handleSessionChange}
-              onBackToLive={() => setMode("facade")}
-            />
-            <StudioHistoryRail mode={mode} session={session} history={history} />
+            <StudioControlRail mode={mode === "facade" ? "exterior" : mode} onModeChange={handleModeChange} />
+            <motion.div key={mode} className="qattan-studio-viewport-slot" {...viewportReveal}>
+              <StudioViewport
+                mode={mode}
+                tool={activeTool}
+                onSessionChange={handleSessionChange}
+              />
+            </motion.div>
+            <StudioHistoryRail activeToolTitle={activeToolTitle} session={session} history={history} />
           </div>
-        </section>
+        </motion.section>
       </main>
     </div>
   );
@@ -86,10 +128,10 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioMode }) {
 
 export default function QattanStudio({
   locale,
-  initialMode = "facade",
+  initialMode = "exterior",
 }: {
   locale: QattanLocale;
-  initialMode?: StudioMode;
+  initialMode?: StudioModeInput;
 }) {
   return (
     <QattanProviders locale={locale}>

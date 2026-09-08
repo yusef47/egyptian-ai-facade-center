@@ -1,26 +1,27 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import { Download, History, ShieldCheck } from "lucide-react";
+import type { ToolId } from "@tools/registry";
 import { useQattan } from "./QattanProviders";
-import type { StudioMode } from "./qattan-content";
 import type { StudioSession } from "./StudioViewport";
 
 export type StudioHistoryItem = {
   id: string;
-  mode: StudioMode;
+  mode: ToolId | "facade";
+  toolTitle: string;
   prompt: string;
   imageDataUrl: string;
 };
 
 type StudioHistoryRailProps = {
-  mode: StudioMode;
+  activeToolTitle: string;
   session: StudioSession;
   history: StudioHistoryItem[];
 };
 
-export default function StudioHistoryRail({ mode, session, history }: StudioHistoryRailProps) {
+export default function StudioHistoryRail({ activeToolTitle, session, history }: StudioHistoryRailProps) {
   const { copy } = useQattan();
-  const activeTool = copy.tools.items.find((item) => item.id === mode);
 
   return (
     <aside className="qattan-studio-rail qattan-studio-history-rail" aria-label={copy.studio.session}>
@@ -34,20 +35,31 @@ export default function StudioHistoryRail({ mode, session, history }: StudioHist
 
       <div className="qattan-studio-engine-meta">
         <span className="qattan-studio-meta-label">{copy.studio.active}</span>
-        <strong>{activeTool?.title ?? mode}</strong>
-        <span>{copy.studio.model}</span>
+        <strong>{activeToolTitle}</strong>
+        {session.outputImageDataUrl ? <span>{copy.studio.session}</span> : null}
       </div>
 
       <div className="qattan-history-list">
-        {history.length > 0 ? history.map((item) => (
-          <article key={item.id} className="qattan-history-item">
-            <img src={item.imageDataUrl} alt="" />
-            <div>
-              <strong>{copy.studio.facade}</strong>
-              <span>{item.prompt || copy.studio.result}</span>
-            </div>
-          </article>
-        )) : (
+        {history.length > 0 ? (
+          <AnimatePresence initial={false}>
+            {history.map((item) => (
+              <motion.article
+                key={item.id}
+                className="qattan-history-item"
+                initial={{ opacity: 0, x: 28 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ type: "spring", stiffness: 320, damping: 30 }}
+              >
+                <img src={item.imageDataUrl} alt="" />
+                <div>
+                  <strong>{item.toolTitle}</strong>
+                  <span>{item.prompt || copy.studio.result}</span>
+                </div>
+              </motion.article>
+            ))}
+          </AnimatePresence>
+        ) : (
           <p className="qattan-history-empty">{copy.studio.empty}</p>
         )}
       </div>

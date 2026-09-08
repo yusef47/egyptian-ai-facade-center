@@ -7,13 +7,14 @@ afterEach(() => {
 });
 
 describe("Qattan studio", () => {
-  it("does not submit unsupported planned modes", () => {
+  it("renders interior as a live workspace without submitting on mount", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     render(<QattanStudio locale="en" initialMode="interior" />);
 
-    expect(screen.getByRole("button", { name: /Interior AI/i })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/planned|coming soon/i);
+    expect(screen.getAllByRole("button", { name: /Interior AI/i }).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/Empty room photo or 3D layout/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Room type/i)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

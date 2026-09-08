@@ -120,7 +120,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .qattan-studio-intro-badge { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 9px; padding: 10px 13px; border: 1px solid rgba(197,160,89,.25); border-radius: 7px; color: #c7cedb; background: rgba(18,24,36,.84); font-size: 11px; }
 .qattan-studio-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #3bd18b; box-shadow: 0 0 0 4px rgba(59,209,139,.12); }
 .qattan-studio-shell { padding-bottom: 88px; color: #f3ead8; background: #0a0f1d; }
-.qattan-studio-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 220px; align-items: start; gap: 14px; }
+.qattan-studio-container { width: min(100% - 48px, 1700px); margin-inline: auto; }
+.qattan-studio-container { padding-inline: 0; }
+@media (min-width: 821px) { .qattan-studio-container { width: min(100% - 64px, 1700px); } }
+.qattan-studio-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr) 280px; align-items: start; gap: 24px; }
+.qattan-studio-viewport-slot { min-width: 0; }
 .qattan-studio-rail { min-width: 0; padding: 17px 14px; border: 1px solid rgba(197,160,89,.2); border-radius: 9px; background: #121824; }
 .qattan-studio-control-rail, .qattan-studio-history-rail { position: sticky; top: 76px; }
 .qattan-studio-rail-heading { display: flex; align-items: flex-start; gap: 9px; padding-bottom: 15px; border-bottom: 1px solid rgba(197,160,89,.14); }
@@ -134,7 +138,45 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .qattan-studio-mode-title { overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .qattan-studio-mode .qattan-status { width: fit-content; padding: 2px 5px; font-size: 8px; }
 .qattan-studio-mode-index { color: #697386; direction: ltr; font-family: monospace; font-size: 9px; }
-.qattan-studio-viewport { min-width: 0; min-height: 620px; border: 1px solid rgba(197,160,89,.2); border-radius: 9px; overflow: hidden; background: #0f1522; }
+.qattan-studio-viewport { min-width: 0; min-height: 620px; border: 1px solid rgba(197,160,89,.2); border-radius: 12px; overflow: hidden; background: #0f1522; box-shadow: 0 24px 60px rgba(0,0,0,.28); }
+.qattan-tool-grid-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.qattan-tool-panel { padding: 24px; border-radius: 10px; background: rgba(0,0,0,.18); }
+.qattan-tool-panel-canvas { padding: 16px; }
+.qattan-tool-upload { position: relative; display: grid; gap: 8px; justify-items: center; padding: 30px 18px; border: 1.5px dashed rgba(197,160,89,.4); border-radius: 10px; color: #a5adbd; text-align: center; cursor: pointer; transition: border-color .2s ease, background .2s ease; }
+.qattan-tool-upload:hover { border-color: rgba(197,160,89,.75); background: rgba(197,160,89,.05); }
+.qattan-tool-upload-dragging { border-color: #c5a059; background: rgba(197,160,89,.1); }
+.qattan-tool-upload-preview { max-height: 170px; max-width: 100%; border-radius: 8px; object-fit: contain; }
+.qattan-tool-upload-replace { display: inline-flex; align-items: center; gap: 6px; color: #c5a059; font-size: 11px; }
+.qattan-tool-upload-hint { color: #f3ead8; font-size: 13px; font-weight: 600; }
+.qattan-tool-upload-sub { font-size: 10px; }
+.qattan-tool-control { display: grid; gap: 7px; margin-top: 16px; }
+.qattan-tool-control-label { color: #a5adbd; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.qattan-tool-select { width: 100%; padding: 10px 12px; border: 1px solid rgba(197,160,89,.25); border-radius: 7px; color: #f3ead8; background: #0a0f1d; font-size: 13px; }
+.qattan-tool-select:focus-visible { outline: 2px solid rgba(197,160,89,.6); outline-offset: 1px; }
+.qattan-tool-multigrid { display: flex; flex-wrap: wrap; gap: 7px; }
+.qattan-tool-chip { padding: 7px 11px; border: 1px solid rgba(197,160,89,.3); border-radius: 999px; color: #a5adbd; background: transparent; font-size: 11px; transition: color .18s ease, background .18s ease, border-color .18s ease; }
+.qattan-tool-chip:hover { color: #f3ead8; border-color: rgba(197,160,89,.6); }
+.qattan-tool-chip-active { color: #0a0f1d; background: #c5a059; border-color: #c5a059; font-weight: 600; }
+.qattan-tool-textarea { width: 100%; padding: 11px 12px; border: 1px solid rgba(197,160,89,.25); border-radius: 7px; color: #f3ead8; background: #0a0f1d; font-size: 13px; line-height: 1.7; resize: vertical; }
+.qattan-tool-textarea:focus-visible { outline: 2px solid rgba(197,160,89,.6); outline-offset: 1px; }
+.qattan-tool-generate { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; margin-top: 20px; padding: 12px 18px; border: 0; border-radius: 8px; color: #0a0f1d; background: linear-gradient(120deg, #d9b977, #c5a059); font-size: 14px; font-weight: 700; cursor: pointer; transition: filter .2s ease, transform .2s ease, box-shadow .2s ease; }
+.qattan-tool-generate:hover { filter: brightness(1.07); transform: translateY(-1px); box-shadow: 0 10px 26px rgba(197,160,89,.25); }
+.qattan-tool-generate:disabled { opacity: .62; cursor: wait; transform: none; box-shadow: none; }
+.qattan-tool-error { margin: 12px 0 0; color: #ff9d9d; font-size: 12px; line-height: 1.7; }
+.qattan-tool-canvas { display: grid; min-height: 560px; place-items: center; border: 1px solid rgba(197,160,89,.16); border-radius: 10px; background: rgba(0,0,0,.3); }
+.qattan-tool-loading { display: grid; gap: 14px; justify-items: center; color: #a5adbd; font-size: 13px; }
+.qattan-tool-loading p { margin: 0; }
+.qattan-compass-spin { animation: qattan-compass-rotate 2.4s cubic-bezier(.65,.05,.36,1) infinite; }
+@keyframes qattan-compass-rotate { to { transform: rotate(360deg); } }
+.qattan-tool-result { display: grid; gap: 13px; justify-items: center; }
+.qattan-tool-result img { max-width: 100%; max-height: 640px; border-radius: 8px; }
+.qattan-tool-download { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border: 1px solid rgba(197,160,89,.4); border-radius: 7px; color: #c5a059; font-size: 12px; font-weight: 600; text-decoration: none; }
+.qattan-tool-download:hover { background: rgba(197,160,89,.1); }
+.qattan-tool-empty { display: grid; gap: 11px; justify-items: center; color: #6f7a8e; font-size: 13px; }
+.qattan-tool-empty p { margin: 0; }
+.qattan-studio-mode { position: relative; overflow: hidden; }
+.qattan-studio-mode-highlight { position: absolute; inset: 0; border: 1px solid rgba(197,160,89,.42); border-radius: 6px; background: rgba(197,160,89,.12); }
+.qattan-studio-mode-selected { border-color: transparent; }
 .qattan-studio-viewport-live > section { padding-top: 0; padding-bottom: 0; background: transparent; }
 .qattan-studio-viewport-live .container { max-width: none; padding: 0; }
 .qattan-studio-viewport-live .container > .mb-12, .qattan-studio-viewport-live .container > form > .mb-12 { margin-bottom: 22px; }
@@ -182,12 +224,14 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .qattan-faq-grid { grid-template-columns: 1fr; gap: 24px; }
   .qattan-footer-grid { grid-template-columns: 1fr 1fr; gap: 32px 18px; }
   .qattan-studio-intro-inner { display: grid; gap: 22px; }
-  .qattan-studio-layout { grid-template-columns: 1fr; }
+  .qattan-studio-layout { grid-template-columns: 1fr; gap: 16px; }
+  .qattan-studio-container { width: min(100% - 32px, 1700px); }
   .qattan-studio-control-rail, .qattan-studio-history-rail { position: static; }
   .qattan-studio-control-rail { order: 0; }
-  .qattan-studio-viewport { order: 1; }
+  .qattan-studio-viewport-slot { order: 1; }
   .qattan-studio-history-rail { order: 2; }
   .qattan-studio-mode-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qattan-tool-grid-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {

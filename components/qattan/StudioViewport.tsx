@@ -2,8 +2,8 @@
 
 import EngineSection from "@/components/EngineSection";
 import CadVectorizerSection from "@/components/CadVectorizerSection";
-import PlannedModeNotice from "./PlannedModeNotice";
-import type { StudioMode } from "./qattan-content";
+import ToolWorkspace from "./ToolWorkspace";
+import type { QattanTool, ToolId } from "@tools/registry";
 
 export type StudioSession = {
   prompt: string;
@@ -13,21 +13,21 @@ export type StudioSession = {
 };
 
 type StudioViewportProps = {
-  mode: StudioMode;
-  onFacadeSessionChange: (session: StudioSession) => void;
-  onBackToLive: () => void;
+  mode: ToolId | "facade";
+  tool: QattanTool | undefined;
+  onSessionChange: (session: StudioSession) => void;
 };
 
-export default function StudioViewport({ mode, onFacadeSessionChange, onBackToLive }: StudioViewportProps) {
+export default function StudioViewport({ mode, tool, onSessionChange }: StudioViewportProps) {
   if (mode === "facade") {
     return (
       <div className="qattan-studio-viewport qattan-studio-viewport-live">
-        <EngineSection onSessionChange={onFacadeSessionChange} />
+        <EngineSection onSessionChange={onSessionChange} />
       </div>
     );
   }
 
-  if (mode === "cad") {
+  if (mode === "floorplan" || mode === "cad") {
     return (
       <div className="qattan-studio-viewport qattan-studio-viewport-live">
         <CadVectorizerSection />
@@ -35,9 +35,11 @@ export default function StudioViewport({ mode, onFacadeSessionChange, onBackToLi
     );
   }
 
+  if (!tool) return null;
+
   return (
     <div className="qattan-studio-viewport">
-      <PlannedModeNotice mode={mode} onBack={onBackToLive} />
+      <ToolWorkspace tool={tool} onSessionChange={onSessionChange} />
     </div>
   );
 }
