@@ -215,6 +215,28 @@ export function getToolById(id: ToolId): QattanTool | undefined {
   return QATTAN_TOOLS.find((tool) => tool.id === id);
 }
 
+/** Any legacy studio mode plus the unified registry tool ids. */
+export type StudioModeInput = ToolId | "facade" | "cad";
+
+const LEGACY_MODE_MAP: Record<string, ToolId> = { cad: "floorplan" };
+
+/**
+ * Normalizes legacy deep links: /studio?mode=facade keeps the heritage
+ * triptych engine, /studio?mode=cad maps onto the unified floorplan tool,
+ * and every registry id passes through unchanged. Unknown values fall
+ * back to the default exterior workspace.
+ *
+ * Lives in this pure module (no React or browser imports) so both Server
+ * Components and Client Components can call it without crossing the
+ * Server-Client boundary incorrectly.
+ */
+export function resolveStudioMode(mode: StudioModeInput | string): ToolId | "facade" {
+  if (mode === "facade") return "facade";
+  const mapped = LEGACY_MODE_MAP[mode];
+  if (mapped) return mapped;
+  return getToolById(mode as ToolId) ? (mode as ToolId) : "exterior";
+}
+
 export type ToolControlValues = Partial<Record<ToolControlId, string | string[]>>;
 
 function valueFor(tool: QattanTool, controlId: ToolControlId, values: ToolControlValues): string | string[] | undefined {

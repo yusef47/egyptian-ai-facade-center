@@ -1,4 +1,6 @@
-import QattanStudio, { resolveStudioMode } from "../../components/qattan/QattanStudio";
+import { Suspense } from "react";
+import QattanStudio from "../../components/qattan/QattanStudio";
+import { resolveStudioMode } from "../../tools/registry";
 
 type StudioPageProps = {
   searchParams?: Promise<{ mode?: string | string[] }>;
@@ -9,7 +11,16 @@ function parseMode(value: string | string[] | undefined): string {
   return candidate ?? "";
 }
 
+function StudioFallback() {
+  return <div style={{ minHeight: "100vh", background: "#0a0f1d" }} aria-hidden="true" />;
+}
+
 export default async function StudioPage({ searchParams }: StudioPageProps) {
   const params = searchParams ? await searchParams : undefined;
-  return <QattanStudio locale="en" initialMode={resolveStudioMode(parseMode(params?.mode))} />;
+  const initialMode = resolveStudioMode(parseMode(params?.mode));
+  return (
+    <Suspense fallback={<StudioFallback />}>
+      <QattanStudio locale="en" initialMode={initialMode} />
+    </Suspense>
+  );
 }

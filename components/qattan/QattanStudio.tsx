@@ -3,7 +3,12 @@
 import { motion } from "framer-motion";
 import { useCallback, useState } from "react";
 import { I18nProvider } from "@/lib/i18n";
-import { getToolById, type QattanTool, type ToolId } from "@tools/registry";
+import {
+  getToolById,
+  resolveStudioMode,
+  type QattanTool,
+  type ToolId,
+} from "@tools/registry";
 import { QattanHeader } from "./QattanHeader";
 import { QattanProviders, useQattan } from "./QattanProviders";
 import StudioControlRail from "./StudioControlRail";
@@ -14,20 +19,12 @@ import type { QattanLocale, StudioMode } from "./qattan-content";
 /** Any legacy studio mode plus the unified registry tool ids. */
 export type StudioModeInput = StudioMode | ToolId;
 
-const LEGACY_MODE_MAP: Record<string, ToolId> = { cad: "floorplan" };
-
 /**
- * Normalizes legacy deep links: /studio?mode=facade keeps the heritage
- * triptych engine, /studio?mode=cad maps onto the unified floorplan tool,
- * and every registry id passes through unchanged. Unknown values fall
- * back to the default exterior workspace.
+ * Re-exported from the pure registry module so existing imports keep
+ * working; the implementation must stay server-safe (no React or
+ * browser-only dependencies).
  */
-export function resolveStudioMode(mode: StudioModeInput | string): ToolId | "facade" {
-  if (mode === "facade") return "facade";
-  const mapped = LEGACY_MODE_MAP[mode];
-  if (mapped) return mapped;
-  return getToolById(mode as ToolId) ? (mode as ToolId) : "exterior";
-}
+export { resolveStudioMode } from "@tools/registry";
 
 const viewportReveal = {
   initial: { opacity: 0, y: 16, filter: "blur(6px)" },
