@@ -27,7 +27,7 @@ export default function StudioViewport({ mode, tool, onSessionChange }: StudioVi
     );
   }
 
-  if (mode === "floorplan" || mode === "cad") {
+  if (mode === "floorplan") {
     return (
       <div className="qattan-studio-viewport qattan-studio-viewport-live">
         <CadVectorizerSection />

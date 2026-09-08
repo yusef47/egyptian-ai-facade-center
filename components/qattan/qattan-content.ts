@@ -10,7 +10,8 @@ export type StudioMode =
   | "masterplan"
   | "landscape"
   | "staging"
-  | "enhancer";
+  | "enhancer"
+  | "floorplan";
 
 export const QATTAN_TAGLINE = "Next-Gen AI Architectural & Interior Visualization Studio";
 export const QATTAN_AR_TAGLINE = "استوديو التصور المعماري والداخلي بالذكاء الاصطناعي من الجيل القادم";

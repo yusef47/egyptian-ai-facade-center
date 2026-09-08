@@ -19,9 +19,10 @@ const LEGACY_MODE_MAP: Record<string, ToolId> = { cad: "floorplan" };
 /**
  * Normalizes legacy deep links: /studio?mode=facade keeps the heritage
  * triptych engine, /studio?mode=cad maps onto the unified floorplan tool,
- * and every registry id passes through unchanged.
+ * and every registry id passes through unchanged. Unknown values fall
+ * back to the default exterior workspace.
  */
-export function resolveStudioMode(mode: StudioModeInput): ToolId | "facade" {
+export function resolveStudioMode(mode: StudioModeInput | string): ToolId | "facade" {
   if (mode === "facade") return "facade";
   const mapped = LEGACY_MODE_MAP[mode];
   if (mapped) return mapped;
@@ -62,12 +63,12 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) 
       setSession(nextSession);
       const outputImageDataUrl = nextSession.outputImageDataUrl;
       if (!outputImageDataUrl) return;
-      setHistory((current) => {
+      setHistory((current: StudioHistoryItem[]) => {
         if (current[0]?.imageDataUrl === outputImageDataUrl) return current;
         return [
           {
             id: `${Date.now()}-${current.length}`,
-            mode: mode === "facade" ? "facade" : mode,
+            mode: mode === "facade" ? ("facade" as const) : mode,
             toolTitle: activeToolTitle,
             prompt: nextSession.prompt,
             imageDataUrl: outputImageDataUrl,

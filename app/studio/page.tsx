@@ -11,5 +11,5 @@ function parseMode(value: string | string[] | undefined): string {
 
 export default async function StudioPage({ searchParams }: StudioPageProps) {
   const params = searchParams ? await searchParams : undefined;
-  return <QattanStudio locale="en" initialMode={resolveStudioMode(parseMode(params?.mode) as never)} />;
+  return <QattanStudio locale="en" initialMode={resolveStudioMode(parseMode(params?.mode))} />;
 }
