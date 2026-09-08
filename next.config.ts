@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   outputFileTracingRoot: path.join(import.meta.dirname),
   webpack(config, { isServer }) {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@tools": path.join(import.meta.dirname, "tools"),
+    };
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

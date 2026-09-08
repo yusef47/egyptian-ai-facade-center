@@ -1,7 +1,10 @@
+import type { ToolId } from "@tools/registry";
+
 export interface RestoreRequest {
   imageDataUrl: string;
   prompt: string;
   mode?: "facade" | "cad";
+  toolId?: ToolId;
 }
 
 export interface RestoreResult {

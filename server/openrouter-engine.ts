@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { TOOL_IDS, type ToolId, type ToolPromptMode } from "../tools/registry";
 
 export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -44,13 +45,24 @@ Preserve the source building's massing, proportions, floor levels and window rhy
 TECHNICAL STANDARDS
 Photorealistic 8K architectural visualization: crisp edges, correct perspective, realistic materials and reflections, cinematic natural or night lighting, deep depth of field, sharp focus throughout, no warped geometry, no duplicated windows, no visible artifacts.`.trim();
 
+export const GENERAL_VISUALIZATION_SYSTEM_PROMPT = `You are the Qattan AI Architectural Visualization Engine for interiors, sketches, masterplans, landscapes, virtual staging, and render enhancement.
+
+MISSION
+You transform the user's uploaded architectural input into one photorealistic architectural visualization that follows their written brief with professional rigor. Preserve the geometry that defines the space or building; transform only what the brief asks you to transform.
+
+UNIVERSAL RULES
+- Keep walls, structural grids, openings, doors, windows, and the camera geometry of the source image unless the brief explicitly asks otherwise.
+- Produce photorealistic 8K-quality output: physically plausible materials, accurate global illumination, realistic reflections and shadows, correct perspective, sharp focus.
+- Never add watermarks, logos, text, borders, or split-panel layouts unless the brief requests them.
+- Never change the architectural intent into a different building or space type.`.trim();
+
 const MAX_DATA_URL_BYTES = 3_500_000;
 const MAX_OUTPUT_DATA_URL_BYTES = 2_000_000;
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)\s*\)/i;
 const URL_RE = /https?:\/\/[^\s"'<>()]+/gi;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|avif|heic|bmp)(\?|$)/i;
 
-export type RestoreMode = "facade" | "cad";
+export type RestoreMode = "facade" | "cad" | "general";
 
 export type OpenRouterRequest = {
   url: string;
@@ -61,7 +73,29 @@ export type RestorePayload = {
   imageDataUrl: string;
   prompt: string;
   mode: RestoreMode;
+  promptMode: RestoreMode;
+  toolId: ToolId;
 };
+
+/** Maps a registry tool to its OpenRouter system-prompt mode. */
+export function resolvePromptMode(toolId: ToolId): RestoreMode {
+  if (toolId === "floorplan") return "cad";
+  if (toolId === "exterior") return "facade";
+  return "general";
+}
+
+/** Builds the OpenRouter request for a registry tool in one step. */
+export function resolveToolRequest(
+  toolId: ToolId,
+  prompt: string,
+  apiKey: string,
+  opts: { inlineSystemPrompt?: boolean } = {},
+): OpenRouterRequest {
+  return buildOpenRouterRequest("", prompt, apiKey, {
+    ...opts,
+    promptMode: resolvePromptMode(toolId),
+  });
+}
 
 export type RestoreFailure = {
   ok: false;
@@ -80,10 +114,16 @@ export function buildOpenRouterRequest(
   imageDataUrl: string,
   prompt: string,
   apiKey: string,
-  opts: { inlineSystemPrompt?: boolean; mode?: RestoreMode } = {},
+  opts: { inlineSystemPrompt?: boolean; mode?: RestoreMode; promptMode?: RestoreMode } = {},
 ): OpenRouterRequest {
-  const systemPrompt = opts.mode === "cad" ? CAD_SYSTEM_PROMPT : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
-  const briefLabel = opts.mode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
+  const promptMode: RestoreMode = opts.promptMode ?? opts.mode ?? "facade";
+  const systemPrompt =
+    promptMode === "cad"
+      ? CAD_SYSTEM_PROMPT
+      : promptMode === "general"
+        ? GENERAL_VISUALIZATION_SYSTEM_PROMPT
+        : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
+  const briefLabel = promptMode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
   const messages = opts.inlineSystemPrompt
     ? [
         {
@@ -281,11 +321,23 @@ export function validateRestorePayload(body: unknown):
   | { ok: true; payload: RestorePayload }
   | RestoreFailure {
   const payload = body && typeof body === "object"
-    ? body as { imageDataUrl?: unknown; prompt?: unknown; mode?: unknown }
+    ? body as { imageDataUrl?: unknown; prompt?: unknown; mode?: unknown; toolId?: unknown }
     : {};
   const imageDataUrl = payload.imageDataUrl;
   const prompt = payload.prompt;
-  const mode = payload.mode === "cad" ? "cad" : "facade";
+
+  // Legacy clients (floor-plan CAD engine) send mode:"cad" without a toolId.
+  const legacyMode = payload.mode === "cad" ? "cad" : undefined;
+  const rawToolId = typeof payload.toolId === "string" ? payload.toolId : undefined;
+  if (rawToolId !== undefined && !TOOL_IDS.includes(rawToolId as ToolId)) {
+    return { ok: false, status: 400, message: `Unsupported tool: ${rawToolId}.` };
+  }
+  const toolId: ToolId = rawToolId !== undefined
+    ? (rawToolId as ToolId)
+    : legacyMode === "cad"
+      ? "floorplan"
+      : "exterior";
+  const promptMode = resolvePromptMode(toolId);
 
   if (typeof imageDataUrl !== "string" || !imageDataUrl.startsWith("data:image/")) {
     return { ok: false, status: 400, message: "يرجى رفع صورة واجهة صالحة." };
@@ -300,7 +352,7 @@ export function validateRestorePayload(body: unknown):
     return { ok: false, status: 400, message: "الوصف طويل جداً." };
   }
 
-  return { ok: true, payload: { imageDataUrl, prompt, mode } };
+  return { ok: true, payload: { imageDataUrl, prompt, mode: promptMode, promptMode, toolId } };
 }
 
 export async function executeRestore(
@@ -320,7 +372,7 @@ export async function executeRestore(
 
   try {
     let request = buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
-      mode: validated.payload.mode,
+      promptMode: validated.payload.promptMode,
     });
     let upstream = await fetch(request.url, request.init);
     let data: unknown = await safeJson(upstream);
@@ -328,7 +380,7 @@ export async function executeRestore(
     if (!upstream.ok && /role|system|invalid messages?/i.test(extractUpstreamMessage(data))) {
       request = buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
         inlineSystemPrompt: true,
-        mode: validated.payload.mode,
+        promptMode: validated.payload.promptMode,
       });
       upstream = await fetch(request.url, request.init);
       data = await safeJson(upstream);
