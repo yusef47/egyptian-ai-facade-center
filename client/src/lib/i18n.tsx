@@ -248,8 +248,15 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | undefined>(undefined);
 
-export function I18nProvider({ children }: { children: ReactNode }) {
+export function I18nProvider({
+  children,
+  initialLang,
+}: {
+  children: ReactNode;
+  initialLang?: Lang;
+}) {
   const [lang, setLangState] = useState<Lang>(() => {
+    if (initialLang) return initialLang;
     if (typeof window === "undefined") return "en";
     try {
       return window.localStorage.getItem("lang") === "ar" ? "ar" : "en";

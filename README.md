@@ -1,167 +1,98 @@
-# Egyptian Center for AI in Architecture & Urbanism
+# Qattan AI (قطان AI)
 
-> **المركز المصري للذكاء الاصطناعي في العمارة والعمران**
->
-> A bilingual architectural-restoration studio for developing high-fidelity, AI-assisted concepts for Egyptian facades and urban heritage.
+> **Next-Gen AI Architectural & Interior Visualization Studio**
 
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111827)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS%20v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Deployment](https://img.shields.io/badge/Deployment-Vercel-000000?logo=vercel&logoColor=white)](https://vercel.com/)
+Qattan AI is an architectural visualization prototype for turning facade images and floor-plan references into focused, reviewable design studies. The public experience uses an original editorial interface with responsive RTL/LTR support, a unified studio, and a server-side Gemini image engine.
 
-## Executive summary
+## Current scope
 
-The Egyptian Center for AI in Architecture & Urbanism is a national-facing design and research interface for exploring the restoration of Egyptian building facades with generative AI. The experience combines architectural briefing, heritage-style direction, image conditioning, and a presentation-ready output board in one focused workflow.
+### Live: Facade Restoration
 
-The initiative is developed in collaboration with the **Egyptian Engineers Syndicate (نقابة المهندسين المصرية)** and the committee chaired by **Dr. Ahmed**. Generated images are conceptual design studies—not structural, historic-preservation, or construction documents—and must be reviewed by licensed architects and engineers before use in a real project.
+Upload a facade image, describe the architectural direction, and generate one coordinated ultra-wide triptych through a single server-side OpenRouter request. The result contains three views of the same building:
 
-### What the application does
+1. Khedivial Classic
+2. Hashami / Biophilic
+3. Islamic Mashrabiya
 
-- Accepts an existing facade image through drag-and-drop or file selection.
-- Compresses the client image before submission to protect serverless payload limits.
-- Accepts a free-form architectural brief and optional heritage-style direction.
-- Sends one restoration request to OpenRouter using `google/gemini-3.1-flash-lite-image`.
-- Presents one cohesive 8K-style architectural triptych board with three restoration directions:
-  1. **Khedivial Classic**
-  2. **Hashami / Biophilic**
-  3. **Islamic Mashrabiya**
-- Supports English-first UI with an **EN | عربي** toggle and full Arabic RTL layout.
-- Returns a hosted image URL whenever possible, avoiding oversized serverless responses.
-- Provides an official syndicate-report download workflow for the generated board and metadata.
+The browser keeps the result available for native-resolution lightbox viewing and can download an HTML project/report record containing the source image, brief, and generated output.
+
+### Live: Floor Plan to CAD
+
+Upload a colored 2D or 3D floor plan and generate one 2×2 image containing four consistent architectural views:
+
+| Quadrant | Drawing |
+| --- | --- |
+| Top-left | Plan |
+| Top-right | Elevation |
+| Bottom-left | Section |
+| Bottom-right | Perspective |
+
+The generated image is cached in the browser. Each quadrant can be cropped and converted locally into an editable ASCII DXF, and the four DXFs can be processed sequentially into a ZIP without another AI request. The vector pipeline uses high-resolution crop preprocessing, Potrace-WASM decoding, binary/thinning cleanup, orthogonal snapping, line merging, and the verified AC1009 R12-compatible DXF template.
+
+**Important:** DXF output is raster-derived conceptual linework. It is not a measured survey or construction document. A licensed architect or engineer must verify dimensions, wall thicknesses, openings, layers, structure, code compliance, and permissions before professional use. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when required.
+
+### Planned showcase modes
+
+Exterior AI, Interior AI, Sketch to Image, Masterplan AI, Landscape AI, Virtual Staging, and Render Enhancer are represented in the studio as planned modes. They do not submit requests or claim independent production pipelines in this slice.
+
+Accounts, persistence, billing, credit debiting, checkout, authentication, independent inpainting, and separate model pipelines are intentionally deferred.
+
+## Routes
+
+| Route | Purpose | Direction |
+| --- | --- | --- |
+| `/` | Default Qattan marketing page | Arabic RTL |
+| `/ar` | Arabic marketing page | Arabic RTL |
+| `/en` | English marketing page | English LTR |
+| `/studio` | Unified facade/CAD workspace | English LTR by default |
+| `/studio?mode=cad` | Opens the CAD workflow | English LTR |
+| `/api/restore` | Server-side image-generation contract | POST only |
+
+The language links are explicit route links and the active locale updates the document language and direction. Studio history is session-only and held in React state.
 
 ## Technical architecture
 
 ```text
-Browser (React + Vite + Tailwind)
-        |
-        | POST /api/restore
-        | { imageDataUrl, prompt }
-        v
-Vercel Serverless Function (api/restore.ts)
-        |
-        | OpenRouter Chat Completions
-        | model: google/gemini-3.1-flash-lite-image
-        v
-Hosted image URL or compressed image data URL
-        |
-        v
-Triptych output board + report download
+Next.js App Router
+├── app/                         # public, locale, studio, and API routes
+├── components/qattan/           # Qattan marketing and workspace UI
+├── client/src/components/       # preserved tested live facade/CAD engines
+├── client/src/lib/              # image, restore, report, DXF, and CAD utilities
+├── server/openrouter-engine.ts  # shared server-only OpenRouter service
+└── tests/                       # Vitest and React Testing Library coverage
 ```
 
-### Frontend
+The application runs on **Next.js 15**, **React 19**, **TypeScript**, **Tailwind CSS v4**, **Vitest**, **OpenRouter**, **Sharp**, **Potrace-WASM**, and **JSZip**. The old Vite browser entrypoint and Express static server are not part of the Next runtime. Vite packages remain in the development dependency graph because the current Vitest React transformer uses them.
 
-- **React 19** with TypeScript.
-- **Vite 6** for development and production bundling.
-- **Tailwind CSS v4** for the dark obsidian / Cairo-gold visual system.
-- **Lucide React** for interface icons.
-- A shared i18n provider with English as the default language and Arabic RTL support.
-- Client-side image compression before the API request.
+## OpenRouter API
 
-### Backend
-
-`api/restore.ts` is a Vercel serverless function. It validates the method, image data URL, and prompt; applies a lightweight in-memory request limiter; calls OpenRouter; extracts the generated image; and always returns structured JSON.
-
-The model is configured as:
-
-```text
-google/gemini-3.1-flash-lite-image
-```
-
-The server reads the key only from the runtime environment:
-
-```text
-OPENROUTER_API_KEY
-```
-
-No API key belongs in source control, README files, browser code, or committed `.env` files.
-
-## Master architectural engine
-
-The restoration brief is intended to guide a single-call architectural presentation rather than three unrelated generations. The master direction covers Egyptian and international references including:
-
-- Khedivial Cairo.
-- Islamic Mamluk and Fatimid architecture.
-- Hashami stone and biophilic facade treatments.
-- Neo-Pharaonic revival language.
-- Alexandrian Greco-Roman references.
-- Hassan Fathy, Antonio Lasciac, and Mario Rossi as historical design references.
-
-### Triptych specification
-
-Every requested board should be composed as one coherent architectural presentation sheet with thin Cairo-gold separators and the same source-building geometry carried through all panels:
-
-| Panel | Direction | Typical emphasis |
-| --- | --- | --- |
-| 1 | Khedivial Classic | Proportion, cornices, balconies, limestone, heritage color and light |
-| 2 | Hashami / Biophilic | Hashami stone, planting, passive shade, tactile natural materials |
-| 3 | Islamic Mashrabiya | Mashrabiya screens, rhythmic openings, Mamluk/Fatimid detail |
-
-A single API call is designed to produce this board. The indicative generation estimate is **approximately $0.033 / 1.6 EGP per generation**, but actual pricing depends on the selected provider, model pricing, token/image usage, exchange rate, account plan, and OpenRouter billing changes.
-
-## Floor Plan to CAD studio — Centerline architectural DXF workflow (V124.0)
-
-The second studio tab, **Floor Plan to CAD**, accepts colored 2D or 3D architectural floor-plan images and sends one CAD-mode request to the same OpenRouter image endpoint. A single API call generates **all four architectural views** in one 2×2 quadrant image:
-
-| Quadrant | Position | Content |
-| --- | --- | --- |
-| PLAN | Top-left | Clean 2D floor plan with walls, doors, windows, stairs |
-| ELEVATION | Top-right | Front elevation showing exterior facade, windows, roof |
-| SECTION | Bottom-left | Cross-section showing interior heights, slabs, stairs |
-| PERSPECTIVE | Bottom-right | 3D wireframe from a ¾ bird's-eye view |
-
-Cost per generation: **approximately $0.033 / 1.6 EGP** (single call = one image = four views).
-
-The browser caches the generated image in React component state. Each **Download DXF** button crops its quadrant from the cached image locally—without another API request—and runs it through `potrace-wasm` (GPL-2.0) with a 30-second timeout. The **Download All (ZIP)** button processes Plan → Elevation → Section → Perspective sequentially, yields between quadrants, shows per-quadrant progress ("Processing Plan (1/4)…"), skips any failed quadrant, and bundles the successful DXFs into a ZIP archive via `jszip`; individual downloads remain independent if batch processing fails. Before DXF serialization, V120.0 removes small traced artifacts only when both the bounding-box area is below 150 square pixels and contour length is below 40 pixels, preserving long thin structural walls. Retained segments within 12° of horizontal or vertical are snapped to exact CAD orthogonal geometry. V121.0 crops each quadrant into a 4× upscaled canvas, enables high-quality image smoothing, applies a luminance-130 binary threshold, and exports the traced coordinates at quarter scale so the DXF retains the quadrant's native dimensions. Nearby overlapping horizontal or vertical wall edges within 3.0 output units are merged into centerlines to reduce double-edge artifacts. V122.0 applies Zhang-Suen morphological thinning after binary thresholding, uses luminance-180 to preserve faint interior lines, lowers native artifact thresholds to 30 square pixels and 20 pixels, and keeps X coordinates unchanged while applying only the standard `height - y` export transform. V123.0 makes that preview-to-DXF mapping explicit and regression-tested: X is copied unchanged, while each web-preview pixel `(x, y)` maps to `(x, height - y)` in AutoCAD coordinates, preserving top-left placement and left-to-right labels. V124.0 fixes the traced-coordinate convention: Potrace-WASM emits SVG paths wrapped in `translate(0,H) scale(0.1,-0.1)`, meaning path units are tenths of a pixel with the Y axis pointing UP (origin at the image bottom). The DXF builder now decodes that group transform into standard Y-down pixel coordinates before applying the X/Y mapping, so roofs point UP, foundations point DOWN, and text reads left to right in AutoCAD. The CAD system prompt is also now strict zero-text: no room names, dimension numbers, elevation tags, or quadrant titles — only pure architectural linework and structural column blocks, eliminating traced text scribble noise. Each DXF uses the verified minimal AC1009 ASCII template: no VPORT table, LTYPE/LAYER tables only, atomic `LINE` entities on layer `0`, three-character padded group codes, LF line endings, inverted Y coordinates matching the preview orientation, one-decimal precision, and a hard cap of 5,000 LINE entities. The geometry is raster-derived: licensed architects must verify dimensions, wall thicknesses, openings, and layers before construction use. The installed `potrace-wasm` browser wrapper exposes only `loadFromCanvas`, so its native `turdSize`, `alphaMax`, `optCurve`, and `opttolerance` settings are not runtime-configurable; V121 quality controls are applied through high-resolution smoothing, thresholding, path filtering, RDP simplification, and line merging. DWG is not generated in-browser; AutoCAD can open the DXF and save it as DWG when needed.
-
-## API contract
-
-### `POST /api/restore`
-
-Request body:
+`POST /api/restore` accepts:
 
 ```json
 {
   "imageDataUrl": "data:image/jpeg;base64,...",
-  "prompt": "Restore this Egyptian facade while preserving its proportions..."
+  "prompt": "Preserve the facade geometry and restore it with warm limestone...",
+  "mode": "facade"
 }
 ```
 
-Successful response:
+`mode` is optional and accepts `facade` or `cad`. Successful responses are:
 
 ```json
 {
-  "imageDataUrl": "https://cdn.example.com/generated-board.png"
+  "imageDataUrl": "https://provider.example/generated-image.png"
 }
 ```
 
-The client also accepts a compressed fallback such as:
+The route is implemented in `app/api/restore/route.ts` and shares validation, rate limiting, prompt selection, OpenRouter fallback handling, image extraction, and Sharp output trimming with the compatibility adapter in `api/restore.ts`. The browser never receives the OpenRouter key.
 
-```json
-{
-  "imageDataUrl": "data:image/jpeg;base64,..."
-}
+Set the server-only environment variable locally or in Vercel:
+
+```text
+OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
-The API prefers hosted `https://` image URLs. If OpenRouter returns base64 data, `sharp` downsizes and re-encodes the image to keep the response comfortably below the Vercel serverless response limit. The implementation targets a fallback below **2 MB**, protecting against Vercel's approximately **4.5 MB** response ceiling.
-
-### Error responses
-
-Errors are returned as JSON rather than allowing an unhandled gateway failure:
-
-```json
-{
-  "error": "A human-readable explanation"
-}
-```
-
-Common statuses include:
-
-- `400` — invalid method, missing image, malformed data URL, or invalid prompt.
-- `401` — missing or invalid OpenRouter credentials.
-- `402` / `429` — provider credits, quota, or rate-limit issue.
-- `413` — input image is too large.
-- `502` — upstream provider returned an unusable response.
-- `500` — unexpected server-side failure.
+Never commit `.env` or a real key.
 
 ## Local development
 
@@ -171,46 +102,26 @@ Common statuses include:
 - npm.
 - An OpenRouter account and API key for live generation.
 
-### Install
+### Install and run
 
 ```bash
-git clone https://github.com/yusef47/egyptian-ai-facade-center.git
-cd egyptian-ai-facade-center
 npm install
 cp .env.example .env
-```
-
-Set the key in `.env` for local serverless development or in your shell:
-
-```bash
-OPENROUTER_API_KEY=your_openrouter_key_here
-```
-
-Never commit `.env`. The repository's `.gitignore` excludes local environment files.
-
-### Commands
-
-```bash
-# Start Vite development server
 npm run dev
-
-# TypeScript validation
-npm run typecheck
-
-# Run the Vitest suite once
-npm test
-
-# Watch tests during development
-npm run test:watch
-
-# Build the production bundle
-npm run build
-
-# Preview the production bundle
-npm run preview
 ```
 
-Vite serves the local application at the URL printed in the terminal (normally `http://localhost:5173`). For end-to-end serverless testing, use Vercel's local runtime or deploy a preview so `/api/restore` is available alongside the frontend.
+The Next development server prints its local URL, normally `http://localhost:3000`.
+
+### Verification commands
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run start
+```
+
+The test suite covers the original facade/CAD engine contracts, DXF orientation and serialization, local caching and ZIP behavior, Qattan marketing sections, locale direction, slider interaction, studio mode selection, and the shared OpenRouter request boundary.
 
 ## Vercel deployment
 
@@ -218,38 +129,13 @@ The canonical repository is:
 
 - **GitHub:** [yusef47/egyptian-ai-facade-center](https://github.com/yusef47/egyptian-ai-facade-center)
 - **Branch:** `main`
-- **Live app:** [egyptian-ai-facade-center.vercel.app](https://egyptian-ai-facade-center.vercel.app)
+- **Product identity:** Qattan AI / قطان AI
 
-### Configure the environment
+`vercel.json` uses the Next.js framework and preserves the 60-second generation limit for `app/api/restore/route.ts`. Configure `OPENROUTER_API_KEY` in the Vercel Project Settings for Preview and Production before using the live tools.
 
-In Vercel Project Settings → **Environment Variables**, add:
-
-```text
-OPENROUTER_API_KEY=<your key>
-```
-
-Apply it to the environments that need generation: Preview and/or Production. Redeploy after changing environment variables.
-
-`vercel.json` configures the Vite build output and gives the restoration function up to 60 seconds:
-
-```json
-{
-  "framework": "vite",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist/public",
-  "functions": {
-    "api/restore.ts": {
-      "maxDuration": 60
-    }
-  }
-}
-```
-
-A normal release flow is:
+A normal release check is:
 
 ```bash
-git checkout main
-git pull --ff-only origin main
 npm ci
 npm run typecheck
 npm test
@@ -257,78 +143,38 @@ npm run build
 git push origin main
 ```
 
-Vercel then creates a deployment from the updated `main` branch.
+Do not claim a Vercel deployment succeeded unless the hosting provider returns a deployment signal.
 
-## Security and operational notes
+## Safety and professional review
 
-- Keep `OPENROUTER_API_KEY` server-side. The browser must call `/api/restore`, never OpenRouter directly.
-- Do not paste keys into source files, issues, screenshots, commit messages, or README files.
-- Input images are converted to data URLs in the browser and sent only when the user submits the restoration request.
-- Hosted image URLs returned by the provider are rendered as images; the API does not fetch arbitrary user-supplied URLs.
-- The in-memory limiter is best-effort and instance-local. Use an external rate-limit store before operating at national or multi-instance scale.
-- AI outputs can contain visual inaccuracies, invented details, or stylistic artifacts. Preserve the original facade and validate all dimensions, materials, accessibility, heritage constraints, and structural decisions independently.
+- AI images and DXF files are conceptual studies, not construction documents.
+- Verify geometry, dimensions, wall thicknesses, openings, materials, accessibility, heritage constraints, structural decisions, code compliance, and permissions with licensed professionals.
+- The in-memory limiter is best-effort and instance-local; a production multi-instance deployment should use an external rate-limit store.
+- Hosted output URLs are rendered as images; the API does not fetch arbitrary user-supplied URLs.
+- The current preview does not provide authentication, persistence, billing, credit accounting, checkout, DWG generation, or independent inpainting.
 
 ## Project structure
 
 ```text
 .
-├── api/
-│   └── restore.ts                 # Vercel OpenRouter restoration endpoint
-├── client/
-│   └── src/
-│       ├── components/            # Navbar, hero, studio, report and page sections
-│       ├── lib/
-│       │   ├── i18n.tsx           # EN/AR translations and RTL state
-│       │   ├── restore.ts         # Client request/response helper
-│       │   ├── report.ts           # Syndicate report download helpers
-│       │   ├── dxf.ts             # Potrace-to-AC1009 DXF vectorization
-│       │   └── cadExport.ts       # Quadrant cropping and ZIP bundling
-│       ├── pages/                 # Routed application pages
-│       └── index.css               # Global visual system and fonts
-├── tests/                         # Vitest and React Testing Library tests
-├── .env.example                   # Environment variable names only
-├── package.json                   # Scripts and dependencies
-├── vercel.json                    # Vercel build/function configuration
-├── vite.config.ts                 # Vite configuration
-└── vitest.config.ts               # Test configuration
+├── app/
+│   ├── api/restore/route.ts      # Next server-side generation route
+│   ├── ar/page.tsx               # Arabic marketing route
+│   ├── en/page.tsx               # English marketing route
+│   ├── studio/page.tsx           # Unified workspace route
+│   ├── globals.css               # Qattan visual system
+│   └── page.tsx                  # Arabic default route
+├── components/qattan/             # Public site and studio components
+├── client/src/components/         # Preserved tested facade/CAD UI engines
+├── client/src/lib/                # Report, restore, image, DXF, and CAD helpers
+├── api/restore.ts                 # Vercel compatibility adapter
+├── server/openrouter-engine.ts    # Shared server-only OpenRouter implementation
+├── tests/                         # Unit and component regressions
+├── next.config.ts
+├── package.json
+└── vercel.json
 ```
-
-## Troubleshooting
-
-### `OPENROUTER_API_KEY` is missing
-
-Add the variable to the local `.env` file or Vercel Project Settings, then restart the dev server or redeploy. Do not add a literal key to the repository.
-
-### `402` or insufficient credits
-
-The provider accepted the request but the OpenRouter account cannot currently fund it. Check the account credits and model availability at [OpenRouter settings](https://openrouter.ai/settings/credits). This is an account condition, not a frontend build failure.
-
-### `429` or quota exceeded
-
-Wait for the provider window to reset, reduce repeated submissions, or review the OpenRouter account/model limits. The API returns a structured error so the client can display a useful message.
-
-### `413` or payload too large
-
-Use a smaller source image. The client compresses uploads and the server limits input size, while `sharp` optimizes generated base64 output. Hosted image URLs are preferred because they avoid returning the image bytes through the serverless response.
-
-### The UI builds but `/api/restore` is unavailable locally
-
-Vite alone serves the frontend. Run the project through a Vercel-compatible local workflow or use a deployed Preview environment when testing the serverless function.
-
-## Status and responsibility
-
-This repository is an evolving architectural AI prototype and presentation tool. It is not a replacement for measured surveys, conservation approvals, engineering calculations, planning permissions, material specifications, or construction supervision.
-
-The visual identity and product direction honor Egyptian architectural heritage and the collaboration with the Egyptian Engineers Syndicate. Any public deployment should add the project's approved governance, privacy, retention, accessibility, and professional-review policies.
 
 ## License
 
 See [LICENSE](LICENSE) for the repository's license terms.
-
-## Acknowledgements
-
-- Egyptian Center for AI in Architecture & Urbanism — **المركز المصري للذكاء الاصطناعي في العمارة والعمران**.
-- Egyptian Engineers Syndicate — **نقابة المهندسين المصرية**.
-- Committee Chair Dr. Ahmed.
-- OpenRouter and the configured Gemini image-generation model.
-- The open-source React, Vite, Tailwind CSS, Lucide, Vitest, and Sharp communities.

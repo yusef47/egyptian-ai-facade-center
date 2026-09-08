@@ -1,9 +1,8 @@
 {
-  "framework": "vite",
+  "framework": "nextjs",
   "buildCommand": "npm run build",
-  "outputDirectory": "dist/public",
   "functions": {
-    "api/restore.ts": {
+    "app/api/restore/route.ts": {
       "maxDuration": 60
     }
   }

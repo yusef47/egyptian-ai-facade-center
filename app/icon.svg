@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title>Qattan AI</title>
+  <desc>A cobalt Qattan AI mark on a white architectural grid.</desc>
+  <rect width="64" height="64" rx="14" fill="#171717"/>
+  <path d="M12 16h40M12 32h40M12 48h40M16 12v40M32 12v40M48 12v40" stroke="#c5a059" stroke-opacity=".28"/>
+  <path d="M43 18a15 15 0 1 0 0 28M43 18v10H33" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <circle cx="48" cy="47" r="3" fill="#c5a059"/>
+</svg>
