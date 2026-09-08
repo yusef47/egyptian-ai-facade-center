@@ -32,11 +32,11 @@ export function ToolShowcase() {
               <motion.article
                 className="qattan-tool-card"
                 key={tool.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 30, scale: 0.92 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
                 viewport={{ once: true, margin: "-40px" }}
-                transition={{ type: "spring", stiffness: 260, damping: 26, delay: (index % 3) * 0.1 }}
-                whileHover={{ y: -4 }}
+                transition={{ type: "spring", stiffness: 100, damping: 15, delay: (index % 3) * 0.08 }}
+                whileHover={{ y: -6 }}
               >
                 <div className="qattan-tool-card-top">
                   <span className="qattan-status qattan-status-live">
