@@ -1,12 +1,13 @@
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
+import { Reveal } from "./Reveal";
 import { useQattan } from "./QattanProviders";
 
 export function PricingPreview() {
   const { copy } = useQattan();
   return (
     <section id="pricing" className="qattan-section qattan-pricing-section">
-      <div className="qattan-container qattan-pricing-card">
+      <Reveal className="qattan-container qattan-pricing-card">
         <div>
           <p className="qattan-eyebrow">{copy.pricing.eyebrow}</p>
           <h2>{copy.pricing.title}</h2>
@@ -17,7 +18,7 @@ export function PricingPreview() {
           <ul>{copy.pricing.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
           <Link className="qattan-button qattan-button-primary" href="/studio">{copy.pricing.action}<ArrowUpRight size={16} /></Link>
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }

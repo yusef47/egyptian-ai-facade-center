@@ -10,6 +10,7 @@ describe("Qattan marketing page", () => {
     expect(screen.getAllByText(/استوديو التصور المعماري/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /ابدأ الإنشاء|ابدأ/ })).toHaveAttribute("href", "/studio");
     expect(screen.getByRole("heading", { name: /مساحة واحدة/ })).toBeInTheDocument();
-    expect(screen.getAllByText("مخطط").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("متاح الآن").length).toBeGreaterThanOrEqual(8);
+    expect(screen.queryByText("مخطط")).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@
 
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { Reveal } from "./Reveal";
 import { useQattan } from "./QattanProviders";
 
 export function FaqSection() {
@@ -10,10 +11,10 @@ export function FaqSection() {
   return (
     <section className="qattan-section qattan-faq-section">
       <div className="qattan-container qattan-faq-grid">
-        <div className="qattan-section-heading">
+        <Reveal className="qattan-section-heading">
           <p className="qattan-eyebrow">{copy.faq.eyebrow}</p>
           <h2>{copy.faq.title}</h2>
-        </div>
+        </Reveal>
         <div className="qattan-faq-list">
           {copy.faq.items.map((item, index) => (
             <div className="qattan-faq-item" key={item.question}>

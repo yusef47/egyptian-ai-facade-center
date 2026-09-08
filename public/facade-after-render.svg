@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-label="Photorealistic rendering of a restored limestone facade at golden hour">
+  <title>Restored limestone facade at golden hour</title>
+  <defs>
+    <linearGradient id="qDuskSky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131b30"/>
+      <stop offset=".38" stop-color="#3a2f45"/>
+      <stop offset=".62" stop-color="#8a4f3d"/>
+      <stop offset=".8" stop-color="#d98a4a"/>
+      <stop offset=".94" stop-color="#f2b95c"/>
+      <stop offset="1" stop-color="#f7d38a"/>
+    </linearGradient>
+    <radialGradient id="qSunGlow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffe9b0" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#ffc46b" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#ff9d3d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="qLimestone" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c9a97a"/>
+      <stop offset=".22" stop-color="#e8cf9f"/>
+      <stop offset=".55" stop-color="#f2e2b8"/>
+      <stop offset=".8" stop-color="#dcbe8c"/>
+      <stop offset="1" stop-color="#b99466"/>
+    </linearGradient>
+    <linearGradient id="qLimestoneShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2c18" stop-opacity=".38"/>
+      <stop offset=".3" stop-color="#3a2c18" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#2a1f10" stop-opacity=".42"/>
+    </linearGradient>
+    <linearGradient id="qGlassWarm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe2a6"/>
+      <stop offset=".5" stop-color="#f5a94f"/>
+      <stop offset="1" stop-color="#b96a34"/>
+    </linearGradient>
+    <linearGradient id="qGlassDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd98f"/>
+      <stop offset=".55" stop-color="#d98a44"/>
+      <stop offset="1" stop-color="#8a4d26"/>
+    </linearGradient>
+    <linearGradient id="qGround" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a3a24"/>
+      <stop offset="1" stop-color="#191208"/>
+    </linearGradient>
+    <linearGradient id="qPaving" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a744c"/>
+      <stop offset="1" stop-color="#3a2f1c"/>
+    </linearGradient>
+    <g id="qPalm" >
+      <path d="M0 0C-4 -46 -2 -96 2 -128" stroke="#2d2416" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <g fill="#243618">
+        <path d="M2 -128C-40 -150 -78 -146 -108 -122C-66 -128 -34 -124 -2 -112Z"/>
+        <path d="M2 -128C44 -152 84 -148 116 -122C72 -130 38 -124 4 -112Z"/>
+        <path d="M2 -128C-20 -168 -16 -204 6 -232C6 -196 8 -162 8 -128Z"/>
+        <path d="M2 -128C28 -164 60 -182 96 -186C60 -164 30 -142 6 -114Z"/>
+        <path d="M2 -128C-26 -160 -58 -176 -94 -178C-58 -158 -28 -136 -2 -110Z"/>
+        <path d="M2 -128C10 -170 30 -200 62 -218C42 -184 24 -152 6 -118Z"/>
+      </g>
+    </g>
+    <g id="qShrub">
+      <ellipse cx="0" cy="0" rx="58" ry="34" fill="#1d2c14"/>
+      <ellipse cx="-26" cy="-12" rx="34" ry="22" fill="#2a3d1c"/>
+      <ellipse cx="24" cy="-10" rx="30" ry="20" fill="#223318"/>
+      <ellipse cx="0" cy="-22" rx="28" ry="16" fill="#31461f"/>
+    </g>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#qDuskSky)"/>
+  <circle cx="1256" cy="742" r="360" fill="url(#qSunGlow)"/>
+  <circle cx="1256" cy="742" r="46" fill="#ffedb8" opacity=".9"/>
+
+  <g opacity=".34" fill="#1a1626">
+    <path d="M0 620h180v-90h60v90h140v-130h50v130h160v-70h70v70h180v-110h56v110h150v-60h84v60h180v-96h60v96h190v380H0Z"/>
+    <path d="M0 700h240v-60h60v60h180v-84h66v84h200v-52h70v52h210v-70h64v70h210v-44h60v44h200v300H0Z" opacity=".55"/>
+  </g>
+
+  <g>
+    <rect x="240" y="150" width="1120" height="690" fill="url(#qLimestone)"/>
+    <rect x="240" y="150" width="1120" height="690" fill="url(#qLimestoneShade)"/>
+    <rect x="240" y="108" width="1160" height="46" fill="#e6cd9c"/>
+    <rect x="240" y="108" width="1160" height="14" fill="#f7e6bc"/>
+    <rect x="240" y="146" width="1160" height="12" fill="#8a6c42"/>
+    <rect x="228" y="150" width="16" height="690" fill="#caa878"/>
+    <rect x="1356" y="150" width="16" height="690" fill="#caa878"/>
+    <rect x="216" y="96" width="1208" height="18" fill="#7a5f3a"/>
+    <rect x="200" y="84" width="1240" height="16" fill="#5f4a2c"/>
+  </g>
+
+  <g>
+    <rect x="300" y="230" width="1000" height="12" fill="#a8895c" opacity=".8"/>
+    <g>
+      <rect x="330" y="258" width="120" height="150" rx="4" fill="url(#qGlassWarm)"/>
+      <rect x="330" y="258" width="120" height="150" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="386" y="258" width="6" height="150" fill="#6b522f"/>
+      <rect x="500" y="258" width="120" height="150" rx="4" fill="url(#qGlassWarm)"/>
+      <rect x="500" y="258" width="120" height="150" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="556" y="258" width="6" height="150" fill="#6b522f"/>
+      <rect x="670" y="258" width="120" height="150" rx="4" fill="url(#qGlassWarm)"/>
+      <rect x="670" y="258" width="120" height="150" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="726" y="258" width="6" height="150" fill="#6b522f"/>
+      <rect x="840" y="258" width="120" height="150" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="840" y="258" width="120" height="150" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="896" y="258" width="6" height="150" fill="#6b522f"/>
+      <rect x="1010" y="258" width="120" height="150" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="1010" y="258" width="120" height="150" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="1066" y="258" width="6" height="150" fill="#6b522f"/>
+      <rect x="1180" y="258" width="120" height="150" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="1180" y="258" width="120" height="150" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="1236" y="258" width="6" height="150" fill="#6b522f"/>
+    </g>
+    <g fill="#f2e2b8" opacity=".9">
+      <rect x="322" y="408" width="136" height="12"/>
+      <rect x="492" y="408" width="136" height="12"/>
+      <rect x="662" y="408" width="136" height="12"/>
+      <rect x="832" y="408" width="136" height="12"/>
+      <rect x="1002" y="408" width="136" height="12"/>
+      <rect x="1172" y="408" width="136" height="12"/>
+    </g>
+    <g fill="none" stroke="#3a2c18" stroke-width="3" opacity=".55">
+      <path d="M336 470c0-38 24-62 54-62s54 24 54 62v96h-108Z"/>
+      <path d="M506 470c0-38 24-62 54-62s54 24 54 62v96h-108Z"/>
+      <path d="M676 470c0-38 24-62 54-62s54 24 54 62v96h-108Z"/>
+      <path d="M846 470c0-38 24-62 54-62s54 24 54 62v96h-108Z"/>
+      <path d="M1016 470c0-38 24-62 54-62s54 24 54 62v96h-108Z"/>
+      <path d="M1186 470c0-38 24-62 54-62s54 24 54 62v96h-108Z"/>
+    </g>
+    <rect x="300" y="580" width="1000" height="12" fill="#a8895c" opacity=".8"/>
+    <g>
+      <rect x="330" y="608" width="120" height="160" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="330" y="608" width="120" height="160" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="386" y="608" width="6" height="160" fill="#6b522f"/>
+      <rect x="500" y="608" width="120" height="160" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="500" y="608" width="120" height="160" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="556" y="608" width="6" height="160" fill="#6b522f"/>
+      <rect x="670" y="608" width="120" height="160" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="670" y="608" width="120" height="160" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="726" y="608" width="6" height="160" fill="#6b522f"/>
+      <rect x="840" y="608" width="120" height="160" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="840" y="608" width="120" height="160" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="896" y="608" width="6" height="160" fill="#6b522f"/>
+      <rect x="1010" y="608" width="120" height="160" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="1010" y="608" width="120" height="160" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="1066" y="608" width="6" height="160" fill="#6b522f"/>
+      <rect x="1180" y="608" width="120" height="160" rx="4" fill="url(#qGlassDark)"/>
+      <rect x="1180" y="608" width="120" height="160" rx="4" fill="none" stroke="#6b522f" stroke-width="5"/>
+      <rect x="1236" y="608" width="6" height="160" fill="#6b522f"/>
+    </g>
+  </g>
+
+  <rect x="240" y="704" width="1120" height="10" fill="#f2e2b8" opacity=".55"/>
+  <rect x="240" y="714" width="1120" height="126" fill="#caa878"/>
+  <g fill="none" stroke="#b9946a" stroke-width="3" opacity=".7">
+    <path d="M240 750h1120M240 786h1120"/>
+  </g>
+  <g>
+    <rect x="560" y="722" width="480" height="118" rx="6" fill="#3a2a14"/>
+    <rect x="574" y="736" width="452" height="104" rx="4" fill="url(#qGlassWarm)" opacity=".92"/>
+    <rect x="788" y="736" width="12" height="104" fill="#3a2a14"/>
+    <rect x="574" y="784" width="452" height="8" fill="#3a2a14" opacity=".6"/>
+    <rect x="540" y="708" width="16" height="132" fill="#e6cd9c"/>
+    <rect x="1044" y="708" width="16" height="132" fill="#e6cd9c"/>
+    <rect x="532" y="700" width="36" height="12" fill="#f2e2b8"/>
+    <rect x="1032" y="700" width="36" height="12" fill="#f2e2b8"/>
+  </g>
+  <g fill="#ffdf9e">
+    <rect x="360" y="316" width="10" height="14" opacity=".8"/>
+    <rect x="530" y="316" width="10" height="14" opacity=".8"/>
+    <rect x="700" y="316" width="10" height="14" opacity=".8"/>
+    <rect x="1040" y="316" width="10" height="14" opacity=".55"/>
+    <rect x="1210" y="316" width="10" height="14" opacity=".55"/>
+    <rect x="360" y="666" width="10" height="14" opacity=".6"/>
+    <rect x="700" y="666" width="10" height="14" opacity=".6"/>
+    <rect x="1210" y="666" width="10" height="14" opacity=".6"/>
+  </g>
+
+  <rect x="0" y="840" width="1600" height="26" fill="url(#qPaving)"/>
+  <rect x="0" y="866" width="1600" height="134" fill="url(#qGround)"/>
+  <g stroke="#0c0904" stroke-width="2" opacity=".5">
+    <path d="M0 866h1600"/>
+  </g>
+
+  <g>
+    <ellipse cx="330" cy="884" rx="220" ry="34" fill="#0d0a05" opacity=".55"/>
+    <ellipse cx="1270" cy="884" rx="230" ry="36" fill="#0d0a05" opacity=".55"/>
+    <ellipse cx="360" cy="880" rx="190" ry="30" fill="#1c2b12"/>
+    <ellipse cx="1240" cy="880" rx="200" ry="32" fill="#1c2b12"/>
+    <ellipse cx="800" cy="906" rx="420" ry="26" fill="#141008" opacity=".65"/>
+    <path d="M380 880c0-16 190-30 420-30s420 14 420 30z" fill="#6b573a"/>
+    <path d="M380 880c0-10 190-20 420-20s420 10 420 20z" fill="#8a744c"/>
+  </g>
+
+  <g>
+    <use href="#qShrub" x="330" y="872" transform="scale(1.15) translate(-50 -128)"/>
+    <use href="#qShrub" x="1270" y="872" transform="scale(1.2) translate(-220 -132)"/>
+    <use href="#qPalm" x="180" y="866" transform="scale(1.35)"/>
+    <use href="#qPalm" x="1420" y="866" transform="scale(1.3) scale(-1 1) translate(-1600 0)"/>
+  </g>
+
+  <g fill="#ffe6ad">
+    <ellipse cx="470" cy="852" rx="5" ry="3.4"/>
+    <ellipse cx="500" cy="846" rx="4" ry="2.6"/>
+    <ellipse cx="530" cy="852" rx="5" ry="3.2"/>
+    <ellipse cx="1080" cy="848" rx="5" ry="3.2"/>
+    <ellipse cx="1110" cy="842" rx="4" ry="2.6"/>
+    <ellipse cx="1140" cy="850" rx="5" ry="3.4"/>
+  </g>
+
+  <rect width="1600" height="1000" fill="#1a120a" opacity=".08"/>
+  <rect width="1600" height="1000" fill="url(#qSunGlow)" opacity=".18" transform="translate(0 -80)"/>
+</svg>

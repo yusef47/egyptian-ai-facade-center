@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-label="Architectural blueprint line drawing of a Khedivial facade">
+  <title>Blueprint line drawing of a Khedivial facade</title>
+  <defs>
+    <pattern id="qattanBlueprintGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0v40" fill="none" stroke="#3a4258" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <pattern id="qattanBlueprintGridFine" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M8 0H0v8" fill="none" stroke="#313a4e" stroke-width=".6" opacity=".5"/>
+    </pattern>
+  </defs>
+  <rect width="1600" height="1000" fill="#10141f"/>
+  <rect width="1600" height="1000" fill="url(#qattanBlueprintGrid)"/>
+  <rect width="1600" height="1000" fill="url(#qattanBlueprintGridFine)"/>
+  <g fill="none" stroke="#d9c9a3" stroke-width="3" stroke-linecap="round">
+    <rect x="200" y="180" width="1200" height="640"/>
+    <line x1="200" y1="280" x2="1400" y2="280"/>
+    <line x1="200" y1="400" x2="1400" y2="400"/>
+    <line x1="200" y1="540" x2="1400" y2="540"/>
+    <line x1="200" y1="690" x2="1400" y2="690"/>
+    <rect x="200" y="140" width="1200" height="40"/>
+    <path d="M180 140h1240" stroke-width="6"/>
+    <path d="M240 140v-38h1120v38" stroke-width="5"/>
+    <path d="M230 102h1140l-60 -26H290z" stroke-width="5"/>
+  </g>
+  <g fill="none" stroke="#d9c9a3" stroke-width="2.4">
+    <rect x="250" y="308" width="130" height="64" rx="3"/>
+    <rect x="430" y="308" width="130" height="64" rx="3"/>
+    <rect x="610" y="308" width="130" height="64" rx="3"/>
+    <rect x="790" y="308" width="130" height="64" rx="3"/>
+    <rect x="970" y="308" width="130" height="64" rx="3"/>
+    <rect x="1150" y="308" width="130" height="64" rx="3"/>
+    <rect x="250" y="428" width="130" height="66" rx="3"/>
+    <rect x="430" y="428" width="130" height="66" rx="3"/>
+    <rect x="610" y="428" width="130" height="66" rx="3"/>
+    <rect x="790" y="428" width="130" height="66" rx="3"/>
+    <rect x="970" y="428" width="130" height="66" rx="3"/>
+    <rect x="1150" y="428" width="130" height="66" rx="3"/>
+    <rect x="250" y="568" width="130" height="72" rx="3"/>
+    <rect x="430" y="568" width="130" height="72" rx="3"/>
+    <rect x="610" y="568" width="130" height="72" rx="3"/>
+    <rect x="790" y="568" width="130" height="72" rx="3"/>
+    <rect x="970" y="568" width="130" height="72" rx="3"/>
+    <rect x="1150" y="568" width="130" height="72" rx="3"/>
+  </g>
+  <g fill="none" stroke="#d9c9a3" stroke-width="2.4">
+    <path d="M250 690h130" stroke-width="4"/>
+    <path d="M430 690h130" stroke-width="4"/>
+    <path d="M610 690h130" stroke-width="4"/>
+    <path d="M790 690h130" stroke-width="4"/>
+    <path d="M970 690h130" stroke-width="4"/>
+    <path d="M1150 690h130" stroke-width="4"/>
+    <path d="M262 690v-96a53 53 0 0 1 106 0v96"/>
+    <path d="M442 690v-96a53 53 0 0 1 106 0v96"/>
+    <path d="M622 690v-96a53 53 0 0 1 106 0v96"/>
+    <path d="M802 690v-96a53 53 0 0 1 106 0v96"/>
+    <path d="M982 690v-96a53 53 0 0 1 106 0v96"/>
+    <path d="M1162 690v-96a53 53 0 0 1 106 0v96"/>
+  </g>
+  <g fill="none" stroke="#8fa3c8" stroke-width="1.6" opacity=".9">
+    <path d="M240 300h150M240 330h150M240 360h150" opacity=".4"/>
+    <path d="M420 420h150M420 450h150M420 480h150" opacity=".4"/>
+    <path d="M960 700h160M960 730h160" opacity=".4"/>
+  </g>
+  <g stroke="#7d8fb0" stroke-width="1.4" opacity=".8">
+    <line x1="170" y1="280" x2="130" y2="280"/>
+    <line x1="170" y1="400" x2="130" y2="400"/>
+    <line x1="170" y1="540" x2="130" y2="540"/>
+    <line x1="170" y1="690" x2="130" y2="690"/>
+    <line x1="150" y1="280" x2="150" y2="690"/>
+    <line x1="150" y1="280" x2="142" y2="288"/>
+    <line x1="150" y1="280" x2="158" y2="288"/>
+    <line x1="150" y1="690" x2="142" y2="682"/>
+    <line x1="150" y1="690" x2="158" y2="682"/>
+  </g>
+  <g fill="none" stroke="#d9c9a3" stroke-width="2" opacity=".85">
+    <rect x="760" y="80" width="120" height="34" rx="4"/>
+    <path d="M775 97h90" stroke-width="1.4" opacity=".7"/>
+    <path d="M775 90h90" stroke-width="1.4" opacity=".7"/>
+  </g>
+  <g fill="none" stroke="#d9c9a3" stroke-width="1.4" opacity=".5">
+    <path d="M1450 180v640M1450 180h14M1450 820h-14"/>
+    <path d="M1464 180h26M1464 820h26"/>
+  </g>
+</svg>

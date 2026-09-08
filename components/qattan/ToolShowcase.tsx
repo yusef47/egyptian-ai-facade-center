@@ -1,6 +1,19 @@
-import { ArrowUpRight, Check, Clock3 } from "lucide-react";
+import { ArrowUpRight, Building2, Check, Compass, Landmark, Layers, Map, Quote, TreePalm, Wand2 } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { useQattan } from "./QattanProviders";
+import type { ToolId } from "@tools/registry";
+
+const TOOL_ICONS: Record<ToolId, typeof Compass> = {
+  exterior: Landmark,
+  interior: Building2,
+  sketch: Quote,
+  masterplan: Map,
+  landscape: TreePalm,
+  staging: Layers,
+  enhancer: Wand2,
+  floorplan: Compass,
+};
 
 export function ToolShowcase() {
   const { copy } = useQattan();
@@ -13,21 +26,32 @@ export function ToolShowcase() {
           <p>{copy.tools.description}</p>
         </div>
         <div className="qattan-tool-grid">
-          {copy.tools.items.map((tool) => {
-            const live = tool.status === "live";
+          {copy.tools.items.map((tool, index) => {
+            const Icon = TOOL_ICONS[tool.id as ToolId] ?? Compass;
             return (
-              <article className={`qattan-tool-card ${live ? "qattan-tool-card-live" : ""}`} key={tool.id}>
+              <motion.article
+                className="qattan-tool-card"
+                key={tool.id}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ type: "spring", stiffness: 260, damping: 26, delay: (index % 3) * 0.1 }}
+                whileHover={{ y: -4 }}
+              >
                 <div className="qattan-tool-card-top">
-                  <span className={`qattan-status ${live ? "qattan-status-live" : "qattan-status-planned"}`}>
-                    {live ? <Check size={12} /> : <Clock3 size={12} />}
-                    {live ? copy.tools.live : copy.tools.planned}
+                  <span className="qattan-status qattan-status-live">
+                    <Check size={12} />
+                    {copy.tools.live}
                   </span>
-                  <span className="qattan-tool-index">{String(copy.tools.items.indexOf(tool) + 1).padStart(2, "0")}</span>
+                  <span className="qattan-tool-index">{String(index + 1).padStart(2, "0")}</span>
+                </div>
+                <div className="qattan-tool-thumb" aria-hidden="true">
+                  <Icon size={26} strokeWidth={1.6} />
                 </div>
                 <h3>{tool.title}</h3>
                 <p>{tool.description}</p>
                 <Link className="qattan-tool-link" href={tool.href}>{copy.tools.open}<ArrowUpRight size={14} /></Link>
-              </article>
+              </motion.article>
             );
           })}
         </div>
