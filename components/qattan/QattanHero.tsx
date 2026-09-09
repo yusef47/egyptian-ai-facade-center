@@ -111,11 +111,11 @@ function BlueprintLines() {
       aria-hidden="true"
     >
       <g fill="none" strokeWidth="1.2" opacity=".5">
-        <path className="qattan-blueprint-line" stroke="#4a6fb0" d="M40 520 H760" />
-        <path className="qattan-blueprint-line" stroke="#4a6fb0" d="M120 460 H680 V420 H200" />
-        <path className="qattan-blueprint-line qattan-blueprint-line-slow" stroke="#c5a059" d="M80 120 H400 V80 H720" />
-        <path className="qattan-blueprint-line qattan-blueprint-line-slow" stroke="#4a6fb0" d="M640 200 V330 H540" />
-        <path className="qattan-blueprint-line" stroke="#c5a059" d="M60 260 H180 V340" />
+        <path className="qattan-blueprint-line" stroke="#d4af37" d="M40 520 H760" />
+        <path className="qattan-blueprint-line" stroke="#d4af37" d="M120 460 H680 V420 H200" />
+        <path className="qattan-blueprint-line qattan-blueprint-line-slow" stroke="#e5c158" d="M80 120 H400 V80 H720" />
+        <path className="qattan-blueprint-line qattan-blueprint-line-slow" stroke="#d4af37" d="M640 200 V330 H540" />
+        <path className="qattan-blueprint-line" stroke="#e5c158" d="M60 260 H180 V340" />
       </g>
     </svg>
   );
