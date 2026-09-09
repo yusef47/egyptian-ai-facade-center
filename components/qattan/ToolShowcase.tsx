@@ -8,6 +8,18 @@ import { TOOL_ICONS } from "./toolIcons";
 import ToolPreviewModal from "./ToolPreviewModal";
 import type { ToolId } from "@tools/registry";
 
+/** Real HD preview clip + poster per tool id. */
+const TOOL_PREVIEWS: Record<ToolId, { video: string; poster: string }> = {
+  exterior: { video: "/videos/tool-exterior.mp4", poster: "/poster-exterior.jpg" },
+  interior: { video: "/videos/tool-interior.mp4", poster: "/poster-interior.jpg" },
+  sketch: { video: "/videos/tool-sketch.mp4", poster: "/poster-sketch.jpg" },
+  masterplan: { video: "/videos/tool-masterplan.mp4", poster: "/poster-masterplan.jpg" },
+  landscape: { video: "/videos/tool-landscape.mp4", poster: "/poster-landscape.jpg" },
+  staging: { video: "/videos/tool-staging.mp4", poster: "/poster-staging.jpg" },
+  enhancer: { video: "/videos/tool-enhancer.mp4", poster: "/poster-enhancer.jpg" },
+  floorplan: { video: "/videos/tool-floorplan.mp4", poster: "/poster-floorplan.jpg" },
+};
+
 export function ToolShowcase() {
   const { copy, locale } = useQattan();
   return (
@@ -55,8 +67,8 @@ export function ToolShowcase() {
                   <ToolPreviewModal
                     title={tool.title}
                     description={tool.description}
-                    previewSrc="/facade-after-render.svg"
-                    extraFrames={["/facade-before-blueprint.svg"]}
+                    poster={TOOL_PREVIEWS[tool.id as ToolId]?.poster ?? "/poster-exterior.jpg"}
+                    videoSrc={TOOL_PREVIEWS[tool.id as ToolId]?.video}
                   >
                     <span className="qattan-preview-chip">
                       <Play size={13} aria-hidden="true" /> {copy.tools.preview}

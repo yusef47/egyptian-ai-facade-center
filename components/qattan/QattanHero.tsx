@@ -239,8 +239,8 @@ export function QattanHero() {
             <BeforeAfterSlider
               beforeLabel={copy.proof.before}
               afterLabel={copy.proof.after}
-              beforeSrc="/facade-before-blueprint.svg"
-              afterSrc="/facade-after-render.svg"
+              beforeSrc="/hero-before-sketch.jpg"
+              afterSrc="/hero-after-villa.jpg"
             />
           </div>
         </motion.div>

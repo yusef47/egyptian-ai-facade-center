@@ -83,20 +83,25 @@ export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, 
     <div className="qattan-comparison" data-before-after="true">
       <div className="qattan-comparison-canvas" aria-hidden="true">
         {scanning && <span className="qattan-laser-scan" style={{ left: `${value}%` }} />}
-        <div className="qattan-architecture-scene qattan-scene-before">
-          <div className="qattan-scene-sky" />
-          <div className="qattan-scene-ground" />
-          <div className="qattan-building qattan-building-wire">
-            <span /><span /><span /><span /><span /><span />
-          </div>
-        </div>
-        <div className="qattan-architecture-scene qattan-scene-after" style={{ clipPath: `inset(0 0 0 ${value}%)` }}>
-          <div className="qattan-scene-sky" />
-          <div className="qattan-scene-ground" />
-          <div className="qattan-building qattan-building-render">
-            <span /><span /><span /><span /><span /><span />
-          </div>
-        </div>
+        {/* Vector fallback scenes render only when no real imagery is provided. */}
+        {!beforeSrc && !afterSrc && (
+          <>
+            <div className="qattan-architecture-scene qattan-scene-before">
+              <div className="qattan-scene-sky" />
+              <div className="qattan-scene-ground" />
+              <div className="qattan-building qattan-building-wire">
+                <span /><span /><span /><span /><span /><span />
+              </div>
+            </div>
+            <div className="qattan-architecture-scene qattan-scene-after" style={{ clipPath: `inset(0 0 0 ${value}%)` }}>
+              <div className="qattan-scene-sky" />
+              <div className="qattan-scene-ground" />
+              <div className="qattan-building qattan-building-render">
+                <span /><span /><span /><span /><span /><span />
+              </div>
+            </div>
+          </>
+        )}
         {beforeSrc ? <img className="qattan-comparison-source qattan-comparison-before-image" src={beforeSrc} alt="" /> : null}
         {afterSrc ? <img className="qattan-comparison-source qattan-comparison-after-image" src={afterSrc} alt="" style={{ clipPath: `inset(0 0 0 ${value}%)` }} /> : null}
         <span className="qattan-comparison-label qattan-comparison-label-before">{beforeLabel}</span>

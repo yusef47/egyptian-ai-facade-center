@@ -214,7 +214,7 @@ describe("Refinement 4 — Luxury showreel and tool preview modals", () => {
 
   it("shows the Arabic showreel caption in Arabic locale", () => {
     render(<QattanMarketingPage locale="ar" />);
-    expect(screen.getByText("من اسكتش يدوي…")).toBeInTheDocument();
+    expect(screen.getByText("من واجهة مرسومة يدوياً…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "إيقاف العرض" })).toBeInTheDocument();
   });
 
@@ -225,11 +225,20 @@ describe("Refinement 4 — Luxury showreel and tool preview modals", () => {
 
     fireEvent.click(triggers[0]);
     const dialog = screen.getByRole("dialog");
-    expect(dialog.querySelectorAll("img.qattan-preview-frame").length).toBeGreaterThanOrEqual(1);
+    const video = dialog.querySelector("video.qattan-preview-video");
+    expect(video).not.toBeNull();
+    // React applies `muted` as a DOM property rather than a serialized attribute.
+    expect((video as HTMLVideoElement).muted).toBe(true);
+    expect(video).toHaveAttribute("loop");
+    expect(video).toHaveAttribute("poster");
 
-    // Play/pause inside the modal stage.
-    fireEvent.click(within(dialog).getByRole("button", { name: /preview playing/i }));
+    // Play/pause inside the modal stage. The modal opens with playback on,
+    // so the first click pauses and the second resumes.
+    const stage = within(dialog).getByRole("button", { name: /preview (playing|paused)/i });
+    fireEvent.click(stage);
     expect(within(dialog).getByRole("button", { name: /preview paused/i })).toBeInTheDocument();
+    fireEvent.click(stage);
+    expect(within(dialog).getByRole("button", { name: /preview playing/i })).toBeInTheDocument();
 
     // Escape closes.
     fireEvent.keyDown(document, { key: "Escape" });

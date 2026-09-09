@@ -43,8 +43,8 @@ function ProofSection() {
             <BeforeAfterSlider
               beforeLabel={copy.proof.before}
               afterLabel={copy.proof.after}
-              beforeSrc="/facade-before-blueprint.svg"
-              afterSrc="/facade-after-render.svg"
+              beforeSrc="/proof-before-sketch.jpg"
+              afterSrc="/proof-after-villa.jpg"
             />
           </Reveal>
           <Reveal className="qattan-proof-card">
@@ -52,8 +52,8 @@ function ProofSection() {
             <BeforeAfterSlider
               beforeLabel={copy.proof.before}
               afterLabel={copy.proof.after}
-              beforeSrc="/facade-before-blueprint.svg"
-              afterSrc="/facade-after-render.svg"
+              beforeSrc="/hero-before-sketch.jpg"
+              afterSrc="/hero-after-villa.jpg"
             />
           </Reveal>
         </div>

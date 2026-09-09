@@ -2,56 +2,44 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Pause, Play } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQattan } from "./QattanProviders";
 
 type ShowreelScene = {
   src: string;
+  poster: string;
   caption: { en: string; ar: string };
-  alt: { en: string; ar: string };
-  reverse?: boolean;
 };
 
 const SCENES: ShowreelScene[] = [
   {
-    src: "/facade-before-blueprint.svg",
-    caption: { en: "From a hand sketch…", ar: "من اسكتش يدوي…" },
-    alt: {
-      en: "Architectural blueprint line drawing of a building elevation",
-      ar: "رسم معماري خطي لواجهة مبنى",
-    },
+    src: "/videos/reel-sketch.mp4",
+    poster: "/hero-before-sketch.jpg",
+    caption: { en: "From a hand-drawn elevation…", ar: "من واجهة مرسومة يدوياً…" },
   },
   {
-    src: "/facade-after-render.svg",
+    src: "/videos/reel-villa.mp4",
+    poster: "/hero-after-villa.jpg",
     caption: { en: "…to an 8K golden-hour render", ar: "…إلى رندر 8K في الساعة الذهبية" },
-    alt: {
-      en: "Photorealistic rendering of a restored limestone facade at golden hour",
-      ar: "رندر واقعي لواجهة حجر جيري مرممة في الساعة الذهبية",
-    },
-    reverse: true,
   },
   {
-    src: "/facade-after-render.svg",
+    src: "/videos/reel-night.mp4",
+    poster: "/hero-night-pool.jpg",
     caption: { en: "Qattan Gemini Engine · Night 2700K", ar: "محرك قطان Gemini · ليلي 2700 كلفن" },
-    alt: {
-      en: "Cinematic night render of a luxury facade under warm 2700K lighting",
-      ar: "رندر سينمائي ليلي لواجهة فاخرة بإضاءة دافئة 2700 كلفن",
-    },
-    reverse: true,
   },
 ];
 
-const SCENE_DURATION_MS = 4600;
+const SCENE_DURATION_MS = 5200;
 const REEL_COPY = {
-  en: { play: "Play showreel", pause: "Pause showreel", label: "Qattan showreel" },
-  ar: { play: "تشغيل العرض", pause: "إيقاف العرض", label: "عرض قطان" },
+  en: { play: "Play showreel", pause: "Pause showreel", label: "Qattan architectural showreel" },
+  ar: { play: "تشغيل العرض", pause: "إيقاف العرض", label: "العرض المعماري لقطان" },
 } as const;
 
 /**
- * Renderforest-style luxury motion container: a silent, looping cinematic
- * showreel built from the architectural artwork with slow ken-burns pans,
- * gold letterboxing, and scene captions. Fully client-side — no video asset
- * required — and pauses cleanly for prefers-reduced-motion visitors.
+ * Real cinematic showreel in the hero: three muted, auto-looping HD
+ * architectural clips cross-fade on a timer with gold letterboxing and
+ * bilingual captions. Every clip pauses with the master toggle, and the
+ * whole reel is static-friendly for prefers-reduced-motion visitors.
  */
 export default function HeroShowreel({ powered }: { powered: string }) {
   const { locale } = useQattan();
@@ -59,6 +47,7 @@ export default function HeroShowreel({ powered }: { powered: string }) {
   const reduceMotion = useReducedMotion() ?? false;
   const [playing, setPlaying] = useState(true);
   const [sceneIndex, setSceneIndex] = useState(0);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   const scene = SCENES[sceneIndex] ?? SCENES[0];
 
@@ -69,6 +58,18 @@ export default function HeroShowreel({ powered }: { powered: string }) {
     }, SCENE_DURATION_MS);
     return () => window.clearInterval(timer);
   }, [playing, reduceMotion]);
+
+  // Keep every clip's play state in sync with the master toggle.
+  useEffect(() => {
+    for (const video of videoRefs.current) {
+      if (!video) continue;
+      if (playing && !reduceMotion) {
+        if (typeof video.play === "function") void Promise.resolve(video.play()).catch(() => undefined);
+      } else {
+        video.pause?.();
+      }
+    }
+  }, [playing, reduceMotion, sceneIndex]);
 
   const togglePlayback = useCallback(() => {
     setPlaying((current) => !current);
@@ -90,13 +91,18 @@ export default function HeroShowreel({ powered }: { powered: string }) {
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 1.1, ease: "easeInOut" }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <video
+              ref={(element) => {
+                videoRefs.current[sceneIndex] = element;
+              }}
+              className="qattan-reel-video"
               src={scene.src}
-              alt=""
-              className={`qattan-reel-img ${scene.reverse ? "qattan-reel-img-reverse" : ""}`}
-              style={{ animationPlayState: playing && !reduceMotion ? "running" : "paused" }}
-              draggable={false}
+              poster={scene.poster}
+              autoPlay={playing && !reduceMotion}
+              muted
+              loop
+              playsInline
+              preload="auto"
             />
           </motion.div>
         </AnimatePresence>
@@ -118,7 +124,7 @@ export default function HeroShowreel({ powered }: { powered: string }) {
         <div className="qattan-reel-progress" aria-hidden="true">
           {SCENES.map((entry, index) => (
             <span
-              key={entry.caption.en}
+              key={entry.src}
               className={`qattan-reel-progress-dot ${index === sceneIndex ? "qattan-reel-progress-dot-active" : ""}`}
             />
           ))}
@@ -137,9 +143,7 @@ export default function HeroShowreel({ powered }: { powered: string }) {
         <span className="qattan-hero-powered-dot" aria-hidden="true" />
         {powered}
       </span>
-      {/* Preload both artwork frames so scene changes never flash empty. */}
-      <link rel="preload" as="image" href="/facade-before-blueprint.svg" />
-      <link rel="preload" as="image" href="/facade-after-render.svg" />
+      <link rel="preload" as="video" href={SCENES[0].src} />
     </div>
   );
 }

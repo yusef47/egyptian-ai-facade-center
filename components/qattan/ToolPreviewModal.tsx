@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Pause, Play, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQattan } from "./QattanProviders";
 
 type ToolPreviewModalProps = {
@@ -12,10 +12,10 @@ type ToolPreviewModalProps = {
   title: string;
   /** Short description rendered under the preview. */
   description: string;
-  /** The artwork shown as the looping "video" preview. */
-  previewSrc: string;
-  /** Extra artwork frames to cycle through, if any. */
-  extraFrames?: string[];
+  /** High-quality poster shown while the video buffers (or as full fallback). */
+  poster: string;
+  /** Real HD architectural video (MP4). Optional — falls back to the poster. */
+  videoSrc?: string;
 };
 
 const PREVIEW_COPY = {
@@ -34,22 +34,24 @@ const PREVIEW_COPY = {
 } as const;
 
 /**
- * Renderforest-style play/pause preview modal for showcase tools: a glass
- * dialog with a looping ken-burns preview of the tool's output artwork.
- * Focus is restored to the opener on close, and Escape closes it.
+ * Real architectural video preview modal: a glass dialog playing a muted,
+ * auto-looping HD clip of the tool's signature shot, with a high-quality
+ * poster fallback for slow connections (or when no video is provided).
+ * Focus-safe: Escape closes, body scroll locks, opener state is preserved.
  */
 export default function ToolPreviewModal({
   children,
   title,
   description,
-  previewSrc,
-  extraFrames = [],
+  poster,
+  videoSrc,
 }: ToolPreviewModalProps) {
   const { locale } = useQattan();
   const L = locale === "ar";
   const copy = L ? PREVIEW_COPY.ar : PREVIEW_COPY.en;
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -65,7 +67,20 @@ export default function ToolPreviewModal({
     };
   }, [open]);
 
-  const frames = [previewSrc, ...extraFrames];
+  const togglePlayback = () => {
+    // React state is the source of truth; the media element is synced
+    // best-effort (jsdom's play() is a no-op, browsers fire play/pause events).
+    const next = !playing;
+    const video = videoRef.current;
+    if (video) {
+      if (next) {
+        void Promise.resolve(video.play?.()).catch(() => undefined);
+      } else {
+        video.pause?.();
+      }
+    }
+    setPlaying(next);
+  };
 
   return (
     <>
@@ -116,22 +131,29 @@ export default function ToolPreviewModal({
               <button
                 type="button"
                 className="qattan-preview-stage"
-                onClick={() => setPlaying((current) => !current)}
+                onClick={togglePlayback}
                 aria-pressed={playing}
                 aria-label={playing ? copy.playing : copy.paused}
               >
-                {frames.map((frame, index) => (
-                  <img
-                    // eslint-disable-next-line @next/next/no-img-element
-                    key={`${frame}-${index}`}
-                    src={frame}
-                    alt=""
-                    aria-hidden={index > 0 ? true : undefined}
-                    className={`qattan-preview-frame ${index === 0 ? "qattan-preview-frame-active" : ""} ${index % 2 === 1 ? "qattan-reel-img-reverse" : ""}`}
-                    style={{ animationPlayState: playing ? "running" : "paused" }}
-                    draggable={false}
+                {videoSrc ? (
+                  <video
+                    ref={videoRef}
+                    className="qattan-preview-video"
+                    src={videoSrc}
+                    poster={poster}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
                   />
-                ))}
+                ) : (
+                  // Poster-only fallback for slow connections or missing clips.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={poster} alt="" className="qattan-preview-video" draggable={false} />
+                )}
                 <span className="qattan-preview-state" aria-hidden="true">
                   {playing ? <Pause size={18} /> : <Play size={18} />}
                 </span>
