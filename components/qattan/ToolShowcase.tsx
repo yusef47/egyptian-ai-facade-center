@@ -1,10 +1,11 @@
-import { ArrowUpRight, Check, Compass } from "lucide-react";
+import { ArrowUpRight, Check, Compass, Play } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { TiltCard } from "./TiltCard";
 import { useQattan } from "./QattanProviders";
 import { qattanLocaleHref } from "./QattanProviders";
 import { TOOL_ICONS } from "./toolIcons";
+import ToolPreviewModal from "./ToolPreviewModal";
 import type { ToolId } from "@tools/registry";
 
 export function ToolShowcase() {
@@ -40,7 +41,8 @@ export function ToolShowcase() {
                 </div>
                 <div className="qattan-tool-thumb" aria-hidden="true">
                   <Icon size={26} strokeWidth={1.6} />
-                </div>                <h3>{tool.title}</h3>
+                </div>
+                <h3>{tool.title}</h3>
                   <p>{tool.description}</p>
                   <ul className="qattan-tool-features">
                     {(tool as { features?: string[] }).features?.map((feature) => (
@@ -50,6 +52,16 @@ export function ToolShowcase() {
                       </li>
                     ))}
                   </ul>
+                  <ToolPreviewModal
+                    title={tool.title}
+                    description={tool.description}
+                    previewSrc="/facade-after-render.svg"
+                    extraFrames={["/facade-before-blueprint.svg"]}
+                  >
+                    <span className="qattan-preview-chip">
+                      <Play size={13} aria-hidden="true" /> {copy.tools.preview}
+                    </span>
+                  </ToolPreviewModal>
                   <Link className="qattan-tool-link" href={toolHref}>{copy.tools.open}<ArrowUpRight size={14} /></Link>
                 </motion.article>
               </TiltCard>

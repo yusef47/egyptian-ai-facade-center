@@ -41,6 +41,28 @@ export type ToolPromptMode = "facade" | "cad" | "general";
 
 export type ToolControlType = "select" | "multi";
 
+/** Output presentation modes selectable per generation in the studio. */
+export type OutputPresentation = "single" | "gallery" | "triptych";
+
+export const OUTPUT_PRESENTATIONS: OutputPresentation[] = ["single", "gallery", "triptych"];
+
+export const OUTPUT_PRESENTATION_LABELS: Record<OutputPresentation, { en: string; ar: string }> = {
+  single: { en: "Single image", ar: "صورة فردية واحدة" },
+  gallery: { en: "3 gallery cards", ar: "3 صور منفصلة" },
+  triptych: { en: "Triptych board", ar: "لوحة ثلاثية مدمجة" },
+};
+
+/** Appended to the brief when the user requests the combined 3-panel board. */
+export const TRIPTYCH_DIRECTIVE =
+  "Present the final result as ONE cohesive ultra-wide 3-panel triptych presentation board with a 3:1 width-to-height ratio: three side-by-side panels of the same scene separated by thin elegant gold borders, each panel occupying exactly one-third of the total width at full render quality.";
+
+/** Per-card variation hints for the 3-separate-cards gallery mode. */
+export const GALLERY_VARIATION_DIRECTIVES = [
+  "Design variation 1 of 3: a bold, expressive interpretation of the brief.",
+  "Design variation 2 of 3: an alternative material and massing interpretation of the brief.",
+  "Design variation 3 of 3: a refined, restrained interpretation of the brief.",
+] as const;
+
 export type ToolOption = { value: string; label: { en: string; ar: string } };
 
 export type ToolGuide = {
@@ -103,6 +125,22 @@ export const FACADE_GUIDE: ToolGuide = {
 const opts = (...triples: [string, string, string][]): ToolOption[] =>
   triples.map(([value, en, ar]) => ({ value, label: { en, ar } }));
 
+/**
+ * Dr. Ahmed's "complete design freedom" option: every dropdown carries a
+ * None (Custom Prompt) choice at index 0. Selecting it omits that preset
+ * constraint from the assembled prompt so the user's written brief alone
+ * drives the design.
+ */
+export const NONE_OPTION: ToolOption = {
+  value: "none",
+  label: { en: "None (Custom Prompt)", ar: "بدون (حسب النص المكتوب)" },
+};
+
+const selectOpts = (...triples: [string, string, string][]): ToolOption[] => [
+  NONE_OPTION,
+  ...opts(...triples),
+];
+
 export const QATTAN_TOOLS: QattanTool[] = [
   {
     id: "exterior",
@@ -130,9 +168,9 @@ export const QATTAN_TOOLS: QattanTool[] = [
       },
     },
     controls: [
-      { id: "exteriorStyle", type: "select", label: { en: "Style preset", ar: "الطراز المعماري" }, options: opts(["Modern", "Modern", "حديث"], ["Neoclassical", "Neoclassical", "نيوكلاسيكي"], ["Mediterranean", "Mediterranean", "متوسطي"], ["Brutalist", "Brutalist", "وحشي"], ["Parametric", "Parametric", "بارامتري"]) },
-      { id: "exteriorLighting", type: "select", label: { en: "Lighting", ar: "الإضاءة" }, options: opts(["Daylight", "Daylight", "ضوء النهار"], ["Golden Hour", "Golden Hour", "الساعة الذهبية"], ["Night 2700K", "Night 2700K", "ليلي 2700 كلفن"], ["Overcast", "Overcast", "غائم"]) },
-      { id: "exteriorMaterial", type: "select", label: { en: "Material palette", ar: "لوحة الخامات" }, options: opts(["Limestone", "Limestone", "حجر جيري"], ["Glass", "Glass", "زجاج"], ["Concrete", "Concrete", "خرسانة"], ["Wood", "Wood", "خشب"]) },
+      { id: "exteriorStyle", type: "select", label: { en: "Style preset", ar: "الطراز المعماري" }, options: selectOpts(["Modern", "Modern", "حديث"], ["Neoclassical", "Neoclassical", "نيوكلاسيكي"], ["Mediterranean", "Mediterranean", "متوسطي"], ["Brutalist", "Brutalist", "وحشي"], ["Parametric", "Parametric", "بارامتري"]) },
+      { id: "exteriorLighting", type: "select", label: { en: "Lighting", ar: "الإضاءة" }, options: selectOpts(["Daylight", "Daylight", "ضوء النهار"], ["Golden Hour", "Golden Hour", "الساعة الذهبية"], ["Night 2700K", "Night 2700K", "ليلي 2700 كلفن"], ["Overcast", "Overcast", "غائم"]) },
+      { id: "exteriorMaterial", type: "select", label: { en: "Material palette", ar: "لوحة الخامات" }, options: selectOpts(["Limestone", "Limestone", "حجر جيري"], ["Glass", "Glass", "زجاج"], ["Concrete", "Concrete", "خرسانة"], ["Wood", "Wood", "خشب"]) },
     ],
   },
   {
@@ -161,9 +199,9 @@ export const QATTAN_TOOLS: QattanTool[] = [
       },
     },
     controls: [
-      { id: "interiorRoom", type: "select", label: { en: "Room type", ar: "نوع الفراغ" }, options: opts(["Living Room", "Living Room", "غرفة معيشة"], ["Bedroom", "Bedroom", "غرفة نوم"], ["Kitchen", "Kitchen", "مطبخ"], ["Bathroom", "Bathroom", "حمام"], ["Office", "Office", "مكتب"], ["Restaurant", "Restaurant", "مطعم"]) },
-      { id: "interiorStyle", type: "select", label: { en: "Design style", ar: "طراز التصميم" }, options: opts(["Modern Luxury", "Modern Luxury", "فخامة حديثة"], ["Japandi", "Japandi", "جاباندي"], ["Scandinavian", "Scandinavian", "إسكندنافي"], ["Industrial", "Industrial", "صناعي"], ["Boho", "Boho", "بوهيمي"], ["Art Deco", "Art Deco", "آرت ديكو"], ["Minimalist", "Minimalist", "مينيمالي"]) },
-      { id: "interiorMood", type: "select", label: { en: "Color mood", ar: "المزاج اللوني" }, options: opts(["Warm Neutrals", "Warm Neutrals", "محايدات دافئة"], ["Cool Tones", "Cool Tones", "درجات باردة"], ["Bold Colors", "Bold Colors", "ألوان جريئة"], ["Monochrome", "Monochrome", "أحادي اللون"]) },
+      { id: "interiorRoom", type: "select", label: { en: "Room type", ar: "نوع الفراغ" }, options: selectOpts(["Living Room", "Living Room", "غرفة معيشة"], ["Bedroom", "Bedroom", "غرفة نوم"], ["Kitchen", "Kitchen", "مطبخ"], ["Bathroom", "Bathroom", "حمام"], ["Office", "Office", "مكتب"], ["Restaurant", "Restaurant", "مطعم"]) },
+      { id: "interiorStyle", type: "select", label: { en: "Design style", ar: "طراز التصميم" }, options: selectOpts(["Modern Luxury", "Modern Luxury", "فخامة حديثة"], ["Japandi", "Japandi", "جاباندي"], ["Scandinavian", "Scandinavian", "إسكندنافي"], ["Industrial", "Industrial", "صناعي"], ["Boho", "Boho", "بوهيمي"], ["Art Deco", "Art Deco", "آرت ديكو"], ["Minimalist", "Minimalist", "مينيمالي"]) },
+      { id: "interiorMood", type: "select", label: { en: "Color mood", ar: "المزاج اللوني" }, options: selectOpts(["Warm Neutrals", "Warm Neutrals", "محايدات دافئة"], ["Cool Tones", "Cool Tones", "درجات باردة"], ["Bold Colors", "Bold Colors", "ألوان جريئة"], ["Monochrome", "Monochrome", "أحادي اللون"]) },
     ],
   },
   {
@@ -192,9 +230,9 @@ export const QATTAN_TOOLS: QattanTool[] = [
       },
     },
     controls: [
-      { id: "sketchBuilding", type: "select", label: { en: "Building type", ar: "نوع المبنى" }, options: opts(["Residential Villa", "Residential Villa", "فيلا سكنية"], ["Apartment", "Apartment", "عمارة سكنية"], ["Office Tower", "Office Tower", "برج مكاتب"], ["Cultural Center", "Cultural Center", "مركز ثقافي"]) },
-      { id: "sketchStyle", type: "select", label: { en: "Style preset", ar: "الطراز المعماري" }, options: opts(["Modern", "Modern", "حديث"], ["Neoclassical", "Neoclassical", "نيوكلاسيكي"], ["Mediterranean", "Mediterranean", "متوسطي"], ["Brutalist", "Brutalist", "وحشي"], ["Parametric", "Parametric", "بارامتري"]) },
-      { id: "sketchEnvironment", type: "select", label: { en: "Environment", ar: "البيئة المحيطة" }, options: opts(["Urban", "Urban", "حضري"], ["Suburban", "Suburban", "ضواحي"], ["Coastal", "Coastal", "ساحلي"], ["Desert", "Desert", "صحراوي"]) },
+      { id: "sketchBuilding", type: "select", label: { en: "Building type", ar: "نوع المبنى" }, options: selectOpts(["Residential Villa", "Residential Villa", "فيلا سكنية"], ["Apartment", "Apartment", "عمارة سكنية"], ["Office Tower", "Office Tower", "برج مكاتب"], ["Cultural Center", "Cultural Center", "مركز ثقافي"]) },
+      { id: "sketchStyle", type: "select", label: { en: "Style preset", ar: "الطراز المعماري" }, options: selectOpts(["Modern", "Modern", "حديث"], ["Neoclassical", "Neoclassical", "نيوكلاسيكي"], ["Mediterranean", "Mediterranean", "متوسطي"], ["Brutalist", "Brutalist", "وحشي"], ["Parametric", "Parametric", "بارامتري"]) },
+      { id: "sketchEnvironment", type: "select", label: { en: "Environment", ar: "البيئة المحيطة" }, options: selectOpts(["Urban", "Urban", "حضري"], ["Suburban", "Suburban", "ضواحي"], ["Coastal", "Coastal", "ساحلي"], ["Desert", "Desert", "صحراوي"]) },
     ],
   },
   {
@@ -223,9 +261,9 @@ export const QATTAN_TOOLS: QattanTool[] = [
       },
     },
     controls: [
-      { id: "masterplanProject", type: "select", label: { en: "Project type", ar: "نوع المشروع" }, options: opts(["Residential Compound", "Residential Compound", "كمبوند سكني"], ["Mixed-Use", "Mixed-Use", "متعدد الاستخدامات"], ["Resort", "Resort", "منتجع"], ["University Campus", "University Campus", "حرم جامعي"]) },
-      { id: "masterplanDensity", type: "select", label: { en: "Density", ar: "الكثافة العمرانية" }, options: opts(["Low-rise", "Low-rise", "مبانٍ منخفضة"], ["Mid-rise", "Mid-rise", "مبانٍ متوسطة"], ["High-rise", "High-rise", "أبراج عالية"]) },
-      { id: "masterplanLandscape", type: "select", label: { en: "Landscape style", ar: "طراز المشهد" }, options: opts(["Tropical", "Tropical", "استوائي"], ["Arid", "Arid", "جاف"], ["Mediterranean", "Mediterranean", "متوسطي"]) },
+      { id: "masterplanProject", type: "select", label: { en: "Project type", ar: "نوع المشروع" }, options: selectOpts(["Residential Compound", "Residential Compound", "كمبوند سكني"], ["Mixed-Use", "Mixed-Use", "متعدد الاستخدامات"], ["Resort", "Resort", "منتجع"], ["University Campus", "University Campus", "حرم جامعي"]) },
+      { id: "masterplanDensity", type: "select", label: { en: "Density", ar: "الكثافة العمرانية" }, options: selectOpts(["Low-rise", "Low-rise", "مبانٍ منخفضة"], ["Mid-rise", "Mid-rise", "مبانٍ متوسطة"], ["High-rise", "High-rise", "أبراج عالية"]) },
+      { id: "masterplanLandscape", type: "select", label: { en: "Landscape style", ar: "طراز المشهد" }, options: selectOpts(["Tropical", "Tropical", "استوائي"], ["Arid", "Arid", "جاف"], ["Mediterranean", "Mediterranean", "متوسطي"]) },
     ],
   },
   {
@@ -255,7 +293,7 @@ export const QATTAN_TOOLS: QattanTool[] = [
     },
     controls: [
       { id: "landscapeFeatures", type: "multi", label: { en: "Features", ar: "المميزات" }, options: opts(["Swimming Pool", "Swimming Pool", "مسبح"], ["Pergola", "Pergola", "بيرجولا"], ["Fire Pit", "Fire Pit", "موقد خارجي"], ["Walking Paths", "Walking Paths", "مسارات مشي"], ["Water Feature", "Water Feature", "عنصر مائي"], ["Seating Area", "Seating Area", "جلسات خارجية"]) },
-      { id: "landscapePlantStyle", type: "select", label: { en: "Plant style", ar: "طراز الزراعة" }, options: opts(["Tropical", "Tropical", "استوائي"], ["Desert", "Desert", "صحراوي"], ["English Garden", "English Garden", "حديقة إنجليزية"], ["Modern Minimal", "Modern Minimal", "حداثة بسيطة"]) },
+      { id: "landscapePlantStyle", type: "select", label: { en: "Plant style", ar: "طراز الزراعة" }, options: selectOpts(["Tropical", "Tropical", "استوائي"], ["Desert", "Desert", "صحراوي"], ["English Garden", "English Garden", "حديقة إنجليزية"], ["Modern Minimal", "Modern Minimal", "حداثة بسيطة"]) },
     ],
   },
   {
@@ -284,8 +322,8 @@ export const QATTAN_TOOLS: QattanTool[] = [
       },
     },
     controls: [
-      { id: "stagingMarket", type: "select", label: { en: "Target market", ar: "السوق المستهدف" }, options: opts(["Luxury Residential", "Luxury Residential", "سكني فاخر"], ["Mid-Range", "Mid-Range", "متوسط"], ["Student Housing", "Student Housing", "سكن طلابي"], ["Commercial Office", "Commercial Office", "مكاتب تجارية"]) },
-      { id: "stagingFurniture", type: "select", label: { en: "Furniture style", ar: "طراز الأثاث" }, options: opts(["Contemporary", "Contemporary", "معاصر"], ["Classic", "Classic", "كلاسيكي"], ["IKEA-Modern", "IKEA-Modern", "عصري عملي"], ["Executive", "Executive", "تنفيذي"]) },
+      { id: "stagingMarket", type: "select", label: { en: "Target market", ar: "السوق المستهدف" }, options: selectOpts(["Luxury Residential", "Luxury Residential", "سكني فاخر"], ["Mid-Range", "Mid-Range", "متوسط"], ["Student Housing", "Student Housing", "سكن طلابي"], ["Commercial Office", "Commercial Office", "مكاتب تجارية"]) },
+      { id: "stagingFurniture", type: "select", label: { en: "Furniture style", ar: "طراز الأثاث" }, options: selectOpts(["Contemporary", "Contemporary", "معاصر"], ["Classic", "Classic", "كلاسيكي"], ["IKEA-Modern", "IKEA-Modern", "عصري عملي"], ["Executive", "Executive", "تنفيذي"]) },
     ],
   },
   {
@@ -314,8 +352,8 @@ export const QATTAN_TOOLS: QattanTool[] = [
       },
     },
     controls: [
-      { id: "enhancerLevel", type: "select", label: { en: "Enhancement level", ar: "مستوى التحسين" }, options: opts(["Subtle", "Subtle", "خفيف"], ["Moderate", "Moderate", "متوسط"], ["Maximum", "Maximum", "أقصى"]) },
-      { id: "enhancerFocus", type: "select", label: { en: "Focus", ar: "محور التحسين" }, options: opts(["Materials & Textures", "Materials & Textures", "الخامات والملامس"], ["Lighting & Shadows", "Lighting & Shadows", "الإضاءة والظلال"], ["Overall Realism", "Overall Realism", "الواقعية الشاملة"]) },
+      { id: "enhancerLevel", type: "select", label: { en: "Enhancement level", ar: "مستوى التحسين" }, options: selectOpts(["Subtle", "Subtle", "خفيف"], ["Moderate", "Moderate", "متوسط"], ["Maximum", "Maximum", "أقصى"]) },
+      { id: "enhancerFocus", type: "select", label: { en: "Focus", ar: "محور التحسين" }, options: selectOpts(["Materials & Textures", "Materials & Textures", "الخامات والملامس"], ["Lighting & Shadows", "Lighting & Shadows", "الإضاءة والظلال"], ["Overall Realism", "Overall Realism", "الواقعية الشاملة"]) },
     ],
   },
   {
@@ -387,7 +425,9 @@ function joinValues(value: string | string[] | undefined): string | undefined {
 /**
  * Assembles the final architectural prompt for a tool from the user's control
  * selections. Unknown tool ids throw; missing selections fall back to the
- * tool's first option so a submission is always fully specified.
+ * tool's first non-None option so a submission is always fully specified —
+ * while an explicit "None (Custom Prompt)" selection omits that preset
+ * constraint entirely and leaves the decision to the user's written brief.
  *
  * Prompts are always assembled from English option values — they are model
  * instructions, while bilingual labels are display-only.
@@ -398,32 +438,83 @@ export function buildToolPrompt(id: ToolId, values: ToolControlValues): string {
 
   if (tool.id === "floorplan") return FLOORPLAN_PROMPT;
 
-  const pick = (controlId: ToolControlId): string => {
-    const control = tool.controls.find((control) => control.id === controlId);
-    const fallback = control?.options[0]?.value ?? "";
-    const selected = joinValues(valueFor(tool, controlId, values)) ?? fallback;
-    return selected;
+  const pickOrNull = (controlId: ToolControlId): string | null => {
+    const control = tool.controls.find((item) => item.id === controlId);
+    const selected = joinValues(valueFor(tool, controlId, values));
+    if (selected === "none") return null;
+    if (selected !== undefined) return selected;
+    return control?.options.find((option) => option.value !== NONE_OPTION.value)?.value ?? null;
   };
 
   switch (tool.id) {
-    case "exterior":
-      return `Redesign this building exterior in ${pick("exteriorStyle")} architectural style with ${pick("exteriorMaterial")} facade materials under ${pick("exteriorLighting")} lighting conditions. Maintain the exact structural grid, floor count, and window positions. Produce a photorealistic 8K architectural visualization.`;
-    case "interior":
-      return `Furnish and design this empty interior space as a ${pick("interiorRoom")} in ${pick("interiorStyle")} style with ${pick("interiorMood")} color palette. Add appropriate furniture, lighting fixtures, textiles, and decorative elements. Maintain existing walls, doors, and windows. Produce a photorealistic interior visualization.`;
-    case "sketch":
-      return `Transform this architectural sketch of a ${pick("sketchBuilding")} into a photorealistic building visualization. Interpret the drawn lines as walls, windows, and structural elements. Apply ${pick("sketchStyle")} architectural style in a ${pick("sketchEnvironment")} setting with professional lighting and landscaping.`;
-    case "masterplan":
-      return `Convert this 2D site plan into a realistic aerial bird's-eye view 3D visualization. Show buildings at appropriate heights, paved roads, green spaces, water features, and parking areas for a ${pick("masterplanProject")} development with ${pick("masterplanLandscape")} landscaping and ${pick("masterplanDensity")} building density.`;
-    case "landscape": {
-      const control = tool.controls.find((control) => control.id === "landscapeFeatures");
-      const selected = valueFor(tool, "landscapeFeatures", values);
-      const features = joinValues(selected) ?? (control?.options[0]?.value ?? "professional landscaping");
-      return `Design a luxurious landscape for this outdoor space featuring ${features}. Use ${pick("landscapePlantStyle")} planting with professional hardscape, ambient lighting, and premium outdoor furniture. Produce a photorealistic evening visualization.`;
+    case "exterior": {
+      const style = pickOrNull("exteriorStyle");
+      const material = pickOrNull("exteriorMaterial");
+      const lighting = pickOrNull("exteriorLighting");
+      let sentence = "Redesign this building exterior";
+      if (style) sentence += ` in ${style} architectural style`;
+      if (material) sentence += ` with ${material} facade materials`;
+      if (lighting) sentence += ` under ${lighting} lighting conditions`;
+      return `${sentence}. Maintain the exact structural grid, floor count, and window positions. Produce a photorealistic 8K architectural visualization.`;
     }
-    case "staging":
-      return `Virtually stage this empty room for real estate marketing. Add complete ${pick("stagingFurniture")} furnishing appropriate for ${pick("stagingMarket")}. Include rugs, curtains, artwork, plants, and table accessories. Keep all walls, floors, windows, and doors exactly as they are. The result must look like a real professionally photographed furnished apartment.`;
-    case "enhancer":
-      return `Enhance this architectural render to photorealistic quality at ${pick("enhancerLevel")} enhancement level. Improve ${pick("enhancerFocus")} with hyper-detailed material textures, accurate light bouncing, realistic reflections, and atmospheric depth. Maintain the exact composition, camera angle, and architectural design. Output at maximum quality.`;
+    case "interior": {
+      const room = pickOrNull("interiorRoom");
+      const style = pickOrNull("interiorStyle");
+      const mood = pickOrNull("interiorMood");
+      let sentence = "Furnish and design this empty interior space";
+      if (room) sentence += ` as a ${room}`;
+      if (style) sentence += ` in ${style} style`;
+      if (mood) sentence += ` with ${mood} color palette`;
+      return `${sentence}. Add appropriate furniture, lighting fixtures, textiles, and decorative elements. Maintain existing walls, doors, and windows. Produce a photorealistic interior visualization.`;
+    }
+    case "sketch": {
+      const building = pickOrNull("sketchBuilding");
+      const style = pickOrNull("sketchStyle");
+      const environment = pickOrNull("sketchEnvironment");
+      let sentence = "Transform this architectural sketch";
+      if (building) sentence += ` of a ${building}`;
+      sentence += " into a photorealistic building visualization. Interpret the drawn lines as walls, windows, and structural elements.";
+      if (style || environment) {
+        sentence += " Apply";
+        if (style) sentence += ` ${style} architectural style`;
+        if (environment) sentence += ` in a ${environment} setting`;
+        sentence += " with professional lighting and landscaping.";
+      } else {
+        sentence += " Derive the architectural style and surrounding setting from the user's written brief, with professional lighting and landscaping.";
+      }
+      return sentence;
+    }
+    case "masterplan": {
+      const project = pickOrNull("masterplanProject");
+      const density = pickOrNull("masterplanDensity");
+      const landscape = pickOrNull("masterplanLandscape");
+      let tail = "";
+      if (landscape && density) tail = ` with ${landscape} landscaping and ${density} building density`;
+      else if (landscape) tail = ` with ${landscape} landscaping`;
+      else if (density) tail = ` with ${density} building density`;
+      if (project) tail = ` for a ${project} development${tail}`;
+      return `Convert this 2D site plan into a realistic aerial bird's-eye view 3D visualization. Show buildings at appropriate heights, paved roads, green spaces, water features, and parking areas${tail}.`;
+    }
+    case "landscape": {
+      const control = tool.controls.find((item) => item.id === "landscapeFeatures");
+      const selected = valueFor(tool, "landscapeFeatures", values);
+      const features = joinValues(selected) ?? (control?.options.find((option) => option.value !== NONE_OPTION.value)?.value ?? "professional landscaping");
+      const plant = pickOrNull("landscapePlantStyle");
+      return `Design a luxurious landscape for this outdoor space featuring ${features}. Use ${plant ? `${plant} planting` : "professional planting"} with professional hardscape, ambient lighting, and premium outdoor furniture. Produce a photorealistic evening visualization.`;
+    }
+    case "staging": {
+      const furniture = pickOrNull("stagingFurniture");
+      const market = pickOrNull("stagingMarket");
+      const furnishing = furniture ? `complete ${furniture} furnishing` : "complete professional furnishing";
+      const marketClause = market ? ` appropriate for ${market}` : "";
+      return `Virtually stage this empty room for real estate marketing. Add ${furnishing}${marketClause}. Include rugs, curtains, artwork, plants, and table accessories. Keep all walls, floors, windows, and doors exactly as they are. The result must look like a real professionally photographed furnished apartment.`;
+    }
+    case "enhancer": {
+      const level = pickOrNull("enhancerLevel");
+      const focus = pickOrNull("enhancerFocus");
+      const levelClause = level ? ` at ${level} enhancement level` : "";
+      return `Enhance this architectural render to photorealistic quality${levelClause}. Improve ${focus ?? "overall realism"} with hyper-detailed material textures, accurate light bouncing, realistic reflections, and atmospheric depth. Maintain the exact composition, camera angle, and architectural design. Output at maximum quality.`;
+    }
     default:
       throw new Error(`Unknown tool: ${id}`);
   }

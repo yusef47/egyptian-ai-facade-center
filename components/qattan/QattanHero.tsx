@@ -11,6 +11,7 @@ import Link from "next/link";
 import { type MouseEvent } from "react";
 import { useQattan } from "./QattanProviders";
 import BeforeAfterSlider from "./BeforeAfterSlider";
+import HeroShowreel from "./HeroShowreel";
 
 const heroLine = {
   hidden: { opacity: 0, y: 26, filter: "blur(8px)" },
@@ -234,16 +235,13 @@ export function QattanHero() {
           transition={{ duration: 0.8, delay: 0.35, ease: [0.23, 1, 0.32, 1] }}
         >
           <div className="qattan-hero-media-frame">
+            <HeroShowreel powered={copy.hero.powered} />
             <BeforeAfterSlider
               beforeLabel={copy.proof.before}
               afterLabel={copy.proof.after}
               beforeSrc="/facade-before-blueprint.svg"
               afterSrc="/facade-after-render.svg"
             />
-            <span className="qattan-hero-powered">
-              <span className="qattan-hero-powered-dot" aria-hidden="true" />
-              {copy.hero.powered}
-            </span>
           </div>
         </motion.div>
       </div>

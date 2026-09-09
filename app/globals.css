@@ -337,6 +337,103 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .qattan-hero-media-frame .qattan-comparison { position: absolute; inset: 0; display: block; }
 .qattan-hero-media-frame .qattan-comparison-canvas { position: absolute; inset: 0; }
 .qattan-hero-media-frame .qattan-comparison-control { position: absolute; inset-inline: 0; bottom: 10px; margin: 0 auto; width: min(420px, 80%); }
+
+/* ===== Renderforest-style luxury showreel (hero) ===== */
+.qattan-reel { position: absolute; inset: 0; }
+.qattan-reel-stage { position: absolute; inset: 0; overflow: hidden; }
+.qattan-reel-scene { position: absolute; inset: 0; }
+.qattan-reel-img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  animation: qattan-kenburns 9s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.qattan-reel-img-reverse { animation-name: qattan-kenburns-reverse; }
+@keyframes qattan-kenburns {
+  0% { transform: scale(1.06) translate3d(-1.6%, 1.2%, 0); }
+  100% { transform: scale(1.18) translate3d(1.6%, -1.4%, 0); }
+}
+@keyframes qattan-kenburns-reverse {
+  0% { transform: scale(1.18) translate3d(1.6%, -1.4%, 0); }
+  100% { transform: scale(1.06) translate3d(-1.6%, 1.2%, 0); }
+}
+.qattan-reel-vignette { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(5,5,7,.72) 100%); pointer-events: none; }
+.qattan-reel-letterbox { position: absolute; inset-inline: 0; height: 9%; background: linear-gradient(180deg, rgba(5,5,7,.92), transparent); pointer-events: none; }
+.qattan-reel-letterbox-top { top: 0; }
+.qattan-reel-letterbox-bottom { bottom: 0; transform: rotate(180deg); }
+.qattan-reel-caption {
+  position: absolute; inset-inline: 0; bottom: 14%; margin: 0 auto; width: fit-content; max-width: 86%;
+  padding: 8px 18px; border: 1px solid rgba(212,175,55,.35); border-radius: 999px;
+  background: rgba(9,10,15,.72); backdrop-filter: blur(10px);
+  color: #f3e5ab; font-size: 13px; font-weight: 600; letter-spacing: .02em; text-align: center;
+}
+.qattan-reel-progress { position: absolute; top: 12px; inset-inline: 0; display: flex; justify-content: center; gap: 7px; }
+.qattan-reel-progress-dot { width: 18px; height: 3px; border-radius: 999px; background: rgba(243,229,171,.28); transition: background .3s ease; }
+.qattan-reel-progress-dot-active { background: #e5c158; box-shadow: 0 0 8px rgba(229,193,88,.7); }
+.qattan-reel-toggle {
+  position: absolute; top: 12px; inset-inline-end: 12px; z-index: 3;
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+  border: 1px solid rgba(212,175,55,.4); border-radius: 999px; color: #f3e5ab;
+  background: rgba(9,10,15,.66); backdrop-filter: blur(8px); cursor: pointer; transition: transform .2s ease, box-shadow .2s ease;
+}
+.qattan-reel-toggle:hover { transform: scale(1.08); box-shadow: 0 0 14px rgba(212,175,55,.4); }
+
+/* ===== Tool preview modal ===== */
+.qattan-preview-trigger {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+  padding: 7px 13px; border: 1px solid rgba(212,175,55,.35); border-radius: 999px;
+  color: #e5c158; background: rgba(212,175,55,.08); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.qattan-preview-trigger:hover { background: rgba(212,175,55,.16); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(212,175,55,.22); }
+.qattan-preview-overlay {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px;
+  background: rgba(5,5,7,.78); backdrop-filter: blur(12px);
+}
+.qattan-preview-dialog {
+  width: min(760px, 100%); border: 1px solid rgba(212,175,55,.28); border-radius: 18px;
+  background: rgba(15,16,22,.92); box-shadow: 0 40px 120px rgba(0,0,0,.6); overflow: hidden;
+}
+.qattan-preview-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; }
+.qattan-preview-head h3 { margin: 0; color: #f3e5ab; font-size: 17px; font-weight: 700; }
+.qattan-preview-close {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border: 1px solid rgba(212,175,55,.3); border-radius: 999px; color: #e5c158; background: transparent; cursor: pointer;
+  transition: background .2s ease;
+}
+.qattan-preview-close:hover { background: rgba(212,175,55,.12); }
+.qattan-preview-stage {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0;
+  background: #050507; cursor: pointer; overflow: hidden;
+}
+.qattan-preview-frame {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0;
+  animation: qattan-kenburns 9s ease-in-out infinite alternate; will-change: transform, opacity;
+}
+.qattan-preview-frame-active { opacity: 1; }
+.qattan-preview-state {
+  position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: 1px solid rgba(212,175,55,.4); border-radius: 999px;
+  color: #f3e5ab; background: rgba(9,10,15,.7); backdrop-filter: blur(8px);
+}
+.qattan-preview-description { margin: 0; padding: 14px 20px 18px; color: #b9b3a4; font-size: 13.5px; line-height: 1.6; }
+
+/* ===== Output presentation toggle + multi-card gallery (studio) ===== */
+.qattan-output-toggle { display: flex; gap: 6px; width: 100%; padding: 4px; border: 1px solid rgba(212,175,55,.22); border-radius: 9px; background: rgba(9,10,15,.6); }
+.qattan-output-toggle-option {
+  flex: 1; padding: 8px 6px; border: 0; border-radius: 7px; color: #b9b3a4; background: transparent;
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.qattan-output-toggle-option-active {
+  color: #090a0f; background: linear-gradient(120deg, #e5c158, #d4af37); box-shadow: 0 4px 14px rgba(212,175,55,.3);
+}
+.qattan-result-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.qattan-result-card { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.qattan-result-card img { width: 100%; border: 1px solid rgba(212,175,55,.22); border-radius: 10px; }
+
+@media (max-width: 720px) {
+  .qattan-reel-caption { font-size: 11.5px; padding: 6px 12px; bottom: 16%; }
+  .qattan-preview-overlay { padding: 12px; }
+}
 .qattan-hero-powered { position: absolute; top: 14px; inset-inline-end: 14px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border: 1px solid rgba(243,229,171,.4); border-radius: 999px; color: #f3e5ab; background: rgba(9,10,15,.72); backdrop-filter: blur(8px); font-size: 11px; font-weight: 600; }
 .qattan-hero-powered-dot { width: 7px; height: 7px; border-radius: 50%; background: #3bd18b; box-shadow: 0 0 0 4px rgba(59,209,139,.16); }
 .qattan-proof-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; margin-top: 34px; }
@@ -396,4 +493,17 @@ html[data-qattan-theme="light"] .qattan-proof-banner { background: #ffffff; colo
 
 @media (prefers-reduced-motion: reduce) {
   .qattan-pricing-soon { animation: none; }
+  .qattan-reel-img,
+  .qattan-preview-frame { animation: none; }
 }
+
+html[data-qattan-theme="light"] .qattan-reel-caption { background: rgba(255,255,255,.85); color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-reel-toggle,
+html[data-qattan-theme="light"] .qattan-preview-state { background: rgba(255,255,255,.85); color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-preview-dialog { background: rgba(255,255,255,.96); }
+html[data-qattan-theme="light"] .qattan-preview-head h3 { color: #1e293b; }
+html[data-qattan-theme="light"] .qattan-preview-description { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-preview-trigger { color: #8a6d1f; border-color: rgba(165,129,63,.45); background: rgba(212,175,55,.1); }
+html[data-qattan-theme="light"] .qattan-output-toggle { background: #ffffff; }
+html[data-qattan-theme="light"] .qattan-output-toggle-option { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-output-toggle-option-active { color: #ffffff; }

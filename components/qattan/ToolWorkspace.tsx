@@ -5,7 +5,17 @@ import { Compass, Download, ImagePlus, RefreshCw, Sparkles } from "lucide-react"
 import { useRef, useState, type DragEvent } from "react";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
-import { buildToolPrompt, type QattanTool, type ToolControlId, type ToolControlValues } from "@tools/registry";
+import {
+  GALLERY_VARIATION_DIRECTIVES,
+  OUTPUT_PRESENTATIONS,
+  OUTPUT_PRESENTATION_LABELS,
+  TRIPTYCH_DIRECTIVE,
+  buildToolPrompt,
+  type OutputPresentation,
+  type QattanTool,
+  type ToolControlId,
+  type ToolControlValues,
+} from "@tools/registry";
 import { useQattan } from "./QattanProviders";
 import ToolGuidePanel from "./ToolGuidePanel";
 
@@ -46,9 +56,10 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const [prompt, setPrompt] = useState("");
   const [values, setValues] = useState<ToolControlValues>({});
   const [multiSelections, setMultiSelections] = useState<Record<string, string[]>>({});
+  const [presentation, setPresentation] = useState<OutputPresentation>("single");
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [results, setResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const handleFiles = async (files: FileList | null) => {
@@ -62,7 +73,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
         return;
       }
       setImageDataUrl(compressed);
-      setResult(null);
+      setResults([]);
       onSessionChange?.({
         prompt,
         status: L ? "تم رفع الصورة" : "Image uploaded",
@@ -107,18 +118,41 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
         promptValues[control.id] = multiSelections[control.id] ?? [control.options[0]?.value ?? ""];
       }
     }
-    const finalPrompt = `${buildToolPrompt(tool.id, promptValues)} Additional direction: ${basePrompt}`;
+    const fullPrompt = `${buildToolPrompt(tool.id, promptValues)} Additional direction: ${basePrompt}`;
+
+    const runGeneration = (extraDirective?: string) =>
+      restoreFacade({
+        imageDataUrl,
+        prompt: extraDirective ? `${fullPrompt} ${extraDirective}` : fullPrompt,
+        toolId: tool.id,
+      });
 
     setError(null);
     setLoading(true);
     try {
-      const output = await restoreFacade({ imageDataUrl, prompt: finalPrompt, toolId: tool.id });
-      setResult(output);
+      let outputs: string[];
+      if (presentation === "gallery") {
+        // Three independent style variations, generated as three separate cards.
+        const settled = await Promise.allSettled(
+          GALLERY_VARIATION_DIRECTIVES.map((directive) => runGeneration(directive)),
+        );
+        outputs = settled
+          .filter((entry): entry is PromiseFulfilledResult<string> => entry.status === "fulfilled")
+          .map((entry) => entry.value);
+        if (outputs.length === 0) {
+          const failure = settled.find((entry): entry is PromiseRejectedResult => entry.status === "rejected");
+          throw failure?.reason ?? new Error(L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again.");
+        }
+      } else {
+        const output = await runGeneration(presentation === "triptych" ? TRIPTYCH_DIRECTIVE : undefined);
+        outputs = [output];
+      }
+      setResults(outputs);
       onSessionChange?.({
-        prompt: finalPrompt,
+        prompt: fullPrompt,
         status: L ? "اكتمل التوليد" : "Generation complete",
         inputImageDataUrl: imageDataUrl,
-        outputImageDataUrl: output,
+        outputImageDataUrl: outputs[0],
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -213,6 +247,34 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
           ))}
 
           <div className="qattan-tool-control">
+            <span className="qattan-tool-control-label" id={`presentation-label-${tool.id}`}>
+              {L ? "عرض المخرجات" : "Output presentation"}
+            </span>
+            <div
+              className="qattan-output-toggle"
+              role="radiogroup"
+              aria-labelledby={`presentation-label-${tool.id}`}
+            >
+              {OUTPUT_PRESENTATIONS.map((option) => {
+                const label = OUTPUT_PRESENTATION_LABELS[option];
+                const active = presentation === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setPresentation(option)}
+                    className={`qattan-output-toggle-option ${active ? "qattan-output-toggle-option-active" : ""}`}
+                  >
+                    {L ? label.ar : label.en}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="qattan-tool-control">
             <label className="qattan-tool-control-label" htmlFor={`brief-${tool.id}`}>
               {L ? "وصف التصميم" : "Design brief"}
             </label>
@@ -269,20 +331,36 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                   <Compass size={34} className="qattan-compass-spin" aria-hidden="true" />
                   <p>{L ? "نصوغ دراستك المعمارية…" : "Drafting your architectural study…"}</p>
                 </motion.div>
-              ) : result ? (
+              ) : results.length > 0 ? (
                 <motion.div
                   key="result"
-                  className="qattan-tool-result"
+                  className={`qattan-tool-result ${results.length > 1 ? "qattan-result-gallery" : ""}`}
                   {...resultReveal}
                 >
-                  <img src={result} alt={L ? `النتيجة المولدة — ${tool.title.ar}` : `Generated ${tool.title.en} result`} referrerPolicy="no-referrer" />
-                  <a
-                    className="qattan-tool-download"
-                    href={result}
-                    download={`qattan-${tool.id}.png`}
-                  >
-                    <Download size={15} aria-hidden="true" /> {L ? "تنزيل النتيجة" : "Download result"}
-                  </a>
+                  {results.map((output, index) => (
+                    <figure key={output.slice(0, 48) + index} className="qattan-result-card">
+                      <img
+                        src={output}
+                        alt={
+                          results.length > 1
+                            ? L
+                              ? `النتيجة المولدة ${index + 1} من 3 — ${tool.title.ar}`
+                              : `Generated variation ${index + 1} of 3 — ${tool.title.en}`
+                            : L
+                              ? `النتيجة المولدة — ${tool.title.ar}`
+                              : `Generated ${tool.title.en} result`
+                        }
+                        referrerPolicy="no-referrer"
+                      />
+                      <a
+                        className="qattan-tool-download"
+                        href={output}
+                        download={`qattan-${tool.id}${results.length > 1 ? `-v${index + 1}` : ""}.png`}
+                      >
+                        <Download size={15} aria-hidden="true" /> {L ? "تنزيل النتيجة" : "Download result"}
+                      </a>
+                    </figure>
+                  ))}
                 </motion.div>
               ) : (
                 <motion.div
