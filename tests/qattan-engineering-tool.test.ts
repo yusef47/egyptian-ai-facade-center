@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   NONE_OPTION,
   QATTAN_TOOLS,
+  QUAD_MASTER_DIRECTIVE,
   TOOL_IDS,
   buildToolPrompt,
   getToolById,
@@ -49,12 +50,12 @@ describe("Tool #9 — Engineering Multiview & 3D", () => {
     expect(outputOptions).toContain("Cross-Sectional Cut View");
   });
 
-  it("falls back to the default selections (front -> iso3d) when nothing is picked", () => {
+  it("falls back to the Full Quad Master Board as the default output when nothing is picked", () => {
     const prompt = buildToolPrompt("engineering", {});
     expect(prompt).toContain("Front Elevation");
-    expect(prompt).toContain("3D Isometric View");
-    expect(prompt).toContain("hidden lines");
-    expect(prompt).toContain("orthographic projection rules");
+    expect(prompt).toContain("4-quadrant engineering master board");
+    expect(prompt).toContain("Top-Left: Front Elevation");
+    expect(prompt).toContain("Bottom-Right: 3D Isometric Projection View");
   });
 
   it("assembles the brief's prompt template fields for explicit selections", () => {
@@ -76,6 +77,45 @@ describe("Tool #9 — Engineering Multiview & 3D", () => {
     expect(prompt).not.toMatch(/undefined|\{\}/);
     expect(prompt).toContain("deep academic engineering deduction");
     expect(prompt).toContain("orthographic projection rules");
+  });
+
+  it("offers the quad-master option with the exact bilingual label", () => {
+    const tool = getToolById("engineering");
+    const outputControl = tool?.controls.find((c) => c.id === "engineeringTargetOutput");
+    const quad = outputControl?.options.find((o) => o.value === "quadmaster");
+    expect(quad?.label.en).toBe("Full Quad Master Board (Elevation + Plan + Side + 3D Isometric)");
+    expect(quad?.label.ar).toBe("لوحة هندسية شاملة (المساقط الثلاثة + المنظور الـ 3D معاً)");
+    // First non-None option => the default fallback selection.
+    expect(outputControl?.options[1].value).toBe("quadmaster");
+  });
+
+  it("embeds the quad-master directive verbatim for explicit quadmaster selection", () => {
+    const prompt = buildToolPrompt("engineering", {
+      engineeringInputType: "Top Plan",
+      engineeringTargetOutput: "quadmaster",
+    });
+    expect(prompt).toContain("single provided Top Plan");
+    expect(prompt).toContain(QUAD_MASTER_DIRECTIVE);
+    expect(prompt).toContain("strict orthographic alignment, datum lines, hidden dashed lines");
+  });
+
+  it("swaps in the quad-master system prompt when the directive is present in the brief", () => {
+    const quadPrompt = buildToolPrompt("engineering", { engineeringTargetOutput: "quadmaster" });
+    const request = buildOpenRouterRequest("data:image/png;base64,abc", quadPrompt, "test-key", {
+      promptMode: "engineering",
+    });
+    const body = JSON.parse(String(request.init.body));
+    expect(body.messages[0].content).toContain("FULL QUAD MASTER BOARD LAYOUT");
+    expect(body.messages[0].content).toContain("Top-Left: Front Elevation");
+    expect(body.messages[0].content).toContain("MUST depict the SAME object");
+
+    const plainPrompt = buildToolPrompt("engineering", { engineeringTargetOutput: "3D Isometric View" });
+    const plainRequest = buildOpenRouterRequest("data:image/png;base64,abc", plainPrompt, "test-key", {
+      promptMode: "engineering",
+    });
+    const plainBody = JSON.parse(String(plainRequest.init.body));
+    expect(plainBody.messages[0].content).not.toContain("FULL QUAD MASTER BOARD LAYOUT");
+    expect(plainBody.messages[0].content).toContain("ENGINEERING DRAFTING RULES");
   });
 
   it("routes engineering to its own drafting system prompt on the server", () => {

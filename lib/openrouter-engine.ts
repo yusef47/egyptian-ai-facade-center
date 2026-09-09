@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { TOOL_IDS, type ToolId, type ToolPromptMode } from "../tools/registry.js";
+import { QUAD_MASTER_DIRECTIVE, TOOL_IDS, type ToolId, type ToolPromptMode } from "../tools/registry.js";
 
 export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -67,6 +67,16 @@ ENGINEERING DRAFTING RULES (NON-NEGOTIABLE)
 
 OUTPUT QUALITY
 Produce a crisp, textbook-grade technical drawing suitable for engineering coursework submission: precise line weights, complete geometry, correct conventions, zero artifacts.`.trim();
+
+/** System prompt variant for the Full Quad Master Board output of Tool #9. */
+export const QUAD_MASTER_SYSTEM_PROMPT = `${ENGINEERING_DEDUCTION_SYSTEM_PROMPT}
+
+FULL QUAD MASTER BOARD LAYOUT (NON-NEGOTIABLE)
+Generate a single large 4-quadrant engineering master board containing all views together on one canvas: Top-Left: Front Elevation; Top-Right: Side Elevation; Bottom-Left: Top Plan; Bottom-Right: 3D Isometric Projection View. Maintain strict orthographic alignment, datum lines, hidden dashed lines, and clean technical drafting standards.
+- All four quadrants MUST depict the SAME object: identical heights, widths, bay rhythms, opening positions, and floor levels transferred between views without distortion.
+- Draw thin clean separator lines between the four quadrants and keep every view aligned on the shared centerlines that cross the full canvas.
+- The 3D isometric quadrant uses true 30-degree isometric axes; the three orthographic quadrants follow first-angle projection relationships.
+- Keep the entire board text-free except the small quadrant captions the brief explicitly requests.`.trim();
 
 export const GENERAL_VISUALIZATION_SYSTEM_PROMPT = `You are the Qattan AI Architectural Visualization Engine for interiors, sketches, masterplans, landscapes, virtual staging, and render enhancement.
 
@@ -150,7 +160,9 @@ export function buildOpenRouterRequest(
     promptMode === "cad"
       ? CAD_SYSTEM_PROMPT
       : promptMode === "engineering"
-        ? ENGINEERING_DEDUCTION_SYSTEM_PROMPT
+        ? prompt.includes(QUAD_MASTER_DIRECTIVE)
+          ? QUAD_MASTER_SYSTEM_PROMPT
+          : ENGINEERING_DEDUCTION_SYSTEM_PROMPT
         : promptMode === "general"
           ? GENERAL_VISUALIZATION_SYSTEM_PROMPT
           : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;

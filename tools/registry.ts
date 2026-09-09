@@ -109,6 +109,10 @@ export const TOOL_IDS: ToolId[] = [
 export const FLOORPLAN_PROMPT =
   "Based on this architectural floor plan, generate a single large image divided into a 2x2 grid containing 4 professional architectural drawings. All in black and white clean CAD line art style with sharp thin black lines on pure white background:\n\nTOP-LEFT QUADRANT: Clean 2D CAD floor plan (remove all text labels, keep only walls, doors, windows, stairs as thin black lines)\nTOP-RIGHT QUADRANT: Front elevation drawing showing the building exterior facade with windows, doors, roof, and floor levels\nBOTTOM-LEFT QUADRANT: Architectural cross-section drawing showing interior room heights, floor slabs, cut walls, stairs, and roof structure\nBOTTOM-RIGHT QUADRANT: 3D perspective wireframe line drawing of the building from a 3/4 bird's eye view\n\nDraw thin separator lines between the 4 quadrants. Label each quadrant: PLAN, ELEVATION, SECTION, PERSPECTIVE. All drawings must be consistent with each other and derived from the uploaded floor plan.";
 
+/** Appended to the engineering brief when the Full Quad Master Board is requested. */
+export const QUAD_MASTER_DIRECTIVE =
+  "Generate a single large 4-quadrant engineering master board containing all views together on one canvas: Top-Left: Front Elevation; Top-Right: Side Elevation; Bottom-Left: Top Plan; Bottom-Right: 3D Isometric Projection View. Maintain strict orthographic alignment, datum lines, hidden dashed lines, and clean technical drafting standards.";
+
 /** Guide copy for the legacy facade restoration triptych engine (mode=facade). */
 export const FACADE_GUIDE: ToolGuide = {
   input: {
@@ -414,7 +418,7 @@ export const QATTAN_TOOLS: QattanTool[] = [
     },
     controls: [
       { id: "engineeringInputType", type: "select", label: { en: "Source View Provided", ar: "المسقط المعطى في الصورة" }, options: selectOpts(["Front Elevation", "Front Elevation (مسقط رأسي)", "مسقط رأسي (Front)"], ["Top Plan", "Top Plan (مسقط أفقي)", "مسقط أفقي (Plan)"], ["Side Elevation", "Side Elevation (مسقط جانبي)", "مسقط جانبي (Side)"], ["Isometric Rough Sketch", "Isometric Rough Sketch (سكتش منظور)", "سكتش منظور (Isometric)"]) },
-      { id: "engineeringTargetOutput", type: "select", label: { en: "Target Engineering Output", ar: "المخرج الهندسي المطلوب" }, options: selectOpts(["3D Isometric View", "3D Isometric View (منظور ثلاثي الأبعاد 3D)", "منظور ثلاثي الأبعاد 3D"], ["Complete 3-View Orthographic Board", "Complete 3-View Orthographic Board (لوحة المساقط الثلاثة)", "لوحة المساقط الثلاثة الكاملة"], ["Cross-Sectional Cut View", "Cross-Sectional Cut View (قطاع هندسي دقيق)", "قطاع هندسي دقيق"]) },
+      { id: "engineeringTargetOutput", type: "select", label: { en: "Target Engineering Output", ar: "المخرج الهندسي المطلوب" }, options: selectOpts(["quadmaster", "Full Quad Master Board (Elevation + Plan + Side + 3D Isometric)", "لوحة هندسية شاملة (المساقط الثلاثة + المنظور الـ 3D معاً)"], ["3D Isometric View", "3D Isometric View (منظور ثلاثي الأبعاد 3D)", "منظور ثلاثي الأبعاد 3D"], ["Complete 3-View Orthographic Board", "Complete 3-View Orthographic Board (لوحة المساقط الثلاثة)", "لوحة المساقط الثلاثة الكاملة"], ["Cross-Sectional Cut View", "Cross-Sectional Cut View (قطاع هندسي دقيق)", "قطاع هندسي دقيق"]) },
     ],
   },
 ];
@@ -552,6 +556,10 @@ export function buildToolPrompt(id: ToolId, values: ToolControlValues): string {
     case "engineering": {
       const inputType = pickOrNull("engineeringInputType");
       const targetOutput = pickOrNull("engineeringTargetOutput");
+      if (targetOutput === "quadmaster") {
+        const source = inputType ? `Deduce every view from this single provided ${inputType}` : "Deduce every view from the user's written brief and the uploaded drawing";
+        return `${source}. ${QUAD_MASTER_DIRECTIVE} Never invent openings or masses that contradict the provided view.`;
+      }
       let sentence = "Perform deep academic engineering deduction on this single provided view";
       if (inputType) sentence = `Perform deep academic engineering deduction. Based on this single provided ${inputType}`;
       if (targetOutput) sentence += `, generate a precise ${targetOutput}`;
