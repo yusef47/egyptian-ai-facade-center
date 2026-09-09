@@ -6,11 +6,11 @@ import {
   useReducedMotion,
   useSpring,
 } from "framer-motion";
-import { ArrowUpRight, Download, Upload, WandSparkles } from "lucide-react";
+import { ArrowUpRight, Sparkles, Star } from "lucide-react";
 import Link from "next/link";
-import { type MouseEvent, type PointerEvent } from "react";
-import { TiltCard } from "./TiltCard";
+import { type MouseEvent } from "react";
 import { useQattan } from "./QattanProviders";
+import BeforeAfterSlider from "./BeforeAfterSlider";
 
 const heroLine = {
   hidden: { opacity: 0, y: 26, filter: "blur(8px)" },
@@ -36,10 +36,10 @@ const headlineWord = {
   },
 };
 
-function AnimatedHeadline({ title }: { title: string }) {
+function AnimatedHeadlineLine({ title }: { title: string }) {
   return (
-    <motion.h1
-      className="qattan-text-shine"
+    <motion.span
+      className="qattan-hero-headline-line"
       variants={headlineContainer}
       initial="hidden"
       animate="show"
@@ -56,7 +56,7 @@ function AnimatedHeadline({ title }: { title: string }) {
           {"\u00A0"}
         </motion.span>
       ))}
-    </motion.h1>
+    </motion.span>
   );
 }
 
@@ -122,7 +122,7 @@ function BlueprintLines() {
 }
 
 export function QattanHero() {
-  const { copy } = useQattan();
+  const { copy, locale } = useQattan();
   const reduceMotion = useReducedMotion() ?? false;
 
   const rawX = useMotionValue(0);
@@ -136,6 +136,8 @@ export function QattanHero() {
     rawX.set(event.clientX - rect.left);
     rawY.set(event.clientY - rect.top);
   };
+
+  const studioHref = locale === "ar" ? "/ar/studio" : "/studio";
 
   return (
     <section className="qattan-hero" onMouseMove={handleHeroMove}>
@@ -153,18 +155,31 @@ export function QattanHero() {
         )}
         <GoldenDust />
       </div>
-      <div className="qattan-container qattan-hero-grid">
+      <div className="qattan-container qattan-hero-stack">
         <div className="qattan-hero-copy">
           <motion.p
-            className="qattan-eyebrow"
+            className="qattan-hero-badge"
             variants={heroLine}
             initial="hidden"
             animate="show"
             custom={0}
           >
-            {copy.hero.eyebrow}
+            <Sparkles size={14} aria-hidden="true" />
+            {copy.hero.badge}
           </motion.p>
-          <AnimatedHeadline title={copy.hero.title} />
+          <h1 className="qattan-hero-headline">
+            <AnimatedHeadlineLine title={copy.hero.titleLine1} />
+            <AnimatedHeadlineLine title={copy.hero.titleLine2} />
+          </h1>
+          <motion.p
+            className="qattan-hero-subline"
+            variants={heroLine}
+            initial="hidden"
+            animate="show"
+            custom={0.45}
+          >
+            {copy.hero.titleLine3}
+          </motion.p>
           <motion.p
             className="qattan-hero-description"
             variants={heroLine}
@@ -181,7 +196,7 @@ export function QattanHero() {
             animate="show"
             custom={0.75}
           >
-            <Link className="qattan-button qattan-button-primary qattan-cta-pulse" href="/studio">
+            <Link className="qattan-button qattan-button-primary qattan-cta-pulse" href={studioHref}>
               {copy.hero.primary}<ArrowUpRight size={17} aria-hidden="true" />
             </Link>
             <a className="qattan-button qattan-button-secondary" href="#workflow">{copy.hero.secondary}</a>
@@ -195,42 +210,41 @@ export function QattanHero() {
           >
             {copy.hero.freeNote}
           </motion.p>
+          <motion.div
+            className="qattan-hero-trust"
+            variants={heroLine}
+            initial="hidden"
+            animate="show"
+            custom={1.0}
+            aria-label={copy.hero.trust}
+          >
+            <span className="qattan-hero-stars" aria-hidden="true">
+              {Array.from({ length: 5 }, (_, index) => (
+                <Star key={index} size={14} fill="currentColor" strokeWidth={0} />
+              ))}
+            </span>
+            <span>{copy.hero.trust}</span>
+          </motion.div>
         </div>
+
         <motion.div
-          className="qattan-hero-visual"
-          aria-label={`${copy.hero.visualInput} to ${copy.hero.visualOutput}`}
+          className="qattan-hero-media"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.35, ease: [0.23, 1, 0.32, 1] }}
         >
-          <div className="qattan-hero-grid-lines" aria-hidden="true" />
-          <div className="qattan-hero-input-card">
-            <TiltCard className="qattan-hero-card" baseRotate={-4}>
-              <span className="qattan-hero-card-label"><Upload size={13} /> {copy.hero.visualInput}</span>
-              <div className="qattan-hero-plan"><i /><i /><i /><i /><i /><i /><i /></div>
-            </TiltCard>
+          <div className="qattan-hero-media-frame">
+            <BeforeAfterSlider
+              beforeLabel={copy.proof.before}
+              afterLabel={copy.proof.after}
+              beforeSrc="/facade-before-blueprint.svg"
+              afterSrc="/facade-after-render.svg"
+            />
+            <span className="qattan-hero-powered">
+              <span className="qattan-hero-powered-dot" aria-hidden="true" />
+              {copy.hero.powered}
+            </span>
           </div>
-          <motion.div
-            className="qattan-hero-arrow"
-            aria-hidden="true"
-            animate={{ scale: [1, 1.14, 1] }}
-            transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <WandSparkles size={20} />
-          </motion.div>
-          <div className="qattan-hero-output-card">
-            <TiltCard className="qattan-hero-card" baseRotate={4}>
-              <span className="qattan-hero-card-label"><Download size={13} /> {copy.hero.visualOutput}</span>
-              <div className="qattan-hero-render"><i /><i /><i /><i /></div>
-            </TiltCard>
-          </div>
-          <motion.span
-            className="qattan-hero-coordinate"
-            animate={{ opacity: [0.55, 1, 0.55] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          >
-            30°03′N / 31°14′E
-          </motion.span>
         </motion.div>
       </div>
     </section>

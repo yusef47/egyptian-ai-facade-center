@@ -42,6 +42,14 @@ export function ToolShowcase() {
                   <Icon size={26} strokeWidth={1.6} />
                 </div>                <h3>{tool.title}</h3>
                   <p>{tool.description}</p>
+                  <ul className="qattan-tool-features">
+                    {(tool as { features?: string[] }).features?.map((feature) => (
+                      <li key={feature}>
+                        <Check size={12} aria-hidden="true" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
                   <Link className="qattan-tool-link" href={toolHref}>{copy.tools.open}<ArrowUpRight size={14} /></Link>
                 </motion.article>
               </TiltCard>

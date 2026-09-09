@@ -1,22 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { Menu, Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { qattanLocaleHref, useQattan } from "./QattanProviders";
 
+/**
+ * mnml.ai-style fixed marketing header: locale-aware nav (Explore Tools,
+ * Product, Use Cases, Pricing), language toggle, dark/light theme toggle,
+ * sign-in, and the primary Get Started button.
+ */
 export function QattanHeader() {
   const { locale, copy } = useQattan();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const localeTarget = locale === "ar" ? "en" : "ar";
   const navLinks = [
     { label: copy.nav.tools, href: "#tools" },
     { label: copy.nav.solutions, href: "#workflow" },
+    { label: copy.nav.useCases, href: "#proof" },
     { label: copy.nav.pricing, href: "#pricing" },
   ];
 
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.qattanTheme = next;
+  };
+
   return (
-    <header className="qattan-header">
+    <header className="qattan-header" data-theme={theme}>
       <div className="qattan-container qattan-header-inner">
         <Link className="qattan-brand" href={qattanLocaleHref(locale)} aria-label={`${copy.brand} — ${copy.tagline}`}>
           <span className="qattan-brand-mark" aria-hidden="true">Q</span>
@@ -30,7 +43,6 @@ export function QattanHeader() {
           {navLinks.map((link) => (
             <a key={link.href} href={link.href}>{link.label}</a>
           ))}
-          <Link href={qattanLocaleHref(locale, "/studio")}>{copy.nav.studio}</Link>
         </nav>
 
         <div className="qattan-header-actions">
@@ -39,7 +51,19 @@ export function QattanHeader() {
             <span aria-hidden="true">|</span>
             <Link href={qattanLocaleHref("ar")} aria-current={locale === "ar" ? "page" : undefined}>عربي</Link>
           </div>
-          <Link className="qattan-button qattan-button-primary" href={qattanLocaleHref(locale, "/studio")}>{copy.nav.start}</Link>
+          <button
+            type="button"
+            className="qattan-theme-toggle"
+            aria-label={copy.nav.theme}
+            aria-pressed={theme === "light"}
+            onClick={toggleTheme}
+          >
+            {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+          </button>
+          <a className="qattan-signin" href="#pricing">{copy.nav.signIn}</a>
+          <Link className="qattan-button qattan-button-primary qattan-cta-pulse" href={qattanLocaleHref(locale, "/studio")}>
+            {copy.nav.start}
+          </Link>
           <button
             type="button"
             className="qattan-menu"
@@ -56,8 +80,10 @@ export function QattanHeader() {
         <div className="qattan-container qattan-mobile-nav">
           {navLinks.map((link) => <a key={link.href} href={link.href} onClick={() => setMobileOpen(false)}>{link.label}</a>)}
           <Link href={qattanLocaleHref(locale, "/studio")} onClick={() => setMobileOpen(false)}>{copy.nav.studio}</Link>
+          <a href="#pricing" onClick={() => setMobileOpen(false)}>{copy.nav.signIn}</a>
         </div>
       )}
+      <span className="qattan-sr-only" aria-hidden="true">{localeTarget}</span>
     </header>
   );
 }
