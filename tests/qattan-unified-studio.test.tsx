@@ -7,8 +7,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Qattan unified eight-tool studio", () => {
-  it("lists all eight tools as live engines", () => {
+describe("Qattan unified nine-tool studio", () => {
+  it("lists all nine tools as live engines", () => {
     render(<QattanStudio locale="en" initialMode="exterior" />);
 
     for (const name of [
@@ -20,6 +20,7 @@ describe("Qattan unified eight-tool studio", () => {
       /Virtual Staging/i,
       /Render Enhancer/i,
       /Floor Plan to CAD/i,
+      /Engineering Multiview & 3D/i,
     ]) {
       const buttons = screen.getAllByRole("button", { name });
       expect(buttons.length).toBeGreaterThan(0);

@@ -39,3 +39,11 @@ drawing is used.
 `public/videos/reel-sketch.mp4` and `public/videos/tool-sketch.mp4` are
 generated in-house with ffmpeg as a sketch→render transformation morph of the
 matched hero pair above.
+
+## Engineering preview board (in-house)
+
+`public/poster-engineering.jpg` and `public/videos/tool-engineering.mp4` are
+fully generated in-house: a programmatic SVG technical drawing board (front
+elevation, top plan, side elevation, and isometric view of one consistent
+building model, drawn with real projection math) rendered with sharp and
+animated with ffmpeg. No third-party asset is used.

@@ -51,6 +51,23 @@ Preserve the source building's massing, proportions, floor levels and window rhy
 TECHNICAL STANDARDS
 Photorealistic 8K architectural visualization: crisp edges, correct perspective, realistic materials and reflections, cinematic natural or night lighting, deep depth of field, sharp focus throughout, no warped geometry, no duplicated windows, no visible artifacts.`.trim();
 
+export const ENGINEERING_DEDUCTION_SYSTEM_PROMPT = `You are the Engineering Deduction & Multiview AI of the Egyptian Center for Artificial Intelligence in Architecture & Urbanism, serving engineering students and architectural drafting coursework.
+
+MISSION
+You receive ONE single 2D view — a front elevation, a top plan, a side elevation, or a rough isometric sketch — and you DEDUCE the missing projections with rigorous engineering-graphics logic: the complete 3D isometric view, the full three-view orthographic board, or a precise cross-sectional cut view.
+
+ENGINEERING DRAFTING RULES (NON-NEGOTIABLE)
+- Use clean, uniform technical drafting lines: razor-sharp thin dark strokes on a solid white background, no artistic rendering, no shading, no photographic textures.
+- Follow strict orthographic projection conventions: all views aligned on shared centerlines and datums, consistent scale across views, correct first/third-angle projection relationships between plan, elevation, and side views.
+- Represent hidden edges, concealed openings, and buried structure with standard hidden-line convention (dashed lines of even, consistent dash length).
+- Use correct isometric projection geometry: 30-degree receding axes, true-length verticals, no perspective distortion.
+- NEVER invent doors, windows, masses, or volumes that contradict the provided view. Every feature you draw must be either visible in, or geometrically implied by, the source view. If data is ambiguous, choose the simplest geometrically consistent interpretation that preserves all visible features.
+- Maintain exact proportions from the source: heights, widths, bay rhythms, opening positions, and floor levels must transfer between views without distortion.
+- Keep the output text-free unless the brief explicitly requests labels; when a board layout is requested, separate views with thin clean divider lines.
+
+OUTPUT QUALITY
+Produce a crisp, textbook-grade technical drawing suitable for engineering coursework submission: precise line weights, complete geometry, correct conventions, zero artifacts.`.trim();
+
 export const GENERAL_VISUALIZATION_SYSTEM_PROMPT = `You are the Qattan AI Architectural Visualization Engine for interiors, sketches, masterplans, landscapes, virtual staging, and render enhancement.
 
 MISSION
@@ -73,7 +90,7 @@ const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)\s*\)/i;
 const URL_RE = /https?:\/\/[^\s"'<>()]+/gi;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|avif|heic|bmp)(\?|$)/i;
 
-export type RestoreMode = "facade" | "cad" | "general";
+export type RestoreMode = "facade" | "cad" | "engineering" | "general";
 
 export type OpenRouterRequest = {
   url: string;
@@ -92,6 +109,7 @@ export type RestorePayload = {
 export function resolvePromptMode(toolId: ToolId): RestoreMode {
   if (toolId === "floorplan") return "cad";
   if (toolId === "exterior") return "facade";
+  if (toolId === "engineering") return "engineering";
   return "general";
 }
 
@@ -131,9 +149,11 @@ export function buildOpenRouterRequest(
   const systemPrompt =
     promptMode === "cad"
       ? CAD_SYSTEM_PROMPT
-      : promptMode === "general"
-        ? GENERAL_VISUALIZATION_SYSTEM_PROMPT
-        : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
+      : promptMode === "engineering"
+        ? ENGINEERING_DEDUCTION_SYSTEM_PROMPT
+        : promptMode === "general"
+          ? GENERAL_VISUALIZATION_SYSTEM_PROMPT
+          : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
   const briefLabel = promptMode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
   const messages = opts.inlineSystemPrompt
     ? [

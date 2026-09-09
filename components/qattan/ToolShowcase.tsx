@@ -18,6 +18,7 @@ const TOOL_PREVIEWS: Record<ToolId, { video: string; poster: string }> = {
   staging: { video: "/videos/tool-staging.mp4", poster: "/poster-staging.jpg" },
   enhancer: { video: "/videos/tool-enhancer.mp4", poster: "/poster-enhancer.jpg" },
   floorplan: { video: "/videos/tool-floorplan.mp4", poster: "/poster-floorplan.jpg" },
+  engineering: { video: "/videos/tool-engineering.mp4", poster: "/poster-engineering.jpg" },
 };
 
 export function ToolShowcase() {

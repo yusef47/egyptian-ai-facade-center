@@ -9,7 +9,7 @@ import {
 } from "../tools/registry";
 
 describe("Qattan tool registry", () => {
-  it("defines exactly the eight unified tools in the agreed order", () => {
+  it("defines exactly the nine unified tools in the agreed order", () => {
     expect(TOOL_IDS).toEqual([
       "exterior",
       "interior",
@@ -19,8 +19,9 @@ describe("Qattan tool registry", () => {
       "staging",
       "enhancer",
       "floorplan",
+      "engineering",
     ]);
-    expect(QATTAN_TOOLS).toHaveLength(8);
+    expect(QATTAN_TOOLS).toHaveLength(9);
   });
 
   it("marks exterior and floorplan as live engines and every other tool live too", () => {
@@ -127,7 +128,7 @@ describe("Qattan tool registry", () => {
     expect(prompt).toContain("PERSPECTIVE");
   });
 
-  it("provides the brief-specified Arabic titles for all eight tools", () => {
+  it("provides the brief-specified Arabic titles for all nine tools", () => {
     const expectedAr: Record<ToolId, string> = {
       exterior: "رندر وتطوير الواجهات المعمارية",
       interior: "التصميم الداخلي والفرش المعماري",
@@ -137,6 +138,7 @@ describe("Qattan tool registry", () => {
       staging: "الفرش الافتراضي للتسويق العقاري",
       enhancer: "تحسين جودة وتفاصيل الرندر",
       floorplan: "تحويل المخطط لأوتوكاد DXF",
+      engineering: "الاستنتاج الهندسي (إعدادي هندسة)",
     };
     for (const tool of QATTAN_TOOLS) {
       expect(tool.title.ar).toBe(expectedAr[tool.id]);

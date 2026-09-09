@@ -15,7 +15,8 @@ export type ToolId =
   | "landscape"
   | "staging"
   | "enhancer"
-  | "floorplan";
+  | "floorplan"
+  | "engineering";
 
 export type ToolControlId =
   | "exteriorStyle"
@@ -35,7 +36,9 @@ export type ToolControlId =
   | "stagingMarket"
   | "stagingFurniture"
   | "enhancerLevel"
-  | "enhancerFocus";
+  | "enhancerFocus"
+  | "engineeringInputType"
+  | "engineeringTargetOutput";
 
 export type ToolPromptMode = "facade" | "cad" | "general";
 
@@ -99,6 +102,7 @@ export const TOOL_IDS: ToolId[] = [
   "staging",
   "enhancer",
   "floorplan",
+  "engineering",
 ];
 
 /** Zero-text four-quadrant CAD prompt shared with the Floor Plan to CAD engine. */
@@ -383,6 +387,36 @@ export const QATTAN_TOOLS: QattanTool[] = [
     },
     controls: [],
   },
+  {
+    id: "engineering",
+    title: { en: "Engineering Multiview & 3D", ar: "الاستنتاج الهندسي (إعدادي هندسة)" },
+    description: {
+      en: "Deduce 3D isometric views and complete orthographic projections from a single 2D view.",
+      ar: "استنتج المنظور ثلاثي الأبعاد والمساقط الثلاثة الكاملة من مسقط واحد فقط.",
+    },
+    status: "live",
+    href: "/studio?mode=engineering",
+    promptMode: "general",
+    uploadLabel: { en: "Single 2D view, plan, or drafting sketch", ar: "مسقط واحد أو رسمة من كشكول الرسم الهندسي" },
+    guide: {
+      input: {
+        en: "Upload a single 2D drawing, plan, elevation, or assignment sketch from your drafting class.",
+        ar: "ارفع صورة مسقط واحد أو رسمة سكشن من كشكول الرسم الهندسي.",
+      },
+      output: {
+        en: "The complete 3D isometric projection or all three orthographic views, deduced automatically with technical drafting precision.",
+        ar: "المنظور الـ 3D المستنتج أو لوحة المساقط الثلاثة كاملة، باستنتاج آلي بدقة الرسم الهندسي.",
+      },
+      tip: {
+        en: "Ideal for engineering drafting assignments and spatial reasoning studies.",
+        ar: "مثالي لحل تمارين الرسم الهندسي والاستنتاج لطلاب كليات الهندسة.",
+      },
+    },
+    controls: [
+      { id: "engineeringInputType", type: "select", label: { en: "Source View Provided", ar: "المسقط المعطى في الصورة" }, options: selectOpts(["Front Elevation", "Front Elevation (مسقط رأسي)", "مسقط رأسي (Front)"], ["Top Plan", "Top Plan (مسقط أفقي)", "مسقط أفقي (Plan)"], ["Side Elevation", "Side Elevation (مسقط جانبي)", "مسقط جانبي (Side)"], ["Isometric Rough Sketch", "Isometric Rough Sketch (سكتش منظور)", "سكتش منظور (Isometric)"]) },
+      { id: "engineeringTargetOutput", type: "select", label: { en: "Target Engineering Output", ar: "المخرج الهندسي المطلوب" }, options: selectOpts(["3D Isometric View", "3D Isometric View (منظور ثلاثي الأبعاد 3D)", "منظور ثلاثي الأبعاد 3D"], ["Complete 3-View Orthographic Board", "Complete 3-View Orthographic Board (لوحة المساقط الثلاثة)", "لوحة المساقط الثلاثة الكاملة"], ["Cross-Sectional Cut View", "Cross-Sectional Cut View (قطاع هندسي دقيق)", "قطاع هندسي دقيق"]) },
+    ],
+  },
 ];
 
 export function getToolById(id: ToolId): QattanTool | undefined {
@@ -514,6 +548,18 @@ export function buildToolPrompt(id: ToolId, values: ToolControlValues): string {
       const focus = pickOrNull("enhancerFocus");
       const levelClause = level ? ` at ${level} enhancement level` : "";
       return `Enhance this architectural render to photorealistic quality${levelClause}. Improve ${focus ?? "overall realism"} with hyper-detailed material textures, accurate light bouncing, realistic reflections, and atmospheric depth. Maintain the exact composition, camera angle, and architectural design. Output at maximum quality.`;
+    }
+    case "engineering": {
+      const inputType = pickOrNull("engineeringInputType");
+      const targetOutput = pickOrNull("engineeringTargetOutput");
+      let sentence = "Perform deep academic engineering deduction on this single provided view";
+      if (inputType) sentence = `Perform deep academic engineering deduction. Based on this single provided ${inputType}`;
+      if (targetOutput) sentence += `, generate a precise ${targetOutput}`;
+      else if (!inputType) sentence += ", generate the engineering output";
+      sentence += " with clean technical drafting lines, accurate proportions, hidden lines, and isometric projection geometry.";
+      if (!targetOutput) sentence += " Deduce the most useful engineering output from the user's written brief.";
+      sentence += " Follow strict orthographic projection rules: align all views on shared centerlines, never invent openings or masses that contradict the provided view, and represent hidden edges with standard hidden-line convention.";
+      return sentence;
     }
     default:
       throw new Error(`Unknown tool: ${id}`);
