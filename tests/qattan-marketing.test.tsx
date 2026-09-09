@@ -8,7 +8,8 @@ describe("Qattan marketing page", () => {
 
     expect(screen.getAllByRole("link", { name: /قطان AI/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/استوديو التصور المعماري/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /ابدأ الإنشاء|ابدأ/ })).toHaveAttribute("href", "/studio");
+    // Arabic users stay in Arabic: the studio CTA deep-links to /ar/studio.
+    expect(screen.getByRole("link", { name: /ابدأ الإنشاء|ابدأ/ })).toHaveAttribute("href", "/ar/studio");
     expect(screen.getByRole("heading", { name: /مساحة واحدة/ })).toBeInTheDocument();
     expect(screen.getAllByText("متاح الآن").length).toBeGreaterThanOrEqual(8);
     expect(screen.queryByText("مخطط")).not.toBeInTheDocument();

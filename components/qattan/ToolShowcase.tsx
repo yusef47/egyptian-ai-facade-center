@@ -1,23 +1,14 @@
-import { ArrowUpRight, Building2, Check, Compass, Landmark, Layers, Map, Quote, TreePalm, Wand2 } from "lucide-react";
+import { ArrowUpRight, Check, Compass } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { TiltCard } from "./TiltCard";
 import { useQattan } from "./QattanProviders";
+import { qattanLocaleHref } from "./QattanProviders";
+import { TOOL_ICONS } from "./toolIcons";
 import type { ToolId } from "@tools/registry";
 
-const TOOL_ICONS: Record<ToolId, typeof Compass> = {
-  exterior: Landmark,
-  interior: Building2,
-  sketch: Quote,
-  masterplan: Map,
-  landscape: TreePalm,
-  staging: Layers,
-  enhancer: Wand2,
-  floorplan: Compass,
-};
-
 export function ToolShowcase() {
-  const { copy } = useQattan();
+  const { copy, locale } = useQattan();
   return (
     <section id="tools" className="qattan-section qattan-tools-section">
       <div className="qattan-container">
@@ -29,6 +20,7 @@ export function ToolShowcase() {
         <div className="qattan-tool-grid">
           {copy.tools.items.map((tool, index) => {
             const Icon = TOOL_ICONS[tool.id as ToolId] ?? Compass;
+            const toolHref = qattanLocaleHref(locale, tool.href);
             return (
               <TiltCard key={tool.id} maxTilt={8}>
                 <motion.article
@@ -50,7 +42,7 @@ export function ToolShowcase() {
                   <Icon size={26} strokeWidth={1.6} />
                 </div>                <h3>{tool.title}</h3>
                   <p>{tool.description}</p>
-                  <Link className="qattan-tool-link" href={tool.href}>{copy.tools.open}<ArrowUpRight size={14} /></Link>
+                  <Link className="qattan-tool-link" href={toolHref}>{copy.tools.open}<ArrowUpRight size={14} /></Link>
                 </motion.article>
               </TiltCard>
             );

@@ -30,7 +30,7 @@ export function QattanHeader() {
           {navLinks.map((link) => (
             <a key={link.href} href={link.href}>{link.label}</a>
           ))}
-          <Link href="/studio">{copy.nav.studio}</Link>
+          <Link href={qattanLocaleHref(locale, "/studio")}>{copy.nav.studio}</Link>
         </nav>
 
         <div className="qattan-header-actions">
@@ -39,7 +39,7 @@ export function QattanHeader() {
             <span aria-hidden="true">|</span>
             <Link href={qattanLocaleHref("ar")} aria-current={locale === "ar" ? "page" : undefined}>عربي</Link>
           </div>
-          <Link className="qattan-button qattan-button-primary" href="/studio">{copy.nav.start}</Link>
+          <Link className="qattan-button qattan-button-primary" href={qattanLocaleHref(locale, "/studio")}>{copy.nav.start}</Link>
           <button
             type="button"
             className="qattan-menu"
@@ -55,7 +55,7 @@ export function QattanHeader() {
       {mobileOpen && (
         <div className="qattan-container qattan-mobile-nav">
           {navLinks.map((link) => <a key={link.href} href={link.href} onClick={() => setMobileOpen(false)}>{link.label}</a>)}
-          <Link href="/studio" onClick={() => setMobileOpen(false)}>{copy.nav.studio}</Link>
+          <Link href={qattanLocaleHref(locale, "/studio")} onClick={() => setMobileOpen(false)}>{copy.nav.studio}</Link>
         </div>
       )}
     </header>

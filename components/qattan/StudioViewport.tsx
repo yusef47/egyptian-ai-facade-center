@@ -3,6 +3,8 @@
 import EngineSection from "@/components/EngineSection";
 import CadVectorizerSection from "@/components/CadVectorizerSection";
 import ToolWorkspace from "./ToolWorkspace";
+import ToolGuidePanel from "./ToolGuidePanel";
+import { FACADE_GUIDE } from "@tools/registry";
 import type { QattanTool, ToolId } from "@tools/registry";
 
 export type StudioSession = {
@@ -22,6 +24,7 @@ export default function StudioViewport({ mode, tool, onSessionChange }: StudioVi
   if (mode === "facade") {
     return (
       <div className="qattan-studio-viewport qattan-studio-viewport-live">
+        <ToolGuidePanel guide={FACADE_GUIDE} variant="engine" />
         <EngineSection onSessionChange={onSessionChange} />
       </div>
     );
@@ -30,6 +33,7 @@ export default function StudioViewport({ mode, tool, onSessionChange }: StudioVi
   if (mode === "floorplan") {
     return (
       <div className="qattan-studio-viewport qattan-studio-viewport-live">
+        <ToolGuidePanel guide={tool?.guide} variant="engine" />
         <CadVectorizerSection />
       </div>
     );

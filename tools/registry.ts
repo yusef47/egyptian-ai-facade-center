@@ -2,9 +2,9 @@
  * Qattan AI unified tool registry.
  *
  * Single source of truth for the eight studio tools: ids, bilingual copy,
- * control schemas, and prompt assembly. Both the studio UI and the server
- * restore engine consume this module, so it must stay free of React or
- * browser-only imports.
+ * control schemas, tool guides, and prompt assembly. Both the studio UI and
+ * the server restore engine consume this module, so it must stay free of
+ * React or browser-only imports.
  */
 
 export type ToolId =
@@ -43,6 +43,12 @@ export type ToolControlType = "select" | "multi";
 
 export type ToolOption = { value: string; label: { en: string; ar: string } };
 
+export type ToolGuide = {
+  input: { en: string; ar: string };
+  output: { en: string; ar: string };
+  tip: { en: string; ar: string };
+};
+
 export type ToolControl = {
   id: ToolControlId;
   type: ToolControlType;
@@ -58,6 +64,7 @@ export type QattanTool = {
   href: string;
   promptMode: ToolPromptMode;
   uploadLabel: { en: string; ar: string };
+  guide: ToolGuide;
   controls: ToolControl[];
 };
 
@@ -76,13 +83,30 @@ export const TOOL_IDS: ToolId[] = [
 export const FLOORPLAN_PROMPT =
   "Based on this architectural floor plan, generate a single large image divided into a 2x2 grid containing 4 professional architectural drawings. All in black and white clean CAD line art style with sharp thin black lines on pure white background:\n\nTOP-LEFT QUADRANT: Clean 2D CAD floor plan (remove all text labels, keep only walls, doors, windows, stairs as thin black lines)\nTOP-RIGHT QUADRANT: Front elevation drawing showing the building exterior facade with windows, doors, roof, and floor levels\nBOTTOM-LEFT QUADRANT: Architectural cross-section drawing showing interior room heights, floor slabs, cut walls, stairs, and roof structure\nBOTTOM-RIGHT QUADRANT: 3D perspective wireframe line drawing of the building from a 3/4 bird's eye view\n\nDraw thin separator lines between the 4 quadrants. Label each quadrant: PLAN, ELEVATION, SECTION, PERSPECTIVE. All drawings must be consistent with each other and derived from the uploaded floor plan.";
 
-const opts = (...values: string[]): ToolOption[] =>
-  values.map((value) => ({ value, label: { en: value, ar: value } }));
+/** Guide copy for the legacy facade restoration triptych engine (mode=facade). */
+export const FACADE_GUIDE: ToolGuide = {
+  input: {
+    en: "Upload a photo of the existing facade you want to restore or redesign.",
+    ar: "ارفع صورة الواجهة الحالية التي تريد ترميمها أو تطويرها.",
+  },
+  output: {
+    en: "A 3-panel heritage triptych board — Khedivial Classic, Hashami Biophilic, and Islamic Mashrabiya — as one cohesive 8K image.",
+    ar: "لوحة ترميم ثلاثية — كلاسيكي خديوي، وحشمي نباتي، وإسلامي بمشربيات — في صورة 8K واحدة متكاملة.",
+  },
+  tip: {
+    en: "Shoot the facade straight-on in soft daylight for the cleanest triptych geometry.",
+    ar: "صوّر الواجهة بشكل مستقيم في ضوء نهار ناعم للحصول على أدق هندسة للتريبتيك.",
+  },
+};
+
+/** Builds options from [value, en, ar] triples so every option is fully bilingual. */
+const opts = (...triples: [string, string, string][]): ToolOption[] =>
+  triples.map(([value, en, ar]) => ({ value, label: { en, ar } }));
 
 export const QATTAN_TOOLS: QattanTool[] = [
   {
     id: "exterior",
-    title: { en: "Exterior AI", ar: "الواجهات بالذكاء الاصطناعي" },
+    title: { en: "Exterior AI", ar: "رندر وتطوير الواجهات المعمارية" },
     description: {
       en: "Redesign facades in named architectural styles, lighting conditions, and material palettes. Absorbs the legacy facade restoration triptych.",
       ar: "أعد تصميم الواجهات بأنماط معمارية وظروف إضاءة ولوحات خامات محددة، ويشمل الترميم التراثي الثلاثي.",
@@ -91,15 +115,29 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=exterior",
     promptMode: "facade",
     uploadLabel: { en: "Facade photo or 3D screenshot", ar: "صورة واجهة أو لقطة نموذج ثلاثي الأبعاد" },
+    guide: {
+      input: {
+        en: "Upload a facade photo, a 3D model screenshot, or a clear photo of the building exterior.",
+        ar: "ارفع صورة واجهة أو لقطة من نموذج ثلاثي الأبعاد أو صورة واضحة لواجهة المبنى.",
+      },
+      output: {
+        en: "A photorealistic 8K exterior in your chosen style, lighting, and materials — same structural grid, floors, and window rhythm.",
+        ar: "واجهة خارجية واقعية بدقة 8K بالطراز والإضاءة والخامات المختارة — مع الحفاظ على الشبكة الإنشائية وإيقاع النوافذ.",
+      },
+      tip: {
+        en: "Use Night 2700K lighting for luxury villa presentations — warm light sells stone.",
+        ar: "استخدم إضاءة «ليلي 2700 كلفن» لعروض الفلل الفاخرة — الإضاءة الدافئة تُبرز جمال الحجر.",
+      },
+    },
     controls: [
-      { id: "exteriorStyle", type: "select", label: { en: "Style preset", ar: "الطراز" }, options: opts("Modern", "Neoclassical", "Mediterranean", "Brutalist", "Parametric") },
-      { id: "exteriorLighting", type: "select", label: { en: "Lighting", ar: "الإضاءة" }, options: opts("Daylight", "Golden Hour", "Night 2700K", "Overcast") },
-      { id: "exteriorMaterial", type: "select", label: { en: "Material palette", ar: "الخامات" }, options: opts("Limestone", "Glass", "Concrete", "Wood") },
+      { id: "exteriorStyle", type: "select", label: { en: "Style preset", ar: "الطراز المعماري" }, options: opts(["Modern", "Modern", "حديث"], ["Neoclassical", "Neoclassical", "نيوكلاسيكي"], ["Mediterranean", "Mediterranean", "متوسطي"], ["Brutalist", "Brutalist", "وحشي"], ["Parametric", "Parametric", "بارامتري"]) },
+      { id: "exteriorLighting", type: "select", label: { en: "Lighting", ar: "الإضاءة" }, options: opts(["Daylight", "Daylight", "ضوء النهار"], ["Golden Hour", "Golden Hour", "الساعة الذهبية"], ["Night 2700K", "Night 2700K", "ليلي 2700 كلفن"], ["Overcast", "Overcast", "غائم"]) },
+      { id: "exteriorMaterial", type: "select", label: { en: "Material palette", ar: "لوحة الخامات" }, options: opts(["Limestone", "Limestone", "حجر جيري"], ["Glass", "Glass", "زجاج"], ["Concrete", "Concrete", "خرسانة"], ["Wood", "Wood", "خشب"]) },
     ],
   },
   {
     id: "interior",
-    title: { en: "Interior AI", ar: "التصميم الداخلي" },
+    title: { en: "Interior AI", ar: "التصميم الداخلي والفرش المعماري" },
     description: {
       en: "Furnish and design empty rooms with full control over room type, design style, and color mood.",
       ar: "أثث وصمم الفراغات الفارغة بتحكم كامل في نوع الفراغ وطراز التصميم والمزاج اللوني.",
@@ -108,15 +146,29 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=interior",
     promptMode: "general",
     uploadLabel: { en: "Empty room photo or 3D layout", ar: "صورة غرفة فارغة أو مخطط ثلاثي الأبعاد" },
+    guide: {
+      input: {
+        en: "Upload an empty room photo or a 3D layout view of the space.",
+        ar: "ارفع صورة غرفة فارغة أو لقطة مخطط ثلاثي الأبعاد للفراغ.",
+      },
+      output: {
+        en: "A fully furnished photorealistic interior with furniture, lighting fixtures, textiles, and decor — walls, doors, and windows preserved.",
+        ar: "تصميم داخلي مفروش بالكامل بواقعية مع الأثاث ووحدات الإضاءة والمنسوجات — مع الحفاظ على الحوائط والأبواب والنوافذ.",
+      },
+      tip: {
+        en: "Photograph the room at chest height with the windows visible for the most believable staging.",
+        ar: "التقط صورة الغرفة من مستوى الصدر مع ظهور النوافذ لأكثر النتائج واقعية.",
+      },
+    },
     controls: [
-      { id: "interiorRoom", type: "select", label: { en: "Room type", ar: "نوع الفراغ" }, options: opts("Living Room", "Bedroom", "Kitchen", "Bathroom", "Office", "Restaurant") },
-      { id: "interiorStyle", type: "select", label: { en: "Design style", ar: "طراز التصميم" }, options: opts("Modern Luxury", "Japandi", "Scandinavian", "Industrial", "Boho", "Art Deco", "Minimalist") },
-      { id: "interiorMood", type: "select", label: { en: "Color mood", ar: "المزاج اللوني" }, options: opts("Warm Neutrals", "Cool Tones", "Bold Colors", "Monochrome") },
+      { id: "interiorRoom", type: "select", label: { en: "Room type", ar: "نوع الفراغ" }, options: opts(["Living Room", "Living Room", "غرفة معيشة"], ["Bedroom", "Bedroom", "غرفة نوم"], ["Kitchen", "Kitchen", "مطبخ"], ["Bathroom", "Bathroom", "حمام"], ["Office", "Office", "مكتب"], ["Restaurant", "Restaurant", "مطعم"]) },
+      { id: "interiorStyle", type: "select", label: { en: "Design style", ar: "طراز التصميم" }, options: opts(["Modern Luxury", "Modern Luxury", "فخامة حديثة"], ["Japandi", "Japandi", "جاباندي"], ["Scandinavian", "Scandinavian", "إسكندنافي"], ["Industrial", "Industrial", "صناعي"], ["Boho", "Boho", "بوهيمي"], ["Art Deco", "Art Deco", "آرت ديكو"], ["Minimalist", "Minimalist", "مينيمالي"]) },
+      { id: "interiorMood", type: "select", label: { en: "Color mood", ar: "المزاج اللوني" }, options: opts(["Warm Neutrals", "Warm Neutrals", "محايدات دافئة"], ["Cool Tones", "Cool Tones", "درجات باردة"], ["Bold Colors", "Bold Colors", "ألوان جريئة"], ["Monochrome", "Monochrome", "أحادي اللون"]) },
     ],
   },
   {
     id: "sketch",
-    title: { en: "Sketch to Image", ar: "من الاسكتش إلى الصورة" },
+    title: { en: "Sketch to Image", ar: "تحويل السكتشات اليدوية لرندر 8K" },
     description: {
       en: "Turn hand-drawn sketches and line drawings into photorealistic building visualizations.",
       ar: "حوّل الاسكتشات اليدوية والرسومات الخطية إلى تصورات معمارية واقعية.",
@@ -125,15 +177,29 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=sketch",
     promptMode: "general",
     uploadLabel: { en: "Hand-drawn sketch or line drawing", ar: "اسكتش يدوي أو رسم خطي" },
+    guide: {
+      input: {
+        en: "Upload a hand-drawn sketch or a digital line drawing of the building.",
+        ar: "ارفع اسكتشاً يدوياً أو رسماً خطياً رقمياً للمبنى.",
+      },
+      output: {
+        en: "A photorealistic building visualization that interprets your drawn lines as walls, windows, and structural elements.",
+        ar: "تصور معماري واقعي يفسّر خطوط اسكتشك كحوائط ونوافذ وعناصر إنشائية.",
+      },
+      tip: {
+        en: "Darken the main outlines and erase construction guides — cleaner lines mean fewer invented details.",
+        ar: "غمّق الخطوط الرئيسية واحذف خطوط البناء المساعدة — كلما كان السكتش أنظف كانت النتيجة أدق.",
+      },
+    },
     controls: [
-      { id: "sketchBuilding", type: "select", label: { en: "Building type", ar: "نوع المبنى" }, options: opts("Residential Villa", "Apartment", "Office Tower", "Cultural Center") },
-      { id: "sketchStyle", type: "select", label: { en: "Style preset", ar: "الطراز" }, options: opts("Modern", "Neoclassical", "Mediterranean", "Brutalist", "Parametric") },
-      { id: "sketchEnvironment", type: "select", label: { en: "Environment", ar: "البيئة" }, options: opts("Urban", "Suburban", "Coastal", "Desert") },
+      { id: "sketchBuilding", type: "select", label: { en: "Building type", ar: "نوع المبنى" }, options: opts(["Residential Villa", "Residential Villa", "فيلا سكنية"], ["Apartment", "Apartment", "عمارة سكنية"], ["Office Tower", "Office Tower", "برج مكاتب"], ["Cultural Center", "Cultural Center", "مركز ثقافي"]) },
+      { id: "sketchStyle", type: "select", label: { en: "Style preset", ar: "الطراز المعماري" }, options: opts(["Modern", "Modern", "حديث"], ["Neoclassical", "Neoclassical", "نيوكلاسيكي"], ["Mediterranean", "Mediterranean", "متوسطي"], ["Brutalist", "Brutalist", "وحشي"], ["Parametric", "Parametric", "بارامتري"]) },
+      { id: "sketchEnvironment", type: "select", label: { en: "Environment", ar: "البيئة المحيطة" }, options: opts(["Urban", "Urban", "حضري"], ["Suburban", "Suburban", "ضواحي"], ["Coastal", "Coastal", "ساحلي"], ["Desert", "Desert", "صحراوي"]) },
     ],
   },
   {
     id: "masterplan",
-    title: { en: "Masterplan AI", ar: "الماستر بلان" },
+    title: { en: "Masterplan AI", ar: "المخططات العمرانية والمجمعات 3D" },
     description: {
       en: "Convert 2D site plans and zoning diagrams into aerial bird's-eye 3D visualizations.",
       ar: "حوّل المخططات الأرضية ثنائية الأبعاد إلى تصورات ثلاثية الأبعاد بمنظور علوي.",
@@ -142,15 +208,29 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=masterplan",
     promptMode: "general",
     uploadLabel: { en: "2D site plan or zoning diagram", ar: "مخطط موقع ثنائي الأبعاد أو رسم تقسيم" },
+    guide: {
+      input: {
+        en: "Upload a 2D site plan, a CAD layout export, or a zoning diagram.",
+        ar: "ارفع مخطط موقع ثنائي الأبعاد أو تصدير CAD أو رسم تقسيم.",
+      },
+      output: {
+        en: "An aerial bird's-eye 3D visualization with realistic building masses, paved roads, green spaces, and parking.",
+        ar: "منظور ثلاثي الأبعاد علوي بكتل مبانٍ وطرق ومساحات خضراء ومواقف واقعية.",
+      },
+      tip: {
+        en: "Make sure the plan is high-contrast with readable roads before uploading.",
+        ar: "تأكد من وضوح تباين المخطط وقراءة الطرق بسهولة قبل الرفع.",
+      },
+    },
     controls: [
-      { id: "masterplanProject", type: "select", label: { en: "Project type", ar: "نوع المشروع" }, options: opts("Residential Compound", "Mixed-Use", "Resort", "University Campus") },
-      { id: "masterplanDensity", type: "select", label: { en: "Density", ar: "الكثافة" }, options: opts("Low-rise", "Mid-rise", "High-rise") },
-      { id: "masterplanLandscape", type: "select", label: { en: "Landscape style", ar: "طراز المشهد" }, options: opts("Tropical", "Arid", "Mediterranean") },
+      { id: "masterplanProject", type: "select", label: { en: "Project type", ar: "نوع المشروع" }, options: opts(["Residential Compound", "Residential Compound", "كمبوند سكني"], ["Mixed-Use", "Mixed-Use", "متعدد الاستخدامات"], ["Resort", "Resort", "منتجع"], ["University Campus", "University Campus", "حرم جامعي"]) },
+      { id: "masterplanDensity", type: "select", label: { en: "Density", ar: "الكثافة العمرانية" }, options: opts(["Low-rise", "Low-rise", "مبانٍ منخفضة"], ["Mid-rise", "Mid-rise", "مبانٍ متوسطة"], ["High-rise", "High-rise", "أبراج عالية"]) },
+      { id: "masterplanLandscape", type: "select", label: { en: "Landscape style", ar: "طراز المشهد" }, options: opts(["Tropical", "Tropical", "استوائي"], ["Arid", "Arid", "جاف"], ["Mediterranean", "Mediterranean", "متوسطي"]) },
     ],
   },
   {
     id: "landscape",
-    title: { en: "Landscape AI", ar: "المناظر الطبيعية" },
+    title: { en: "Landscape AI", ar: "تنسيق الحدائق والمساحات الخارجية" },
     description: {
       en: "Design luxurious outdoor spaces with feature checklists and planting styles.",
       ar: "صمم مساحات خارجية فاخرة بقوائم مميزات وأنماط زراعة محددة.",
@@ -159,14 +239,28 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=landscape",
     promptMode: "general",
     uploadLabel: { en: "Outdoor space or garden photo", ar: "صورة مساحة خارجية أو حديقة" },
+    guide: {
+      input: {
+        en: "Upload a photo of the outdoor space, garden area, or site boundary.",
+        ar: "ارفع صورة المساحة الخارجية أو الحديقة أو حدود الموقع.",
+      },
+      output: {
+        en: "A luxurious landscape design with your chosen features, planting style, hardscape, and ambient evening lighting.",
+        ar: "تصميم حدائق فاخر بمميزاتك المختارة وطراز الزراعة والأعمال الصلبة والإضاءة المسائية.",
+      },
+      tip: {
+        en: "Select three to four features at most for one coherent scene.",
+        ar: "اختر ثلاث إلى أربع مميزات كحد أقصى لمشهد واحد متناسق.",
+      },
+    },
     controls: [
-      { id: "landscapeFeatures", type: "multi", label: { en: "Features", ar: "المميزات" }, options: opts("Swimming Pool", "Pergola", "Fire Pit", "Walking Paths", "Water Feature", "Seating Area") },
-      { id: "landscapePlantStyle", type: "select", label: { en: "Plant style", ar: "طراز الزراعة" }, options: opts("Tropical", "Desert", "English Garden", "Modern Minimal") },
+      { id: "landscapeFeatures", type: "multi", label: { en: "Features", ar: "المميزات" }, options: opts(["Swimming Pool", "Swimming Pool", "مسبح"], ["Pergola", "Pergola", "بيرجولا"], ["Fire Pit", "Fire Pit", "موقد خارجي"], ["Walking Paths", "Walking Paths", "مسارات مشي"], ["Water Feature", "Water Feature", "عنصر مائي"], ["Seating Area", "Seating Area", "جلسات خارجية"]) },
+      { id: "landscapePlantStyle", type: "select", label: { en: "Plant style", ar: "طراز الزراعة" }, options: opts(["Tropical", "Tropical", "استوائي"], ["Desert", "Desert", "صحراوي"], ["English Garden", "English Garden", "حديقة إنجليزية"], ["Modern Minimal", "Modern Minimal", "حداثة بسيطة"]) },
     ],
   },
   {
     id: "staging",
-    title: { en: "Virtual Staging", ar: "التأثيث الافتراضي" },
+    title: { en: "Virtual Staging", ar: "الفرش الافتراضي للتسويق العقاري" },
     description: {
       en: "Stage empty rooms for real estate marketing with market- and style-aware furnishing.",
       ar: "أثث الغرف الفارغة لتسويق العقارات بتأثيث مناسب للسوق والطراز.",
@@ -175,14 +269,28 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=staging",
     promptMode: "general",
     uploadLabel: { en: "Empty apartment or unfurnished room photo", ar: "صورة شقة فارغة أو غرفة غير مفروشة" },
+    guide: {
+      input: {
+        en: "Upload an empty apartment or unfurnished room photo.",
+        ar: "ارفع صورة شقة فارغة أو غرفة غير مفروشة.",
+      },
+      output: {
+        en: "A marketing-ready staged photo with complete furnishing, rugs, curtains, and artwork — the architecture untouched.",
+        ar: "صورة تسويقية مؤثثة بالكامل مع سجاد وستائر ولوحات — دون أي تغيير في العمارة.",
+      },
+      tip: {
+        en: "Pick the target market first — a student flat and a luxury penthouse need completely different furniture budgets.",
+        ar: "حدد السوق المستهدف أولاً — شقة الطلاب تحتاج تأثيثاً مختلفاً تماماً عن البنتهاوس الفاخر.",
+      },
+    },
     controls: [
-      { id: "stagingMarket", type: "select", label: { en: "Target market", ar: "السوق المستهدف" }, options: opts("Luxury Residential", "Mid-Range", "Student Housing", "Commercial Office") },
-      { id: "stagingFurniture", type: "select", label: { en: "Furniture style", ar: "طراز الأثاث" }, options: opts("Contemporary", "Classic", "IKEA-Modern", "Executive") },
+      { id: "stagingMarket", type: "select", label: { en: "Target market", ar: "السوق المستهدف" }, options: opts(["Luxury Residential", "Luxury Residential", "سكني فاخر"], ["Mid-Range", "Mid-Range", "متوسط"], ["Student Housing", "Student Housing", "سكن طلابي"], ["Commercial Office", "Commercial Office", "مكاتب تجارية"]) },
+      { id: "stagingFurniture", type: "select", label: { en: "Furniture style", ar: "طراز الأثاث" }, options: opts(["Contemporary", "Contemporary", "معاصر"], ["Classic", "Classic", "كلاسيكي"], ["IKEA-Modern", "IKEA-Modern", "عصري عملي"], ["Executive", "Executive", "تنفيذي"]) },
     ],
   },
   {
     id: "enhancer",
-    title: { en: "Render Enhancer", ar: "تحسين الرندر" },
+    title: { en: "Render Enhancer", ar: "تحسين جودة وتفاصيل الرندر" },
     description: {
       en: "Push existing renders from V-Ray, Lumion, or Enscape toward photorealistic quality.",
       ar: "طوّر الرندرات الجاهزة من V-Ray أو Lumion أو Enscape نحو جودة واقعية.",
@@ -191,14 +299,28 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=enhancer",
     promptMode: "general",
     uploadLabel: { en: "Existing architectural render", ar: "رندر معماري جاهز" },
+    guide: {
+      input: {
+        en: "Upload an existing render from V-Ray, Lumion, Enscape, or any 3D engine.",
+        ar: "ارفع رندراً جاهزاً من V-Ray أو Lumion أو Enscape أو أي محرك ثلاثي الأبعاد.",
+      },
+      output: {
+        en: "A photorealistic enhancement with sharper material textures, accurate light bounce, and atmospheric depth — composition unchanged.",
+        ar: "تحسين واقعي بملامس خامات أدق وانعكاسات إضاءة صحيحة وعمق جوي — مع بقاء التكوين كما هو.",
+      },
+      tip: {
+        en: "Use Moderate + Lighting & Shadows for daytime shots to avoid over-sharpened materials.",
+        ar: "استخدم «متوسط» مع «الإضاءة والظلال» لمشاهد النهار لتجنّب حدة مبالغ فيها في الخامات.",
+      },
+    },
     controls: [
-      { id: "enhancerLevel", type: "select", label: { en: "Enhancement level", ar: "مستوى التحسين" }, options: opts("Subtle", "Moderate", "Maximum") },
-      { id: "enhancerFocus", type: "select", label: { en: "Focus", ar: "محور التحسين" }, options: opts("Materials & Textures", "Lighting & Shadows", "Overall Realism") },
+      { id: "enhancerLevel", type: "select", label: { en: "Enhancement level", ar: "مستوى التحسين" }, options: opts(["Subtle", "Subtle", "خفيف"], ["Moderate", "Moderate", "متوسط"], ["Maximum", "Maximum", "أقصى"]) },
+      { id: "enhancerFocus", type: "select", label: { en: "Focus", ar: "محور التحسين" }, options: opts(["Materials & Textures", "Materials & Textures", "الخامات والملامس"], ["Lighting & Shadows", "Lighting & Shadows", "الإضاءة والظلال"], ["Overall Realism", "Overall Realism", "الواقعية الشاملة"]) },
     ],
   },
   {
     id: "floorplan",
-    title: { en: "Floor Plan to CAD", ar: "تحويل المخطط إلى كاد" },
+    title: { en: "Floor Plan to CAD", ar: "تحويل المخطط لأوتوكاد DXF" },
     description: {
       en: "Generate four consistent architectural views from a floor plan and export DXF files locally.",
       ar: "ولّد أربعة رسومات معمارية متناسقة من مخطط أرضي وصدّر ملفات DXF محلياً.",
@@ -207,6 +329,20 @@ export const QATTAN_TOOLS: QattanTool[] = [
     href: "/studio?mode=floorplan",
     promptMode: "cad",
     uploadLabel: { en: "Colored 2D or 3D floor plan", ar: "مخطط أرضي ملون ثنائي أو ثلاثي الأبعاد" },
+    guide: {
+      input: {
+        en: "Upload a colored 2D floor plan, a CAD export, or a 3D plan screenshot.",
+        ar: "ارفع مخططاً أرضياً ملوناً أو تصدير CAD أو لقطة مخطط ثلاثي الأبعاد.",
+      },
+      output: {
+        en: "A 2×2 board of four consistent CAD views (plan, elevation, section, perspective) ready for DXF vectorization.",
+        ar: "لوحة 2×2 بأربعة رسومات CAD متناسقة (مسقط وواجهة ومقطع ومنظور) جاهزة للتحويل إلى DXF.",
+      },
+      tip: {
+        en: "Clean, text-free plans vectorize best — the engine strips labels automatically.",
+        ar: "المخططات النظيفة الخالية من النصوص تُحوَّل بأفضل دقة — المحرك يزيل الكتابات تلقائياً.",
+      },
+    },
     controls: [],
   },
 ];
@@ -252,6 +388,9 @@ function joinValues(value: string | string[] | undefined): string | undefined {
  * Assembles the final architectural prompt for a tool from the user's control
  * selections. Unknown tool ids throw; missing selections fall back to the
  * tool's first option so a submission is always fully specified.
+ *
+ * Prompts are always assembled from English option values — they are model
+ * instructions, while bilingual labels are display-only.
  */
 export function buildToolPrompt(id: ToolId, values: ToolControlValues): string {
   const tool = getToolById(id);

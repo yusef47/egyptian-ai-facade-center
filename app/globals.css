@@ -279,3 +279,44 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* ===== Studio tool animations & bilingual guide panel ===== */
+.qattan-studio-mode-icon { display: grid; place-items: center; flex: 0 0 auto; width: 27px; height: 27px; border-radius: 6px; color: #8f9aad; background: rgba(148,163,184,.08); transition: color .2s ease, background .2s ease; }
+.qattan-studio-mode:hover .qattan-studio-mode-icon, .qattan-studio-mode:focus-visible .qattan-studio-mode-icon { color: #67e8f9; animation: qattan-icon-pulse 1.4s ease-in-out infinite; }
+.qattan-studio-mode-selected .qattan-studio-mode-icon { color: #c5a059; background: rgba(197,160,89,.16); }
+@keyframes qattan-icon-pulse { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.12) rotate(-6deg); } }
+.qattan-studio-mode-copy { flex: 1; }
+
+/* Animated cyan/gold neon gradient border on tool cards. */
+.qattan-studio-mode::after {
+  content: ""; position: absolute; inset: -1px; border-radius: 7px; padding: 1px;
+  background: linear-gradient(115deg, rgba(0,168,255,0), rgba(0,229,255,.55), rgba(197,160,89,.6), rgba(0,168,255,0));
+  background-size: 220% 220%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0; transition: opacity .25s ease;
+  animation: qattan-neon-flow 3.6s linear infinite;
+  pointer-events: none;
+}
+.qattan-studio-mode:hover::after, .qattan-studio-mode-selected::after { opacity: 1; }
+@keyframes qattan-neon-flow { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+
+/* Bilingual expandable tool guide panel. */
+.qattan-guide { margin-top: 18px; border: 1px solid rgba(103,232,249,.18); border-radius: 9px; background: rgba(8,20,34,.55); overflow: hidden; }
+.qattan-guide-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 13px; border: 0; color: #9ad9ec; background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; text-align: start; transition: color .2s ease, background .2s ease; }
+.qattan-guide-toggle:hover, .qattan-guide-toggle:focus-visible { color: #c8f1fc; background: rgba(103,232,249,.06); outline: none; }
+.qattan-guide-toggle > span:first-of-type { flex: 1; }
+.qattan-guide-body { display: grid; gap: 12px; padding: 4px 13px 14px; }
+.qattan-guide-item { display: flex; gap: 10px; }
+.qattan-guide-icon { display: grid; place-items: center; flex: 0 0 auto; width: 26px; height: 26px; border-radius: 6px; color: #67e8f9; background: rgba(103,232,249,.1); }
+.qattan-guide-item-tip .qattan-guide-icon { color: #c5a059; background: rgba(197,160,89,.12); }
+.qattan-guide-item strong { display: block; color: #f3ead8; font-size: 11px; letter-spacing: .02em; }
+.qattan-guide-item p { margin: 3px 0 0; color: #a5adbd; font-size: 12px; line-height: 1.7; }
+.qattan-guide-engine { margin: 0 0 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qattan-studio-mode::after { animation: none; }
+  .qattan-studio-mode:hover .qattan-studio-mode-icon, .qattan-studio-mode:focus-visible .qattan-studio-mode-icon { animation: none; }
+}

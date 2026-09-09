@@ -127,6 +127,48 @@ describe("Qattan tool registry", () => {
     expect(prompt).toContain("PERSPECTIVE");
   });
 
+  it("provides the brief-specified Arabic titles for all eight tools", () => {
+    const expectedAr: Record<ToolId, string> = {
+      exterior: "رندر وتطوير الواجهات المعمارية",
+      interior: "التصميم الداخلي والفرش المعماري",
+      sketch: "تحويل السكتشات اليدوية لرندر 8K",
+      masterplan: "المخططات العمرانية والمجمعات 3D",
+      landscape: "تنسيق الحدائق والمساحات الخارجية",
+      staging: "الفرش الافتراضي للتسويق العقاري",
+      enhancer: "تحسين جودة وتفاصيل الرندر",
+      floorplan: "تحويل المخطط لأوتوكاد DXF",
+    };
+    for (const tool of QATTAN_TOOLS) {
+      expect(tool.title.ar).toBe(expectedAr[tool.id]);
+    }
+  });
+
+  it("translates every option label to Arabic across all controls", () => {
+    for (const tool of QATTAN_TOOLS) {
+      for (const control of tool.controls) {
+        for (const option of control.options) {
+          expect(option.label.ar.trim(), `${tool.id}.${control.id}:${option.value}`).not.toBe("");
+          expect(option.label.ar, `${tool.id}.${control.id}:${option.value}`).not.toBe(option.value);
+        }
+      }
+    }
+  });
+
+  it("provides a complete bilingual guide (input, output, pro-tip) for every tool", () => {
+    for (const tool of QATTAN_TOOLS) {
+      expect(tool.guide, tool.id).toBeDefined();
+      expect(tool.guide.input.en.trim()).not.toBe("");
+      expect(tool.guide.input.ar.trim()).not.toBe("");
+      expect(tool.guide.output.en.trim()).not.toBe("");
+      expect(tool.guide.output.ar.trim()).not.toBe("");
+      expect(tool.guide.tip.en.trim()).not.toBe("");
+      expect(tool.guide.tip.ar.trim()).not.toBe("");
+      expect(tool.guide.input.ar, tool.id).toMatch(/[\u0600-\u06FF]/);
+      expect(tool.guide.output.ar, tool.id).toMatch(/[\u0600-\u06FF]/);
+      expect(tool.guide.tip.ar, tool.id).toMatch(/[\u0600-\u06FF]/);
+    }
+  });
+
   it("rejects unknown tool ids", () => {
     const unknown = "unknown" as ToolId;
     expect(() => buildToolPrompt(unknown, {})).toThrow(/unknown tool/i);

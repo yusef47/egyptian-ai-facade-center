@@ -52,6 +52,11 @@ export function useQattan(): QattanContextValue {
 
 export function qattanLocaleHref(locale: QattanLocale, href = "/"): string {
   if (href.startsWith("http") || href.startsWith("#")) return href;
+  // The studio is bilingual with its own /ar route tree; deep links keep
+  // their query string (e.g. /ar/studio?mode=cad).
+  if (locale === "ar" && (href === "/studio" || href.startsWith("/studio?"))) {
+    return `/ar${href}`;
+  }
   if (href === "/studio" || href.startsWith("/studio?")) return href;
   const path = href === "/" ? "" : href.replace(/^\//, "");
   return `/${locale}${path ? `/${path}` : ""}`;

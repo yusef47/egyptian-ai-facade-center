@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Check, SlidersHorizontal } from "lucide-react";
 import { useQattan } from "./QattanProviders";
+import { TOOL_ICONS } from "./toolIcons";
 import { QATTAN_TOOLS } from "@tools/registry";
 import type { ToolId } from "@tools/registry";
 
@@ -27,6 +28,7 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
         {QATTAN_TOOLS.map((tool, index) => {
           const selected = tool.id === mode;
           const title = locale === "ar" ? tool.title.ar : tool.title.en;
+          const Icon = TOOL_ICONS[tool.id];
           return (
             <button
               type="button"
@@ -37,12 +39,15 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
             >
               {selected && (
                 <motion.span
-                  layoutId="qattan-studio-mode-highlight"
+                  layoutId="activeToolIndicator"
                   className="qattan-studio-mode-highlight"
                   aria-hidden="true"
                   transition={{ type: "spring", stiffness: 420, damping: 34 }}
                 />
               )}
+              <span className="qattan-studio-mode-icon" aria-hidden="true">
+                <Icon size={15} strokeWidth={1.8} />
+              </span>
               <span className="qattan-studio-mode-copy">
                 <span className="qattan-studio-mode-title">{title}</span>
                 <span className="qattan-status qattan-status-live">

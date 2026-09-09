@@ -6,6 +6,8 @@ import { useRef, useState, type DragEvent } from "react";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
 import { buildToolPrompt, type QattanTool, type ToolControlId, type ToolControlValues } from "@tools/registry";
+import { useQattan } from "./QattanProviders";
+import ToolGuidePanel from "./ToolGuidePanel";
 
 type ToolWorkspaceProps = {
   tool: QattanTool;
@@ -36,6 +38,9 @@ const resultReveal = {
  * prompt with buildToolPrompt, and submits to /api/restore with toolId.
  */
 export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspaceProps) {
+  const { locale } = useQattan();
+  const L = locale === "ar";
+  const t = (value: { en: string; ar: string }) => (L ? value.ar : value.en);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -53,19 +58,19 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
     try {
       const compressed = await compressImageFile(file);
       if (compressed.length > MAX_DATA_URL_BYTES) {
-        setError("The image is too large. Try a smaller photo.");
+        setError(L ? "الصورة كبيرة جداً. جرّب صورة أصغر." : "The image is too large. Try a smaller photo.");
         return;
       }
       setImageDataUrl(compressed);
       setResult(null);
       onSessionChange?.({
         prompt,
-        status: "Image uploaded",
+        status: L ? "تم رفع الصورة" : "Image uploaded",
         inputImageDataUrl: compressed,
         outputImageDataUrl: null,
       });
     } catch {
-      setError("Upload failed. Please try again.");
+      setError(L ? "فشل الرفع. حاول مرة أخرى." : "Upload failed. Please try again.");
     }
   };
 
@@ -87,12 +92,12 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
 
   const handleSubmit = async () => {
     if (!imageDataUrl) {
-      setError("Please upload an image first.");
+      setError(L ? "ارفع صورة أولاً." : "Please upload an image first.");
       return;
     }
     const basePrompt = prompt.trim();
     if (basePrompt.length < 3) {
-      setError("Please describe the design direction you want.");
+      setError(L ? "اكتب وصفاً للتصميم المطلوب." : "Please describe the design direction you want.");
       return;
     }
 
@@ -111,16 +116,16 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       setResult(output);
       onSessionChange?.({
         prompt: finalPrompt,
-        status: "Generation complete",
+        status: L ? "اكتمل التوليد" : "Generation complete",
         inputImageDataUrl: imageDataUrl,
         outputImageDataUrl: output,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       if (CREDITS_RE.test(message)) {
-        setError("The generation service needs credits. Top up the OpenRouter account to continue.");
+        setError(L ? "تحتاج خدمة التوليد إلى رصيد. اشحن حساب OpenRouter للمتابعة." : "The generation service needs credits. Top up the OpenRouter account to continue.");
       } else {
-        setError(message || "Generation failed. Please try again.");
+        setError(message || (L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again."));
       }
     } finally {
       setLoading(false);
@@ -145,22 +150,22 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              aria-label={tool.uploadLabel.en}
+              aria-label={t(tool.uploadLabel)}
               className="sr-only"
               onChange={(event) => void handleFiles(event.target.files)}
             />
             {imageDataUrl ? (
               <>
-                <img src={imageDataUrl} alt={tool.uploadLabel.en} className="qattan-tool-upload-preview" />
+                <img src={imageDataUrl} alt={t(tool.uploadLabel)} className="qattan-tool-upload-preview" />
                 <span className="qattan-tool-upload-replace">
-                  <RefreshCw size={14} aria-hidden="true" /> Replace image
+                  <RefreshCw size={14} aria-hidden="true" /> {L ? "تغيير الصورة" : "Replace image"}
                 </span>
               </>
             ) : (
               <>
                 <ImagePlus size={30} aria-hidden="true" />
-                <span className="qattan-tool-upload-hint">{tool.uploadLabel.en}</span>
-                <span className="qattan-tool-upload-sub">Drag &amp; drop or click to browse · JPG/PNG</span>
+                <span className="qattan-tool-upload-hint">{t(tool.uploadLabel)}</span>
+                <span className="qattan-tool-upload-sub">{L ? "اسحب وأفلت أو انقر للتصفح · JPG/PNG" : "Drag & drop or click to browse · JPG/PNG"}</span>
               </>
             )}
           </div>
@@ -168,12 +173,12 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
           {tool.controls.map((control) => (
             <div key={control.id} className="qattan-tool-control">
               <label className="qattan-tool-control-label" htmlFor={`control-${control.id}`}>
-                {control.label.en}
+                {t(control.label)}
               </label>
               {control.type === "select" ? (
                 <select
                   id={`control-${control.id}`}
-                  aria-label={control.label.en}
+                  aria-label={t(control.label)}
                   value={(values[control.id] as string) ?? control.options[0]?.value ?? ""}
                   onChange={(event) =>
                     setValues((current) => ({ ...current, [control.id]: event.target.value }))
@@ -182,12 +187,12 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                 >
                   {control.options.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label.en}
+                      {t(option.label)}
                     </option>
                   ))}
                 </select>
               ) : (
-                <div className="qattan-tool-multigrid" role="group" aria-label={control.label.en}>
+                <div className="qattan-tool-multigrid" role="group" aria-label={t(control.label)}>
                   {control.options.map((option) => {
                     const active = (multiSelections[control.id] ?? []).includes(option.value);
                     return (
@@ -198,7 +203,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                         onClick={() => toggleMulti(control.id, option.value)}
                         className={`qattan-tool-chip ${active ? "qattan-tool-chip-active" : ""}`}
                       >
-                        {option.label.en}
+                        {t(option.label)}
                       </button>
                     );
                   })}
@@ -209,14 +214,14 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
 
           <div className="qattan-tool-control">
             <label className="qattan-tool-control-label" htmlFor={`brief-${tool.id}`}>
-              Design brief
+              {L ? "وصف التصميم" : "Design brief"}
             </label>
             <textarea
               id={`brief-${tool.id}`}
-              aria-label="Design brief"
+              aria-label={L ? "وصف التصميم" : "Design brief"}
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
-              placeholder={`e.g. ${tool.description.en}`}
+              placeholder={L ? `مثال: ${tool.description.ar}` : `e.g. ${tool.description.en}`}
               rows={3}
               className="qattan-tool-textarea"
             />
@@ -230,11 +235,11 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
           >
             {loading ? (
               <>
-                <Compass size={18} className="qattan-compass-spin" aria-hidden="true" /> Generating…
+                <Compass size={18} className="qattan-compass-spin" aria-hidden="true" /> {L ? "جارٍ التوليد…" : "Generating…"}
               </>
             ) : (
               <>
-                <Sparkles size={18} aria-hidden="true" /> Generate
+                <Sparkles size={18} aria-hidden="true" /> {L ? "توليد" : "Generate"}
               </>
             )}
           </button>
@@ -244,6 +249,8 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
               {error}
             </p>
           )}
+
+          <ToolGuidePanel guide={tool.guide} />
         </div>
 
         <div className="qattan-tool-panel qattan-tool-panel-canvas">
@@ -260,7 +267,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                   aria-label="Generating"
                 >
                   <Compass size={34} className="qattan-compass-spin" aria-hidden="true" />
-                  <p>Drafting your architectural study…</p>
+                  <p>{L ? "نصوغ دراستك المعمارية…" : "Drafting your architectural study…"}</p>
                 </motion.div>
               ) : result ? (
                 <motion.div
@@ -268,13 +275,13 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                   className="qattan-tool-result"
                   {...resultReveal}
                 >
-                  <img src={result} alt={`Generated ${tool.title.en} result`} referrerPolicy="no-referrer" />
+                  <img src={result} alt={L ? `النتيجة المولدة — ${tool.title.ar}` : `Generated ${tool.title.en} result`} referrerPolicy="no-referrer" />
                   <a
                     className="qattan-tool-download"
                     href={result}
                     download={`qattan-${tool.id}.png`}
                   >
-                    <Download size={15} aria-hidden="true" /> Download result
+                    <Download size={15} aria-hidden="true" /> {L ? "تنزيل النتيجة" : "Download result"}
                   </a>
                 </motion.div>
               ) : (
@@ -286,7 +293,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                   exit={{ opacity: 0 }}
                 >
                   <Sparkles size={26} aria-hidden="true" />
-                  <p>Generated output will appear here.</p>
+                  <p>{L ? "ستظهر النتيجة المولّدة هنا." : "Generated output will appear here."}</p>
                 </motion.div>
               )}
             </AnimatePresence>

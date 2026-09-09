@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useState } from "react";
 import { I18nProvider } from "@/lib/i18n";
 import {
@@ -27,17 +27,17 @@ export type StudioModeInput = StudioMode | ToolId;
 export { resolveStudioMode } from "@tools/registry";
 
 const viewportReveal = {
-  initial: { opacity: 0, y: 16, filter: "blur(6px)" },
+  initial: { opacity: 0, scale: 0.98, filter: "blur(6px)" },
   animate: {
     opacity: 1,
-    y: 0,
+    scale: 1,
     filter: "blur(0px)",
     transition: { duration: 0.45, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] },
   },
 };
 
 function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) {
-  const { copy, locale } = useQattan();
+  const { copy, locale, direction } = useQattan();
   const [mode, setMode] = useState<ToolId | "facade">(resolveStudioMode(initialMode));
   const [session, setSession] = useState<StudioSession>({
     prompt: "",
@@ -83,7 +83,7 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) 
   }, []);
 
   return (
-    <div className="qattan-page qattan-studio-page">
+    <div className="qattan-page qattan-studio-page" dir={direction} lang={locale}>
       <QattanHeader />
       <main>
         <section className="qattan-studio-intro">
@@ -109,13 +109,15 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) 
         >
           <div className="qattan-studio-layout">
             <StudioControlRail mode={mode === "facade" ? "exterior" : mode} onModeChange={handleModeChange} />
-            <motion.div key={mode} className="qattan-studio-viewport-slot" {...viewportReveal}>
-              <StudioViewport
-                mode={mode}
-                tool={activeTool}
-                onSessionChange={handleSessionChange}
-              />
-            </motion.div>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={mode} className="qattan-studio-viewport-slot" {...viewportReveal}>
+                <StudioViewport
+                  mode={mode}
+                  tool={activeTool}
+                  onSessionChange={handleSessionChange}
+                />
+              </motion.div>
+            </AnimatePresence>
             <StudioHistoryRail activeToolTitle={activeToolTitle} session={session} history={history} />
           </div>
         </motion.section>
