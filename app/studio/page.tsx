@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import QattanStudio from "../../components/qattan/QattanStudio";
-import { resolveStudioMode } from "../../tools/registry";
+import { resolveStudioMode } from "../../tools/registry.js";
 
 type StudioPageProps = {
   searchParams?: Promise<{ mode?: string | string[] }>;

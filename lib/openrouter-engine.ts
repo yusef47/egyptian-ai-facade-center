@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { TOOL_IDS, type ToolId, type ToolPromptMode } from "../tools/registry";
+import { TOOL_IDS, type ToolId, type ToolPromptMode } from "../tools/registry.js";
 
 export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
