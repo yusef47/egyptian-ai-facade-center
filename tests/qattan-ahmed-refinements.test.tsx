@@ -232,6 +232,18 @@ describe("Refinement 4 — Luxury showreel and tool preview modals", () => {
     expect(video).toHaveAttribute("loop");
     expect(video).toHaveAttribute("poster");
 
+    // Centered fullscreen lightbox: portaled to body so card transforms
+    // cannot trap the fixed overlay, with the requested utility classes.
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog.className).toContain("fixed");
+    expect(dialog.className).toContain("z-50");
+    expect(dialog.className).toContain("items-center");
+    expect(dialog.className).toContain("justify-center");
+    expect(dialog.className).toContain("bg-black/80");
+    expect(dialog.className).toContain("backdrop-blur-md");
+    const card = dialog.firstElementChild as HTMLElement;
+    expect(card.className).toContain("max-w-3xl");
+
     // Play/pause inside the modal stage. The modal opens with playback on,
     // so the first click pauses and the second resumes.
     const stage = within(dialog).getByRole("button", { name: /preview (playing|paused)/i });

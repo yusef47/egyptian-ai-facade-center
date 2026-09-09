@@ -1,8 +1,9 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Pause, Play, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useQattan } from "./QattanProviders";
 
 type ToolPreviewModalProps = {
@@ -34,10 +35,14 @@ const PREVIEW_COPY = {
 } as const;
 
 /**
- * Real architectural video preview modal: a glass dialog playing a muted,
- * auto-looping HD clip of the tool's signature shot, with a high-quality
- * poster fallback for slow connections (or when no video is provided).
- * Focus-safe: Escape closes, body scroll locks, opener state is preserved.
+ * Real architectural video preview modal: a centered fullscreen glassmorphic
+ * lightbox playing a muted, auto-looping HD clip of the tool's signature
+ * shot, with a high-quality poster fallback for slow connections.
+ *
+ * The lightbox is portaled to document.body: tool cards live inside
+ * TiltCard's 3D transforms, which create a containing block that would
+ * otherwise trap a position:fixed overlay inside the small card.
+ * Focus-safe: Escape closes, backdrop click closes, body scroll locks.
  */
 export default function ToolPreviewModal({
   children,
@@ -96,27 +101,26 @@ export default function ToolPreviewModal({
       >
         {children}
       </button>
-      <AnimatePresence>
-        {open && (
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
           <motion.div
-            className="qattan-preview-overlay"
+            className="qattan-preview-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
             role="dialog"
             aria-modal="true"
             aria-label={title}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
             transition={{ duration: 0.28 }}
             onClick={() => setOpen(false)}
           >
             <motion.div
-              className="qattan-preview-dialog"
-              initial={{ opacity: 0, scale: 0.94, y: 18 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              transition={{ type: "spring", stiffness: 220, damping: 26 }}
-              onClick={(event) => event.stopPropagation()}
-            >
+            className="qattan-preview-dialog max-w-3xl w-full"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 220, damping: 26 }}
+            onClick={(event) => event.stopPropagation()}
+          >
               <div className="qattan-preview-head">
                 <h3>{title}</h3>
                 <button
@@ -160,9 +164,9 @@ export default function ToolPreviewModal({
               </button>
               <p className="qattan-preview-description">{description}</p>
             </motion.div>
-          </motion.div>
+          </motion.div>,
+          document.body,
         )}
-      </AnimatePresence>
     </>
   );
 }

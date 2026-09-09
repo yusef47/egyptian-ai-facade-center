@@ -390,11 +390,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .qattan-preview-trigger:hover { background: rgba(212,175,55,.16); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(212,175,55,.22); }
 .qattan-preview-overlay {
-  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px;
-  background: rgba(5,5,7,.78); backdrop-filter: blur(12px);
+  /* Positioning/centering handled by Tailwind utilities on the element. */
 }
 .qattan-preview-dialog {
-  width: min(760px, 100%); border: 1px solid rgba(212,175,55,.28); border-radius: 18px;
+  border: 1px solid rgba(212,175,55,.28); border-radius: 18px;
   background: rgba(15,16,22,.92); box-shadow: 0 40px 120px rgba(0,0,0,.6); overflow: hidden;
 }
 .qattan-preview-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; }
