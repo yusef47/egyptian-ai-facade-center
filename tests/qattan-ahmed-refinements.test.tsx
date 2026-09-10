@@ -130,7 +130,7 @@ describe("Refinement 2 — Output presentation toggle", () => {
     fireEvent.change(screen.getByLabelText("Design brief"), {
       target: { value: "Restore with warm stone" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Generate/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -151,7 +151,7 @@ describe("Refinement 2 — Output presentation toggle", () => {
     fireEvent.change(screen.getByLabelText("Design brief"), {
       target: { value: "Modern villa facade" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Generate/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -173,7 +173,7 @@ describe("Refinement 2 — Output presentation toggle", () => {
     fireEvent.change(screen.getByLabelText("Design brief"), {
       target: { value: "Clean limestone facade" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Generate/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();

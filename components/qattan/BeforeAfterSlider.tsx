@@ -60,6 +60,46 @@ function useAutoScan(enabled: boolean) {
 export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, afterSrc }: BeforeAfterSliderProps) {
   const reduceMotion = (useReducedMotion() ?? false) || typeof requestAnimationFrame === "undefined";
   const { value, setValue, scanning, cancel } = useAutoScan(!reduceMotion);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+
+  // Touch-first: swipe/drag anywhere on the comparison canvas moves the
+  // handle, like a native mobile image comparison.
+  const updateFromPointer = (clientX: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const bounds = canvas.getBoundingClientRect();
+    if (bounds.width === 0) return;
+    const ratio = (clientX - bounds.left) / bounds.width;
+    setValue(Math.min(100, Math.max(0, ratio * 100)));
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    cancel();
+    draggingRef.current = true;
+    try {
+      canvasRef.current?.setPointerCapture(event.pointerId);
+    } catch {
+      /* Pointer capture unsupported — drag still works while held. */
+    }
+    updateFromPointer(event.clientX);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    updateFromPointer(event.clientX);
+  };
+
+  const endPointerDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    try {
+      canvasRef.current?.releasePointerCapture(event.pointerId);
+    } catch {
+      /* Release after implicit capture loss is fine to ignore. */
+    }
+  };
 
   const updateFromKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
     cancel();
@@ -81,7 +121,14 @@ export default function BeforeAfterSlider({ beforeLabel, afterLabel, beforeSrc, 
 
   return (
     <div className="qattan-comparison" data-before-after="true">
-      <div className="qattan-comparison-canvas" aria-hidden="true">
+      <div
+        ref={canvasRef}
+        className="qattan-comparison-canvas qattan-comparison-touch"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endPointerDrag}
+        onPointerCancel={endPointerDrag}
+      >
         {scanning && <span className="qattan-laser-scan" style={{ left: `${value}%` }} />}
         {/* Vector fallback scenes render only when no real imagery is provided. */}
         {!beforeSrc && !afterSrc && (

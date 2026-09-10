@@ -1,8 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Compass, Download, ImagePlus, RefreshCw, Sparkles } from "lucide-react";
-import { useRef, useState, type DragEvent } from "react";
+import { Compass, Download, ImagePlus, RefreshCw, Sparkles, X, ZoomIn } from "lucide-react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
 import {
@@ -61,6 +61,26 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+
+  // One-thumb access: on phones the sticky FAB triggers the same submission
+  // as the inline generate button.
+  const submitGeneration = () => void handleSubmit();
+
+  // Lock background scroll while the fullscreen result zoom is open.
+  useEffect(() => {
+    if (zoomIndex === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setZoomIndex(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [zoomIndex]);
 
   const handleFiles = async (files: FileList | null) => {
     const file = files?.[0];
@@ -171,14 +191,22 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       <div className="qattan-tool-grid-layout">
         <div className="qattan-tool-panel qattan-tool-panel-controls">
           <div
+            role="button"
+            tabIndex={0}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             onDragOver={(event) => {
               event.preventDefault();
               setDragging(true);
             }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
-            className={`qattan-tool-upload ${dragging ? "qattan-tool-upload-dragging" : ""}`}
+            className={`qattan-tool-upload qattan-touch-target ${dragging ? "qattan-tool-upload-dragging" : ""}`}
           >
             <input
               ref={fileInputRef}
@@ -291,7 +319,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
 
           <button
             type="button"
-            onClick={() => void handleSubmit()}
+            onClick={submitGeneration}
             disabled={loading}
             className="qattan-tool-generate"
           >
@@ -339,19 +367,29 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                 >
                   {results.map((output, index) => (
                     <figure key={output.slice(0, 48) + index} className="qattan-result-card">
-                      <img
-                        src={output}
-                        alt={
-                          results.length > 1
-                            ? L
-                              ? `النتيجة المولدة ${index + 1} من 3 — ${tool.title.ar}`
-                              : `Generated variation ${index + 1} of 3 — ${tool.title.en}`
-                            : L
-                              ? `النتيجة المولدة — ${tool.title.ar}`
-                              : `Generated ${tool.title.en} result`
-                        }
-                        referrerPolicy="no-referrer"
-                      />
+                      <button
+                        type="button"
+                        className="qattan-result-frame"
+                        aria-label={L ? "عرض النتيجة بحجم كامل" : "Zoom result fullscreen"}
+                        onClick={() => setZoomIndex(index)}
+                      >
+                        <img
+                          src={output}
+                          alt={
+                            results.length > 1
+                              ? L
+                                ? `النتيجة المولدة ${index + 1} من 3 — ${tool.title.ar}`
+                                : `Generated variation ${index + 1} of 3 — ${tool.title.en}`
+                              : L
+                                ? `النتيجة المولدة — ${tool.title.ar}`
+                                : `Generated ${tool.title.en} result`
+                          }
+                          referrerPolicy="no-referrer"
+                        />
+                        <span className="qattan-result-zoom-hint" aria-hidden="true">
+                          <ZoomIn size={14} /> {L ? "عرض كامل" : "View full"}
+                        </span>
+                      </button>
                       <a
                         className="qattan-tool-download"
                         href={output}
@@ -378,6 +416,48 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
           </div>
         </div>
       </div>
+      {/* Mobile sticky FAB mirrors the inline generate button. */}
+      <button
+        type="button"
+        onClick={submitGeneration}
+        disabled={loading}
+        className="qattan-tool-fab fixed bottom-4 left-4 right-4 z-40 lg:hidden"
+        aria-label={L ? "توليد" : "Generate"}
+      >
+        {loading ? (
+          <Compass size={20} className="qattan-compass-spin" aria-hidden="true" />
+        ) : (
+          <Sparkles size={20} aria-hidden="true" />
+        )}
+        <span>{loading ? (L ? "جارٍ التوليد…" : "Generating…") : L ? "توليد" : "Generate"}</span>
+      </button>
+
+      {/* Single-tap fullscreen zoom for the generated result. */}
+      {zoomIndex !== null && results[zoomIndex] ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={L ? "عرض النتيجة بحجم كامل" : "Result fullscreen view"}
+          className="qattan-result-zoom fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md"
+          onClick={() => setZoomIndex(null)}
+        >
+          <img
+            src={results[zoomIndex]}
+            alt={L ? `النتيجة المولدة — ${tool.title.ar}` : `Generated ${tool.title.en} result`}
+            referrerPolicy="no-referrer"
+            className="qattan-result-zoom-image"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="qattan-result-zoom-close"
+            aria-label={L ? "إغلاق العرض" : "Close fullscreen view"}
+            onClick={() => setZoomIndex(null)}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

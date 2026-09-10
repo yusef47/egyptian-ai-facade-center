@@ -69,7 +69,7 @@ export function ToolShowcase() {
                     title={tool.title}
                     description={tool.description}
                     poster={TOOL_PREVIEWS[tool.id as ToolId]?.poster ?? "/poster-exterior.jpg"}
-                    videoSrc={TOOL_PREVIEWS[tool.id as ToolId]?.video}
+                    videoSrc={TOOL_PREVIEWS[tool.id as ToolId]?.video ?? "/videos/tool-exterior.mp4"}
                   >
                     <span className="qattan-preview-chip">
                       <Play size={13} aria-hidden="true" /> {copy.tools.preview}

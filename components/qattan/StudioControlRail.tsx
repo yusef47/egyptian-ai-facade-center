@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, SlidersHorizontal } from "lucide-react";
+import { Check, SlidersHorizontal, Sparkles } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useQattan } from "./QattanProviders";
 import { TOOL_ICONS } from "./toolIcons";
 import { QATTAN_TOOLS } from "@tools/registry";
@@ -10,10 +11,34 @@ import type { ToolId } from "@tools/registry";
 type StudioControlRailProps = {
   mode: ToolId;
   onModeChange: (mode: ToolId) => void;
+  onFacadeSelect: () => void;
+  facadeSelected: boolean;
+  facadeTitle: string;
 };
 
-export default function StudioControlRail({ mode, onModeChange }: StudioControlRailProps) {
+export default function StudioControlRail({
+  mode,
+  onModeChange,
+  onFacadeSelect,
+  facadeSelected,
+  facadeTitle,
+}: StudioControlRailProps) {
   const { copy, locale } = useQattan();
+  const railListRef = useRef<HTMLDivElement>(null);
+
+  // On phones the rail is a horizontal pill bar: keep the active pill in
+  // view whenever the selection changes (swipe or tap).
+  useEffect(() => {
+    const rail = railListRef.current;
+    if (!rail) return;
+    const selected = rail.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    if (!selected || typeof selected.scrollIntoView !== "function") return;
+    try {
+      selected.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    } catch {
+      /* Older browsers without options support — safe to skip. */
+    }
+  }, [mode, facadeSelected]);
 
   return (
     <aside className="qattan-studio-rail qattan-studio-control-rail" aria-label={copy.nav.tools}>
@@ -24,7 +49,11 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
           <h2>{copy.nav.tools}</h2>
         </div>
       </div>
-      <div className="qattan-studio-mode-list" role="list">
+      <div
+        ref={railListRef}
+        className="qattan-studio-mode-list qattan-studio-mode-rail"
+        role="list"
+      >
         {QATTAN_TOOLS.map((tool, index) => {
           const selected = tool.id === mode;
           const title = locale === "ar" ? tool.title.ar : tool.title.en;
@@ -33,7 +62,7 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
             <button
               type="button"
               key={tool.id}
-              className={`qattan-studio-mode ${selected ? "qattan-studio-mode-selected" : ""}`}
+              className={`qattan-studio-mode qattan-studio-mode-pill ${selected ? "qattan-studio-mode-selected" : ""}`}
               aria-pressed={selected}
               onClick={() => onModeChange(tool.id)}
             >
@@ -46,7 +75,7 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
                 />
               )}
               <span className="qattan-studio-mode-icon" aria-hidden="true">
-                <Icon size={15} strokeWidth={1.8} />
+                <Icon size={17} strokeWidth={1.8} />
               </span>
               <span className="qattan-studio-mode-copy">
                 <span className="qattan-studio-mode-title">{title}</span>
@@ -55,10 +84,31 @@ export default function StudioControlRail({ mode, onModeChange }: StudioControlR
                   {copy.studio.live}
                 </span>
               </span>
-              <span className="qattan-studio-mode-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span className="qattan-studio-mode-index" aria-label={`Tool ${index + 1}`}>{String(index + 1).padStart(2, "0")}</span>
             </button>
           );
         })}
+        <button
+          type="button"
+          className={`qattan-studio-mode qattan-studio-mode-pill ${facadeSelected ? "qattan-studio-mode-selected" : ""}`}
+          aria-pressed={facadeSelected}
+          onClick={onFacadeSelect}
+        >
+          {facadeSelected && (
+            <motion.span
+              layoutId="activeToolIndicator"
+              className="qattan-studio-mode-highlight"
+              aria-hidden="true"
+              transition={{ type: "spring", stiffness: 420, damping: 34 }}
+            />
+          )}
+          <span className="qattan-studio-mode-icon" aria-hidden="true">
+            <Sparkles size={17} strokeWidth={1.8} />
+          </span>
+          <span className="qattan-studio-mode-copy">
+            <span className="qattan-studio-mode-title">{facadeTitle}</span>
+          </span>
+        </button>
       </div>
     </aside>
   );

@@ -45,7 +45,7 @@ describe("Qattan unified nine-tool studio", () => {
     const file = new File(["fake-image-bytes"], "facade.jpg", { type: "image/jpeg" });
     await user.upload(screen.getByLabelText(/Facade photo or 3D screenshot/i), file);
     await user.type(screen.getByLabelText(/Design brief/i), "Warm limestone villa");
-    await user.click(screen.getByRole("button", { name: /Generate/i }));
+    await user.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled(), { timeout: 15000 });
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as { toolId?: string };
@@ -57,7 +57,7 @@ describe("Qattan unified nine-tool studio", () => {
 
     expect(screen.getByLabelText(/Floor plan image/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Generate 4 Architectural Views/i }),
+      screen.getAllByRole("button", { name: /Generate 4 Architectural Views/i })[0],
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Download All \(ZIP\)/i })).toBeInTheDocument();
   });

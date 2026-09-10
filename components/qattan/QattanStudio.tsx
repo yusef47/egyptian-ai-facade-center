@@ -82,6 +82,12 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) 
     setSession((current) => ({ ...current, status: "" }));
   }, []);
 
+  // The legacy facade triptych keeps a pill in the mobile tool rail.
+  const handleFacadeSelect = useCallback(() => {
+    setMode("facade");
+    setSession((current) => ({ ...current, status: "" }));
+  }, []);
+
   return (
     <div className="qattan-page qattan-studio-page" dir={direction} lang={locale}>
       <QattanHeader />
@@ -107,8 +113,14 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) 
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
         >
-          <div className="qattan-studio-layout">
-            <StudioControlRail mode={mode === "facade" ? "exterior" : mode} onModeChange={handleModeChange} />
+          <div className={`qattan-studio-layout ${mode === "facade" ? "qattan-studio-layout-facade" : ""}`}>
+            <StudioControlRail
+              mode={mode === "facade" ? "exterior" : mode}
+              onModeChange={handleModeChange}
+              onFacadeSelect={handleFacadeSelect}
+              facadeSelected={mode === "facade"}
+              facadeTitle={copy.studio.facade}
+            />
             <AnimatePresence mode="wait" initial={false}>
               <motion.div key={mode} className="qattan-studio-viewport-slot" {...viewportReveal}>
                 <StudioViewport
