@@ -21,7 +21,7 @@ describe("Qattan marketing page (mnml.ai hierarchy)", () => {
     ).toBeGreaterThan(0);
     expect(screen.getAllByText(/من الاسكتش للصورة الواقعية في ثواني/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/موثوق من قبل \+2 مليون/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/مدعوم بـ Qattan Gemini Engine/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/مدعوم بـ محرك قطان المعماري/).length).toBeGreaterThan(0);
   });
 
   it("shows the mnml.ai section structure in Arabic", () => {

@@ -55,7 +55,7 @@ The generated image is cached in browser memory. Each quadrant is cropped, upsca
 | Motion | **Framer Motion** | Available for product motion and interaction polish as the interface evolves |
 | Icons | **Lucide React** | Consistent, accessible interface iconography |
 | AI provider | **OpenRouter** | Secure server-side gateway to multimodal image generation |
-| AI model | **Google Gemini multimodal image model** — `google/gemini-3.1-flash-lite-image` | Facade triptych and four-view CAD image generation |
+| AI model | **Qattan Vision v4.2** multimodal image engine (OpenRouter gateway) | Facade triptych and four-view CAD image generation |
 | Image processing | **Sharp** | Server-side output compression to stay within serverless response limits |
 | Raster vectorization | **Potrace-WASM** and browser canvas preprocessing | Local contour/path extraction for conceptual CAD linework |
 | CAD packaging | **ASCII DXF AC1009/R12 template** and **JSZip** | AutoCAD-compatible individual DXF and ZIP downloads |
@@ -82,7 +82,7 @@ Browser
 Next App Router
   └── /api/restore
         └── lib/openrouter-engine.ts
-              └── OpenRouter → Gemini multimodal image generation
+              └── OpenRouter → Qattan Architectural Engine (multimodal image generation)
 ```
 
 The OpenRouter key is read only by server-side code. The browser sends an image data URL, prompt, and optional mode to `/api/restore`; it never receives or bundles the provider credential.
@@ -204,11 +204,7 @@ Planned tools display a planned/coming-soon state and never pretend to have inde
 
 ### Provider and model
 
-The backend uses Gemini multimodal image generation models through OpenRouter. The current model constant is:
-
-```text
-google/gemini-3.1-flash-lite-image
-```
+The backend routes to a multimodal image generation model through OpenRouter under the proprietary **Qattan Vision v4.2** brand. The model identifier is a private server-side constant in `lib/openrouter-engine.ts` and is intentionally not reproduced in documentation.
 
 The primary Next.js route is:
 

@@ -17,7 +17,8 @@ describe("V117 CAD OpenRouter request", () => {
       ? system.content
       : system?.content.find((part) => part.type === "text")?.text ?? "";
 
-    expect(instruction).toBe(CAD_SYSTEM_PROMPT);
+    expect(instruction.startsWith(CAD_SYSTEM_PROMPT)).toBe(true);
+    expect(instruction).toContain("watermark-free");
     expect(instruction).toContain("2x2 grid");
     expect(instruction).toContain("NO grayscale shading");
     expect(instruction).toContain("expert AI Architectural CAD Generator");

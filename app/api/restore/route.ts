@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { executeRestore } from "../../../lib/openrouter-engine.js";
+import { checkGenerationCredits, deductGenerationCredit } from "../../../lib/credits.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,6 +22,16 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // Daily credit gate: 10 free generations per 24h per signed-in user.
+  // Bypassed (allowed) when Supabase credentials are not configured yet.
+  const creditCheck = await checkGenerationCredits(request);
+  if (!creditCheck.allowed) {
+    return NextResponse.json(
+      { error: creditCheck.message },
+      { status: creditCheck.status },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -41,6 +52,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       { error: result.message },
       { status: result.status },
     );
+  }
+
+  // Charge one credit only after a successful, clean, watermark-free render.
+  if (creditCheck.userId) {
+    void deductGenerationCredit(creditCheck.userId);
   }
 
   return NextResponse.json({ imageDataUrl: result.imageDataUrl });

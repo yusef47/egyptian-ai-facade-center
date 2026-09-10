@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Menu, Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { qattanLocaleHref, useQattan } from "./QattanProviders";
+import AuthButton from "./AuthButton";
 
 /**
  * mnml.ai-style fixed marketing header: locale-aware nav (Explore Tools,
@@ -60,7 +61,7 @@ export function QattanHeader() {
           >
             {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
           </button>
-          <a className="qattan-signin" href="#pricing">{copy.nav.signIn}</a>
+          <AuthButton />
           <Link className="qattan-button qattan-button-primary qattan-cta-pulse" href={qattanLocaleHref(locale, "/studio")}>
             {copy.nav.start}
           </Link>
@@ -80,7 +81,9 @@ export function QattanHeader() {
         <div className="qattan-container qattan-mobile-nav">
           {navLinks.map((link) => <a key={link.href} href={link.href} onClick={() => setMobileOpen(false)}>{link.label}</a>)}
           <Link href={qattanLocaleHref(locale, "/studio")} onClick={() => setMobileOpen(false)}>{copy.nav.studio}</Link>
-          <a href="#pricing" onClick={() => setMobileOpen(false)}>{copy.nav.signIn}</a>
+          <div className="qattan-mobile-auth">
+            <AuthButton />
+          </div>
         </div>
       )}
       <span className="qattan-sr-only" aria-hidden="true">{localeTarget}</span>

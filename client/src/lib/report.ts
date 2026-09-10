@@ -27,7 +27,7 @@ export function buildSyndicateReport(params: {
 }): SyndicateReport {
   return {
     generator: "Egyptian Center for AI in Architecture & Urbanism",
-    model: "google/gemini-3.1-flash-lite-image",
+    model: "Qattan Vision v4.2",
     panels: TRIPTYCH_PANELS,
     prompt: params.prompt,
     imageDataUrl: params.imageDataUrl,

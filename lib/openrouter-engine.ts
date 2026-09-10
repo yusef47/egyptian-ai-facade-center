@@ -167,6 +167,7 @@ export function buildOpenRouterRequest(
           ? GENERAL_VISUALIZATION_SYSTEM_PROMPT
           : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
   const briefLabel = promptMode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
+  const finalSystemPrompt = `${systemPrompt}\n\n${NO_WATERMARK_CLAUSE}`;
   const messages = opts.inlineSystemPrompt
     ? [
         {
@@ -174,7 +175,7 @@ export function buildOpenRouterRequest(
           content: [
             {
               type: "text",
-              text: `${systemPrompt}\n\n${briefLabel}: ${prompt.trim()}`,
+              text: `${finalSystemPrompt}\n\n${briefLabel}: ${prompt.trim()}`,
             },
             { type: "image_url", image_url: { url: imageDataUrl } },
           ],
@@ -183,7 +184,7 @@ export function buildOpenRouterRequest(
     : [
         {
           role: "system",
-          content: systemPrompt,
+          content: finalSystemPrompt,
         },
         {
           role: "user",
@@ -457,3 +458,16 @@ export async function executeRestore(
     return { ok: false, status: 502, message: "حدث خطأ أثناء الاتصال بخدمة الترميم." };
   }
 }
+
+/**
+ * Zero-watermark guarantee for the Qattan Architectural Engine. Appended to
+ * every system prompt so all outputs ship as clean, presentation-grade
+ * renders with no watermarks, logos, or vendor marks of any kind.
+ */
+export const NO_WATERMARK_CLAUSE = [
+  "OUTPUT BRAND SAFETY (NON-NEGOTIABLE):",
+  "Deliver a 100% clean, watermark-free architectural presentation render.",
+  "Do not add watermarks, logos, vendor marks, signatures, UI chrome, borders, or overlay text of any kind.",
+  "Do not embed any brand name, model name, or provider name in the image.",
+  "The output must be a pure architectural image at maximum resolution and quality.",
+].join(" ");

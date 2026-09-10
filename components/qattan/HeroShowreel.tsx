@@ -25,7 +25,7 @@ const SCENES: ShowreelScene[] = [
   {
     src: "/videos/reel-night.mp4",
     poster: "/hero-night-pool.jpg",
-    caption: { en: "Qattan Gemini Engine · Night 2700K", ar: "محرك قطان Gemini · ليلي 2700 كلفن" },
+    caption: { en: "Qattan Architectural Engine · Night 2700K", ar: "محرك قطان المعماري · ليلي 2700 كلفن" },
   },
 ];
 

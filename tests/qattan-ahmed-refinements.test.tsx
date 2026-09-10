@@ -202,7 +202,7 @@ describe("Refinement 4 — Luxury showreel and tool preview modals", () => {
     expect(reel).not.toBeNull();
     expect(document.querySelectorAll(".qattan-reel-progress-dot").length).toBe(3);
     expect(screen.getByRole("button", { name: /pause showreel/i })).toBeInTheDocument();
-    expect(screen.getByText(/Powered by Qattan Gemini Engine/)).toBeInTheDocument();
+    expect(screen.getByText(/Powered by Qattan Architectural Engine/)).toBeInTheDocument();
   });
 
   it("toggles the showreel play state", () => {

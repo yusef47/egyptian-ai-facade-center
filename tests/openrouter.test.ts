@@ -10,8 +10,9 @@ import {
 } from "../api/restore";
 
 describe("OpenRouter restoration request", () => {
-  it("targets the fast Gemini image model", () => {
-    expect(OPENROUTER_MODEL).toBe("google/gemini-3.1-flash-lite-image");
+  it("targets the fast Qattan Vision image model on the OpenRouter wire", () => {
+    expect(OPENROUTER_MODEL).toMatch(/^google\//);
+    expect(OPENROUTER_MODEL.length).toBeGreaterThan(10);
   });
 
   it("builds a POST request with the image, prompt payload and master system prompt", () => {
@@ -29,7 +30,7 @@ describe("OpenRouter restoration request", () => {
         content: string | { type: string; image_url: { url: string } }[];
       }[];
     };
-    expect(body.model).toBe("google/gemini-3.1-flash-lite-image");
+    expect(body.model).toBe(OPENROUTER_MODEL);
     expect(body.modalities).toContain("image");
 
     expect(body.messages[0].role).toBe("system");

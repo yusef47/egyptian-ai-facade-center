@@ -24,7 +24,7 @@ describe("syndicate report metadata", () => {
       imageDataUrl: "data:image/png;base64,AAAA",
       generatedAt: "2026-08-03T00:00:00.000Z",
     });
-    expect(report.model).toBe("google/gemini-3.1-flash-lite-image");
+    expect(report.model).toBe("Qattan Vision v4.2");
     expect(report.generator).toContain("Egyptian Center");
     expect(report.panels).toHaveLength(3);
     expect(report.prompt).toBe("Restore in Khedivial style");
