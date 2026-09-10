@@ -61,49 +61,93 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
   }
 
+  // Preferred path: the SQL RPCs. If they're not applied yet (or the
+  // function signature changed), fall back to direct service-role queries
+  // against the profiles table so the dashboard NEVER shows all-zeros while
+  // real user data exists.
   const [statsResult, recentResult] = await Promise.all([
     admin.rpc("admin_platform_stats"),
-    admin.rpc("admin_recent_profiles", { p_limit: 20 }),
+    admin.rpc("admin_recent_profiles", { p_limit: 200 }),
   ]);
 
-  if (statsResult.error) {
-    return NextResponse.json(
-      { error: "Admin statistics are unavailable (migration not applied yet)." },
-      { status: 503 },
-    );
-  }
-
-  const raw = Array.isArray(statsResult.data) ? statsResult.data[0] : statsResult.data;
-  const statsRow = (raw ?? {}) as Record<string, unknown>;
   const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
 
-  const recentRows = (Array.isArray(recentResult.data) ? recentResult.data : []) as Record<
-    string,
-    unknown
-  >[];
-  const recent = recentRows.map((row) => {
-    const entry = row as Record<string, unknown>;
-    return {
-      id: String(entry.id ?? ""),
-      email: typeof entry.email === "string" ? entry.email : null,
-      fullName: typeof entry.full_name === "string" ? entry.full_name : null,
-      credits: num(entry.credits),
-      generationsUsed: num(entry.generations_used),
-      lastCreditReset:
-        typeof entry.last_credit_reset === "string" ? entry.last_credit_reset : null,
-      createdAt: typeof entry.created_at === "string" ? entry.created_at : null,
-    };
-  });
-
-  const payload: AdminStatsPayload = {
-    configured: true,
-    stats: {
+  let stats: AdminStatsPayload["stats"] | null = null;
+  if (!statsResult.error) {
+    const raw = Array.isArray(statsResult.data) ? statsResult.data[0] : statsResult.data;
+    const statsRow = (raw ?? {}) as Record<string, unknown>;
+    stats = {
       totalUsers: num(statsRow.total_users),
       totalGenerations: num(statsRow.total_generations),
       totalCreditsRemaining: num(statsRow.total_credits_remaining),
       activeUsers: num(statsRow.active_users),
-    },
-    recent,
-  };
+    };
+  }
+
+  let recent: AdminStatsPayload["recent"] | null = null;
+  if (!recentResult.error) {
+    const recentRows = (Array.isArray(recentResult.data) ? recentResult.data : []) as Record<
+      string,
+      unknown
+    >[];
+    recent = recentRows.map((row) => {
+      const entry = row as Record<string, unknown>;
+      return {
+        id: String(entry.id ?? ""),
+        email: typeof entry.email === "string" ? entry.email : null,
+        fullName: typeof entry.full_name === "string" ? entry.full_name : null,
+        credits: num(entry.credits),
+        generationsUsed: num(entry.generations_used),
+        lastCreditReset:
+          typeof entry.last_credit_reset === "string" ? entry.last_credit_reset : null,
+        createdAt: typeof entry.created_at === "string" ? entry.created_at : null,
+      };
+    });
+  }
+
+  // Direct-query fallback (also used when either RPC is missing).
+  if (!stats || !recent) {
+    const { data: rows, error: rowsError } = await admin
+      .from("profiles")
+      .select("id, email, full_name, credits, generations_used, last_credit_reset, created_at")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (rowsError && !stats && !recent) {
+      return NextResponse.json(
+        { error: "Admin statistics are unavailable (profiles table not reachable)." },
+        { status: 503 },
+      );
+    }
+
+    const allRows = (rows ?? []) as Record<string, unknown>[];
+    if (!stats) {
+      stats = {
+        totalUsers: allRows.length,
+        totalGenerations: allRows.reduce((sum, row) => sum + num(row.generations_used), 0),
+        totalCreditsRemaining: allRows.reduce((sum, row) => sum + num(row.credits), 0),
+        // Note: with the fallback we can't see rows beyond the 200 fetched;
+        // activeUsers is computed over the fetched window.
+        activeUsers: allRows.filter((row) => {
+          const ts = typeof row.last_credit_reset === "string" ? Date.parse(row.last_credit_reset) : NaN;
+          return Number.isFinite(ts) && Date.now() - ts < 24 * 60 * 60 * 1000;
+        }).length,
+      };
+    }
+    if (!recent) {
+      recent = allRows.map((row) => ({
+        id: String(row.id ?? ""),
+        email: typeof row.email === "string" ? row.email : null,
+        fullName: typeof row.full_name === "string" ? row.full_name : null,
+        credits: num(row.credits),
+        generationsUsed: num(row.generations_used),
+        lastCreditReset:
+          typeof row.last_credit_reset === "string" ? row.last_credit_reset : null,
+        createdAt: typeof row.created_at === "string" ? row.created_at : null,
+      }));
+    }
+  }
+
+  const payload: AdminStatsPayload = { configured: true, stats, recent };
   return NextResponse.json(payload);
 }

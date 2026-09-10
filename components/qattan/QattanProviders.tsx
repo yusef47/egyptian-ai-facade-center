@@ -33,6 +33,9 @@ export function QattanProviders({
     root.dir = value.direction;
     root.dataset.qattanLocale = locale;
     try {
+      // Persisted under qattan-lang (and mirrored to the legacy key) so the
+      // pre-paint boot script can restore it before first paint.
+      window.localStorage.setItem("qattan-lang", locale);
       window.localStorage.setItem("qattan-locale", locale);
     } catch {
       // Storage is optional; the current route remains the source of truth.

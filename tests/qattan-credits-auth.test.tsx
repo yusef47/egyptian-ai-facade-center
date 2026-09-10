@@ -377,9 +377,13 @@ describe("Admin dashboard surface & migration contract", () => {
   it("keeps the migration aligned with the credit + admin RPC contract", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
     expect(sql).toContain("public.deduct_credit(p_user_id uuid, p_amount integer default 1)");
-    expect(sql).toContain("generations_used = generations_used + p_amount");
+    // Hardened: exactly -1 credit / +1 generation, and non-1 amounts rejected.
+    expect(sql).toContain("generations_used = generations_used + 1");
+    expect(sql).toMatch(/p_amount <> 1/);
     expect(sql).toMatch(/raise exception 'INSUFFICIENT_CREDITS'/);
-    expect(sql).toContain("admin_platform_stats");
-    expect(sql).toContain("admin_recent_profiles");
+    expect(sql).toMatch(/CREDIT_DEDUCTION user=% old=% new=%/);
+    const adminSql = readFileSync("supabase/migrations/20260910_qattan_admin.sql", "utf8");
+    expect(adminSql).toContain("admin_platform_stats");
+    expect(adminSql).toContain("admin_recent_profiles");
   });
 });

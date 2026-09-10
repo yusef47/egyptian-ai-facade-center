@@ -50,6 +50,12 @@ export function getSupabaseAdminClient(): SupabaseClient | null {
 /**
  * Daily refresh rule: if the profile's last reset is older than 24 hours,
  * bring the balance back to the daily allowance before evaluating the gate.
+ *
+ * CRITICAL correctness rules (production bug fixes):
+ * - A null/legacy `last_credit_reset` must NOT force a reset on every call:
+ *   we stamp it once and PRESERVE the current balance.
+ * - Only a timestamp genuinely older than 24h triggers a reset to the daily
+ *   allowance. Anything else returns the stored balance untouched.
  */
 export async function refreshDailyCredits(
   admin: SupabaseClient,
@@ -63,9 +69,22 @@ export async function refreshDailyCredits(
 
   if (error || !data) return null;
 
-  const lastReset = data.last_credit_reset ? new Date(data.last_credit_reset).getTime() : 0;
-  if (Number.isNaN(lastReset)) return data.credits ?? null;
+  const currentCredits = typeof data.credits === "number" ? data.credits : null;
 
+  // Legacy row without a reset timestamp: stamp it now, keep the balance.
+  if (!data.last_credit_reset) {
+    if (currentCredits === null) return null;
+    const { error: stampError } = await admin
+      .from("profiles")
+      .update({ last_credit_reset: new Date().toISOString() })
+      .eq("id", userId);
+    return stampError ? currentCredits : currentCredits;
+  }
+
+  const lastReset = new Date(data.last_credit_reset).getTime();
+  if (Number.isNaN(lastReset)) return currentCredits;
+
+  // Reset ONLY when 24h have truly elapsed since the last reset.
   if (Date.now() - lastReset > CREDIT_REFRESH_MS) {
     const nextReset = new Date().toISOString();
     const { data: updated, error: updateError } = await admin
@@ -74,11 +93,11 @@ export async function refreshDailyCredits(
       .eq("id", userId)
       .select("credits")
       .maybeSingle();
-    if (updateError) return data.credits ?? null;
+    if (updateError) return currentCredits;
     return updated?.credits ?? DAILY_CREDITS;
   }
 
-  return data.credits ?? null;
+  return currentCredits;
 }
 
 /**
@@ -187,19 +206,32 @@ export async function checkGenerationCredits(
   const credits = await refreshDailyCredits(admin, userId);
   if (credits === null) {
     // Profile missing (trigger not yet applied): provision on first use.
+    // ignoreDuplicates is ESSENTIAL — a plain upsert would overwrite an
+    // existing row's balance back to the daily allowance.
     const { data: created, error: createError } = await admin
       .from("profiles")
       .upsert(
         { id: userId, credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() },
-        { onConflict: "id" },
+        { onConflict: "id", ignoreDuplicates: true },
       )
       .select("credits")
       .maybeSingle();
     if (createError) {
       return { allowed: false, status: 503, message: "Credit service unavailable. Try again shortly." };
     }
-    return created && created.credits > 0
-      ? { allowed: true, remaining: created.credits, userId }
+    // ignoreDuplicates can return no row when a concurrent provision won the
+    // race — read the authoritative row instead of wrongly reporting 429.
+    let balance = created?.credits ?? null;
+    if (balance === null) {
+      const { data: existing } = await admin
+        .from("profiles")
+        .select("credits")
+        .eq("id", userId)
+        .maybeSingle();
+      balance = typeof existing?.credits === "number" ? existing.credits : null;
+    }
+    return balance !== null && balance > 0
+      ? { allowed: true, remaining: balance, userId }
       : { allowed: false, status: 429, message: "Daily credit limit reached. Credits renew every 24 hours." };
   }
 

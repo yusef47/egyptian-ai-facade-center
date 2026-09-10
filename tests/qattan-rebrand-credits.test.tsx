@@ -159,17 +159,19 @@ describe("Daily 10-credit refresh rule", () => {
     );
   });
 
-  it("treats a missing reset timestamp as eligible for refresh", async () => {
+  it("stamps a missing reset timestamp WITHOUT resetting the balance (production bug fix)", async () => {
+    // Legacy row with credits=0 and no timestamp: stamping the reset time must
+    // preserve the 0 balance — never gift credits on every API call.
     const chain = queryChain([
       { data: { credits: 0, last_credit_reset: null }, error: null },
-      { data: { credits: DAILY_CREDITS }, error: null },
+      { data: null, error: null },
     ]);
     const admin = { from: vi.fn(() => chain) };
     const credits = await refreshDailyCredits(
       admin as unknown as Parameters<typeof refreshDailyCredits>[0],
       "user-1",
     );
-    expect(credits).toBe(DAILY_CREDITS);
+    expect(credits).toBe(0);
   });
 });
 

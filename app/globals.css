@@ -1389,3 +1389,146 @@ html[data-qattan-theme="light"] .qattan-authgate-card {
     font-size: 1.08rem;
   }
 }
+
+/* ============================================================
+   LEGAL PAGES (/privacy, /terms) — obsidian & gold
+   ============================================================ */
+.qattan-legal {
+  min-height: 100vh;
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(212, 175, 55, 0.1), transparent 60%),
+    #050507;
+  color: #f4f1e8;
+  padding: 56px 20px 72px;
+}
+
+.qattan-legal-inner {
+  max-width: 820px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.qattan-legal-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #d4af37;
+  margin: 0 0 10px;
+}
+
+.qattan-legal-title {
+  margin: 0;
+  font-size: clamp(1.7rem, 4.5vw, 2.4rem);
+  font-weight: 700;
+  background: linear-gradient(100deg, #f4f1e8 20%, #e5c158 60%, #d4af37 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.qattan-legal-subtitle {
+  margin: 8px 0 0;
+  color: #b9bfd0;
+  font-size: 15px;
+}
+
+.qattan-legal-effective {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: #7f8598;
+}
+
+.qattan-legal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  background: rgba(15, 16, 22, 0.72);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 20px;
+  padding: 30px 28px;
+}
+
+.qattan-legal-section h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  color: #f3e5ab;
+}
+
+.qattan-legal-section p {
+  margin: 0 0 10px;
+  line-height: 1.8;
+  color: #c9cede;
+  font-size: 14.5px;
+}
+
+.qattan-legal-section p:last-child {
+  margin-bottom: 0;
+}
+
+.qattan-legal-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* ── Light mode counterparts (P7 audit) ─────────────────────────── */
+html[data-qattan-theme="light"] .qattan-legal {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(212, 175, 55, 0.12), transparent 60%),
+    #ffffff;
+  color: #1e293b;
+}
+
+html[data-qattan-theme="light"] .qattan-legal-subtitle { color: #475569; }
+html[data-qattan-theme="light"] .qattan-legal-effective { color: #64748b; }
+
+html[data-qattan-theme="light"] .qattan-legal-body {
+  background: #ffffff;
+  border-color: rgba(165, 129, 63, 0.35);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+html[data-qattan-theme="light"] .qattan-legal-section h2 { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-legal-section p { color: #334155; }
+
+/* Admin dashboard in light mode */
+html[data-qattan-theme="light"] .qattan-admin {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(212, 175, 55, 0.12), transparent 60%),
+    #ffffff;
+  color: #1e293b;
+}
+
+html[data-qattan-theme="light"] .qattan-admin-card,
+html[data-qattan-theme="light"] .qattan-admin-gate,
+html[data-qattan-theme="light"] .qattan-admin-table-wrap {
+  background: #ffffff;
+  border-color: rgba(165, 129, 63, 0.35);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+html[data-qattan-theme="light"] .qattan-admin-card-value { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-admin-card-label { color: #334155; }
+html[data-qattan-theme="light"] .qattan-admin-card-label-ar { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-admin-gate h2 { color: #1e293b; }
+html[data-qattan-theme="light"] .qattan-admin-gate p,
+html[data-qattan-theme="light"] .qattan-admin-note { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-admin-table-head h2 { color: #1e293b; }
+html[data-qattan-theme="light"] .qattan-admin-table th { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-admin-table td {
+  color: #334155;
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+html[data-qattan-theme="light"] .qattan-admin-credits-cell { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-admin-title {
+  background: linear-gradient(100deg, #1e293b 20%, #8a6d1f 75%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Auth gate modal keeps its luxury obsidian card in light mode (already
+   themed), but the title/desc need no change — verifying contrast retained. */

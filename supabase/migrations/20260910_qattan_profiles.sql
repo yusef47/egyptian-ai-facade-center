@@ -1,6 +1,8 @@
--- Qattan AI — user profiles with 10 daily recurring credits.
--- Run in the Supabase SQL editor (or as a migration). Idempotent: safe to re-run.
+-- Qattan AI — user profiles and the atomic credit engine.
+-- Fully idempotent: safe to re-run at any time.
+-- Run in the Supabase SQL editor.
 
+-- ── Core table ─────────────────────────────────────────────────────────
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
@@ -12,10 +14,12 @@ create table if not exists public.profiles (
   generations_used integer not null default 0
 );
 
--- Idempotent upgrade for databases created before generations_used existed.
+-- Idempotent upgrades for databases created by earlier revisions.
 alter table public.profiles add column if not exists generations_used integer not null default 0;
+alter table public.profiles add column if not exists credits integer not null default 10;
+alter table public.profiles add column if not exists last_credit_reset timestamptz not null default now();
 
--- Provision a profile with 10 credits for every new Google sign-up.
+-- ── New-user provisioning (10 credits) ────────────────────────────────
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -28,7 +32,9 @@ begin
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name'),
-    coalesce(new.raw_user_meta_data ->> 'avatar_url', new.raw_user_meta_data ->> 'picture')
+    coalesce(new.raw_user_meta_data ->> 'avatar_url', new.raw_user_meta_data ->> 'picture'),
+    10,
+    now()
   )
   on conflict (id) do nothing;
   return new;
@@ -40,9 +46,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- Atomic credit deduction: decrements only when the balance stays >= 0 and
--- returns the authoritative remaining balance. Called by lib/credits.ts
--- (service-role) after every successful generation.
+-- ── Atomic deduction: EXACTLY -1 credit, +1 generation per call ────────
 create or replace function public.deduct_credit(p_user_id uuid, p_amount integer default 1)
 returns integer
 language plpgsql
@@ -50,25 +54,39 @@ security definer
 set search_path = public
 as $$
 declare
+  previous integer;
   remaining integer;
 begin
+  -- Only single-credit deductions are permitted from any caller.
+  if p_amount is null or p_amount <> 1 then
+    raise exception 'INVALID_AMOUNT' using errcode = 'P0001';
+  end if;
+
+  select credits into previous from public.profiles where id = p_user_id;
+
   update public.profiles
-  set credits = credits - p_amount,
-      generations_used = generations_used + p_amount
+  set credits = credits - 1,
+      generations_used = generations_used + 1
   where id = p_user_id
-    and credits >= p_amount
+    and credits >= 1
   returning credits into remaining;
 
   if remaining is null then
+    if previous is null then
+      insert into public.profiles (id, credits, last_credit_reset, generations_used)
+      values (p_user_id, 0, now(), 0)
+      on conflict (id) do nothing;
+    end if;
     raise exception 'INSUFFICIENT_CREDITS' using errcode = 'P0001';
   end if;
 
+  -- Server-side audit trail (visible in the Supabase log explorer).
+  raise notice 'CREDIT_DEDUCTION user=% old=% new=%', p_user_id, previous, remaining;
   return remaining;
 end;
 $$;
 
--- Daily refresh helper: resets the balance to the daily allowance when the
--- last reset is older than 24 hours. Used by lib/credits.ts on each request.
+-- ── Daily refresh helper: resets ONLY after a true 24h elapsed ────────
 create or replace function public.refresh_daily_credit(p_user_id uuid)
 returns integer
 language plpgsql
@@ -78,6 +96,7 @@ as $$
 declare
   current_row public.profiles;
   remaining integer;
+  stamped integer;
 begin
   select * into current_row from public.profiles where id = p_user_id;
 
@@ -88,8 +107,17 @@ begin
     return 10;
   end if;
 
-  if current_row.last_credit_reset is null
-     or current_row.last_credit_reset < now() - interval '24 hours' then
+  -- Legacy row without a timestamp: stamp it, PRESERVE the balance.
+  if current_row.last_credit_reset is null then
+    update public.profiles
+    set last_credit_reset = now()
+    where id = p_user_id
+    returning credits into stamped;
+    return coalesce(stamped, current_row.credits);
+  end if;
+
+  -- Reset ONLY when 24 hours have truly elapsed since the last reset.
+  if current_row.last_credit_reset < now() - interval '24 hours' then
     update public.profiles
     set credits = 10, last_credit_reset = now()
     where id = p_user_id
@@ -99,62 +127,4 @@ begin
 
   return current_row.credits;
 end;
-$$;
-
-alter table public.profiles enable row level security;
-
-drop policy if exists "profiles_select_own" on public.profiles;
-create policy "profiles_select_own"
-  on public.profiles for select
-  using (auth.uid() = id);
-
-drop policy if exists "profiles_insert_own" on public.profiles;
-create policy "profiles_insert_own"
-  on public.profiles for insert
-  with check (auth.uid() = id);
-
--- Credit updates happen exclusively server-side through the service-role
--- client and the deduct_credit / refresh_daily_credit RPCs, which bypass
--- RLS by design.
-
--- Platform statistics for the /admin dashboard. SECURITY DEFINER so the
--- aggregates run over profiles regardless of RLS; authorization is enforced
--- in application code (lib/admin.ts) before this RPC is ever invoked.
-create or replace function public.admin_platform_stats()
-returns table (
-  total_users bigint,
-  total_generations bigint,
-  total_credits_remaining bigint,
-  active_users bigint
-)
-language sql
-security definer
-set search_path = public
-as $$
-  select
-    (select count(*) from public.profiles),
-    (select coalesce(sum(generations_used), 0) from public.profiles),
-    (select coalesce(sum(credits), 0) from public.profiles),
-    (select count(*) from public.profiles where last_credit_reset >= now() - interval '24 hours');
-$$;
-
--- Per-user credit ledger used by the /admin dashboard table.
-create or replace function public.admin_recent_profiles(p_limit integer default 20)
-returns table (
-  id uuid,
-  email text,
-  full_name text,
-  credits integer,
-  generations_used integer,
-  last_credit_reset timestamptz,
-  created_at timestamptz
-)
-language sql
-security definer
-set search_path = public
-as $$
-  select id, email, full_name, credits, generations_used, last_credit_reset, created_at
-  from public.profiles
-  order by created_at desc
-  limit least(greatest(p_limit, 1), 100);
 $$;

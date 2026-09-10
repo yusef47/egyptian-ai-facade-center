@@ -14,7 +14,12 @@ import AuthButton from "./AuthButton";
 export function QattanHeader() {
   const { locale, copy } = useQattan();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // Hydrate from the boot script's pre-paint restore (no flash, no wrong
+  // default on reload). Falls back to dark for first-time visitors.
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof document === "undefined") return "dark";
+    return document.documentElement.dataset.qattanTheme === "light" ? "light" : "dark";
+  });
   const localeTarget = locale === "ar" ? "en" : "ar";
   const navLinks = [
     { label: copy.nav.tools, href: "#tools" },
@@ -27,6 +32,11 @@ export function QattanHeader() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.dataset.qattanTheme = next;
+    try {
+      window.localStorage.setItem("qattan-theme", next);
+    } catch {
+      // Storage optional; the toggle still applies for this session.
+    }
   };
 
   return (
