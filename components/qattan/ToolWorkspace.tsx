@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type DragEvent, type TouchEvent } from "re
 import { createPortal } from "react-dom";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
+import { getSupabaseSessionGate, QATTAN_AUTH_REQUIRED_EVENT } from "../../lib/supabase";
 import {
   GALLERY_VARIATION_DIRECTIVES,
   OUTPUT_PRESENTATIONS,
@@ -18,6 +19,7 @@ import {
   type ToolControlValues,
 } from "@tools/registry";
 import { useQattan } from "./QattanProviders";
+import RequireAuthModal from "./RequireAuthModal";
 import ToolGuidePanel from "./ToolGuidePanel";
 
 type ToolWorkspaceProps = {
@@ -65,6 +67,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
   const [zoomDragOffset, setZoomDragOffset] = useState(0);
   const zoomTouchStartY = useRef<number | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   // One-thumb access: on phones the sticky FAB triggers the same submission
   // as the inline generate button.
@@ -86,6 +89,14 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       document.body.style.overflow = previousOverflow;
     };
   }, [zoomIndex]);
+
+  // Legacy surfaces (facade/floorplan engines) dispatch a global event when an
+  // unauthenticated generation is attempted there; open the same gate modal.
+  useEffect(() => {
+    const onAuthRequired = () => setAuthModalOpen(true);
+    window.addEventListener(QATTAN_AUTH_REQUIRED_EVENT, onAuthRequired);
+    return () => window.removeEventListener(QATTAN_AUTH_REQUIRED_EVENT, onAuthRequired);
+  }, []);
 
   // Touch-drag dismiss: dragging the lightbox content down ≥80px closes it.
   const onZoomTouchStart = (event: TouchEvent<HTMLDivElement>) => {
@@ -154,6 +165,14 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   };
 
   const handleSubmit = async () => {
+    // Mandatory auth gate: block the generation request and surface the
+    // luxury sign-in modal when Supabase is configured but no session exists.
+    const gate = await getSupabaseSessionGate();
+    if (gate === "signed-out") {
+      setAuthModalOpen(true);
+      return;
+    }
+
     if (!imageDataUrl) {
       setError(L ? "ارفع صورة أولاً." : "Please upload an image first.");
       return;
@@ -542,6 +561,13 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
             document.body,
           )
         : null}
+
+      {/* Mandatory auth gate before any AI generation. */}
+      <RequireAuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        returnTo={`/studio?mode=${tool.id}`}
+      />
     </section>
   );
 }

@@ -1,4 +1,9 @@
 import type { ToolId } from "@tools/registry";
+import {
+  AuthRequiredError,
+  getSupabaseSessionGate,
+  QATTAN_AUTH_REQUIRED_EVENT,
+} from "../../../lib/supabase";
 
 export interface RestoreRequest {
   imageDataUrl: string;
@@ -42,6 +47,18 @@ async function getSupabaseAccessToken(): Promise<string | null> {
  * either a hosted https:// URL or a data:image/... string.
  */
 export async function restoreFacade(request: RestoreRequest): Promise<string> {
+  // Mandatory auth gate: every generating surface (registry tools and the
+  // legacy facade/floorplan engines all funnel through here) must have a
+  // Supabase session before a request is sent. Skipped pre-activation
+  // ("disabled" gate) and overridable per-call for special surfaces.
+  const gate = await getSupabaseSessionGate();
+  if (gate === "signed-out") {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(QATTAN_AUTH_REQUIRED_EVENT));
+    }
+    throw new AuthRequiredError();
+  }
+
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const accessToken = await getSupabaseAccessToken();
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;

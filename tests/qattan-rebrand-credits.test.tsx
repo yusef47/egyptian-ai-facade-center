@@ -6,7 +6,7 @@ import {
   deductGenerationCreditWithAdmin,
   refreshDailyCredits,
 } from "../lib/credits";
-import { DAILY_CREDITS, CREDIT_REFRESH_MS, getSupabaseBrowserClient } from "../lib/supabase";
+import { DAILY_CREDITS, CREDIT_REFRESH_MS, getSupabaseBrowserClient, getSupabaseSessionGate } from "../lib/supabase";
 import {
   NO_WATERMARK_CLAUSE,
   buildOpenRouterRequest,
@@ -206,6 +206,12 @@ describe("Credit gate", () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the client generation gate disabled when Supabase is not configured", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    expect(await getSupabaseSessionGate()).toBe("disabled");
   });
 
   it("allows requests when Supabase is not configured yet (pre-activation parity)", async () => {

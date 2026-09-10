@@ -37,3 +37,35 @@ export function getSupabaseBrowserClient() {
   }
   return browserClient;
 }
+
+/** Window event fired when an unauthenticated user tries to generate. */
+export const QATTAN_AUTH_REQUIRED_EVENT = "qattan:auth-required";
+
+/**
+ * Thrown by restoreFacade when the mandatory auth gate blocks a generation
+ * because the visitor has no Supabase session.
+ */
+export class AuthRequiredError extends Error {
+  constructor() {
+    super("Sign in with Google to generate — 10 free daily credits included.");
+    this.name = "AuthRequiredError";
+  }
+}
+
+export type SupabaseSessionGate = "disabled" | "signed-in" | "signed-out";
+
+/**
+ * Client-side auth gate for generation actions. "disabled" means Supabase
+ * credentials are not set yet (pre-activation parity — generation allowed);
+ * "signed-out" means the UI must block and show the RequireAuthModal.
+ */
+export async function getSupabaseSessionGate(): Promise<SupabaseSessionGate> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return "disabled";
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session ? "signed-in" : "signed-out";
+  } catch {
+    return "disabled";
+  }
+}
