@@ -23,8 +23,8 @@ afterEach(() => {
 });
 
 describe("P1/P8 — request guards on the generation API", () => {
-  it("allows the first 5 requests per minute then blocks with retry-after", () => {
-    for (let i = 0; i < 5; i++) {
+  it("allows the first 15 requests per minute then blocks with a friendly retry-after", () => {
+    for (let i = 0; i < 15; i++) {
       expect(rateLimit("user-a").allowed).toBe(true);
     }
     const blocked = rateLimit("user-a");
@@ -103,6 +103,79 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(sql).toMatch(/last_credit_reset < now\(\) - interval '24 hours'/);
     // Stamping legacy rows must NOT touch credits.
     expect(sql).toMatch(/set last_credit_reset = now\(\)\s*\n\s*where id = p_user_id\s*\n\s*returning credits into stamped;/);
+  });
+});
+
+describe("Branding — zero provider mentions in user-facing surfaces", () => {
+  const USER_FACING_SOURCES = [
+    "lib/openrouter-engine.ts",
+    "app/api/restore/route.ts",
+    "lib/request-guards.ts",
+    "lib/credits.ts",
+    "lib/image-validation.ts",
+    "components/qattan/ToolWorkspace.tsx",
+    "client/src/lib/i18n.tsx",
+    "client/src/lib/restore.ts",
+  ];
+
+  it("never names the upstream provider in error copy or UI strings", () => {
+    for (const file of USER_FACING_SOURCES) {
+      const source = readFileSync(file, "utf8");
+      // Strip comments so server-side identifiers/imports don't false-positive:
+      // only string/JSX literals are user-visible.
+      const literals = source
+        .split("\n")
+        .filter((line) => !line.trim().startsWith("//") && !/^[/*]/.test(line.trim()))
+        .join("\n")
+        // Server-side wiring never reaches the browser: the gateway endpoint,
+        // env-var identifiers, and type/import names are not user-visible.
+        .replace(/https:\/\/openrouter\.ai[^\"']*/gi, "")
+        .replace(/OPENROUTER_[A-Z_]+/g, "")
+        .replace(/OpenRouter(Request|Failure)/g, "");
+      const matches = literals.match(/openrouter(?![-_])/gi);
+      if (matches) {
+        const offending = literals
+          .split("\n")
+          .filter((line) => /openrouter(?![-_])/i.test(line));
+        throw new Error(`${file} leaks the provider name: ${offending.join("\n")}`);
+      }
+      expect(matches).toBeNull();
+    }
+  });
+
+  it("uses the proprietary bilingual busy + rate-limit messages", () => {
+    const engine = readFileSync("lib/openrouter-engine.ts", "utf8");
+    expect(engine).toContain("Qattan Architectural Engine is currently busy");
+    expect(engine).toContain("عذراً، محرك قطان المعماري مشغول حالياً");
+    const guards = readFileSync("lib/request-guards.ts", "utf8");
+    expect(guards).toContain("Please wait a few seconds before the next generation");
+    expect(guards).toContain("يرجى الانتظار بضع ثوانٍ");
+    // Rate limit raised to 15/min.
+    expect(guards).toMatch(/RATE_MAX_REQUESTS = 15/);
+    const route = readFileSync("app/api/restore/route.ts", "utf8");
+    expect(route).toContain("RATE_LIMIT_MESSAGE_BILINGUAL");
+  });
+
+  it("maps upstream provider failures to the proprietary busy message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: { message: "Insufficient credits. Top up at provider." } }),
+          { status: 402 },
+        ),
+      ),
+    );
+    const { executeRestore } = await import("../lib/openrouter-engine");
+    const result = await executeRestore(
+      { imageDataUrl: "data:image/png;base64,AAAA", prompt: "villa" },
+      { apiKey: "test-key", clientKey: "branding-test" },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("Qattan Architectural Engine is currently busy");
+      expect(result.message).not.toMatch(/openrouter/i);
+    }
   });
 });
 

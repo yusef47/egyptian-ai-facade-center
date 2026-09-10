@@ -65,7 +65,7 @@ export const en = {
   "studio.errorPayload": "The image is too large. Try a smaller photo.",
   "studio.errorGeneric": "Restoration failed. Please try again.",
   "studio.creditsHint":
-    "The restoration service needs credits. Top up your OpenRouter account to enable generation.",
+    "Qattan Architectural Engine is currently busy. Please retry in a moment.",
   "studio.fastBadge": "≈3s generation",
   "studio.eightKBadge": "8K output",
   "studio.statusDraft": "Architectural brief updated.",
@@ -183,7 +183,7 @@ export const ar: Record<TranslationKey, string> = {
   "studio.errorPayload": "الصورة كبيرة جداً. جرّب صورة أصغر.",
   "studio.errorGeneric": "فشل الترميم. حاول مرة أخرى.",
   "studio.creditsHint":
-    "خدمة الترميم تحتاج رصيداً. أضف رصيداً إلى حساب OpenRouter لتفعيل التوليد.",
+    "عذراً، محرك قطان المعماري مشغول حالياً. يرجى المحاولة بعد قليل.",
   "studio.fastBadge": "توليد خلال ~3 ثوانٍ",
   "studio.eightKBadge": "مخرجات 8K",
   "studio.statusDraft": "تم تحديث الوصف المعماري.",

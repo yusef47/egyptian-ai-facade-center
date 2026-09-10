@@ -11,10 +11,21 @@
 export type GuardResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
 const RATE_WINDOW_MS = 60_000;
-const RATE_MAX_REQUESTS = 5;
+/**
+ * 15 generations per rolling minute: comfortable for students exploring all
+ * 9 tools during a testing session, while still blunting abusive bursts.
+ */
+const RATE_MAX_REQUESTS = 15;
 const DEDUPE_WINDOW_MS = 3_000;
 
 type Bucket = { hits: number[]; lastSeen: number };
+
+/**
+ * Friendly bilingual notice returned when the rate limit is hit — smooth and
+ * inviting rather than a hard block, per the launch UX brief.
+ */
+export const RATE_LIMIT_MESSAGE_BILINGUAL =
+  "يرجى الانتظار بضع ثوانٍ قبل التوليد التالي. | Please wait a few seconds before the next generation.";
 
 const globalGuards = globalThis as unknown as {
   __qattanRateBuckets?: Map<string, Bucket>;

@@ -245,7 +245,11 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       if (CREDITS_RE.test(message)) {
-        setError(L ? "تحتاج خدمة التوليد إلى رصيد. اشحن حساب OpenRouter للمتابعة." : "The generation service needs credits. Top up the OpenRouter account to continue.");
+        setError(
+          L
+            ? "عذراً، محرك قطان المعماري مشغول حالياً. يرجى المحاولة بعد قليل."
+            : "Qattan Architectural Engine is currently busy. Please retry in a moment.",
+        );
       } else {
         setError(message || (L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again."));
       }

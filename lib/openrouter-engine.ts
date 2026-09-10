@@ -359,7 +359,21 @@ function extractUpstreamMessage(data: unknown): string {
   return typeof record?.error?.message === "string" ? record.error.message : "";
 }
 
-const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 6 });
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 15 });
+
+/**
+ * Proprietary, provider-agnostic error copy. These constants are the ONLY
+ * messages the platform surfaces for upstream generation failures — the
+ * underlying provider is never named in any user-facing surface.
+ */
+export const ENGINE_BUSY_BILINGUAL =
+  "عذراً، محرك قطان المعماري مشغول حالياً. يرجى المحاولة بعد قليل. | Qattan Architectural Engine is currently busy. Please retry in a moment.";
+
+export const RATE_LIMIT_BILINGUAL =
+  "يرجى الانتظار بضع ثوانٍ قبل التوليد التالي. | Please wait a few seconds before the next generation.";
+
+export const SERVICE_NOT_CONFIGURED_BILINGUAL =
+  "خدمة التوليد غير مهيأة حالياً. تواصل مع الدعم إذا استمرت المشكلة. | The generation service is not configured yet. Contact support if this persists.";
 
 export function validateRestorePayload(body: unknown):
   | { ok: true; payload: RestorePayload }
@@ -406,10 +420,10 @@ export async function executeRestore(
   const { apiKey: apiKeyFromOptions, clientKey } = options;
   const apiKey = apiKeyFromOptions ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return { ok: false, status: 500, message: "لم يتم إعداد مفتاح OpenRouter على الخادم." };
+    return { ok: false, status: 500, message: SERVICE_NOT_CONFIGURED_BILINGUAL };
   }
   if (!limiter.allow(clientKey)) {
-    return { ok: false, status: 429, message: "طلبات كثيرة خلال دقيقة واحدة. حاول مرة أخرى بعد قليل." };
+    return { ok: false, status: 429, message: RATE_LIMIT_BILINGUAL };
   }
 
   const validated = validateRestorePayload(body);
@@ -437,16 +451,14 @@ export async function executeRestore(
         upstream.status === 402 ||
         /insufficient.?credits|out of credits|insufficient balance/i.test(upstreamMessage)
       ) {
-        return {
-          ok: false,
-          status: 502,
-          message: "Insufficient OpenRouter credits. Please top up your account to enable generation.",
-        };
+        // Provider-side capacity/balance issues are presented as a busy engine,
+        // never as an account or provider problem.
+        return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
       }
       return {
         ok: false,
         status: upstream.status >= 500 ? 502 : upstream.status,
-        message: "تعذر إكمال الترميم الآن.",
+        message: ENGINE_BUSY_BILINGUAL,
       };
     }
 
@@ -455,7 +467,7 @@ export async function executeRestore(
 
     return { ok: true, imageDataUrl: await trimOutputDataUrl(output) };
   } catch {
-    return { ok: false, status: 502, message: "حدث خطأ أثناء الاتصال بخدمة الترميم." };
+    return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
   }
 }
 

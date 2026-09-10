@@ -73,7 +73,7 @@ describe("EngineSection restoration studio", () => {
       () => expect(screen.getByRole("alert")).toBeInTheDocument(),
       { timeout: 15000 },
     );
-    expect(screen.getByRole("alert").textContent).toMatch(/credit|quota|openrouter/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/busy|retry|مشغول/i);
   });
 
   it("shows the triptych panel labels and the official syndicate report download button", { timeout: 20000 }, async () => {

@@ -7,7 +7,7 @@ import {
   getGenerationUserId,
   refundGenerationCredit,
 } from "../../../lib/credits.js";
-import { dedupe, rateLimit } from "../../../lib/request-guards.js";
+import { RATE_LIMIT_MESSAGE_BILINGUAL, dedupe, rateLimit } from "../../../lib/request-guards.js";
 import { validateImageDataUrl } from "../../../lib/image-validation.js";
 
 export const runtime = "nodejs";
@@ -31,12 +31,12 @@ export async function GET(): Promise<NextResponse> {
 
 export async function POST(request: Request): Promise<NextResponse> {
   // ── Security hardening ────────────────────────────────────────────────
-  // 1) Per-user rate limit: max 5 generation requests per rolling minute.
+  // 1) Per-user rate limit: max 15 generation requests per rolling minute.
   const limiterKey = getClientKey(request);
   const limited = rateLimit(limiterKey);
   if (!limited.allowed) {
     return NextResponse.json(
-      { error: "Too many generations in a row. Please wait a moment before trying again." },
+      { error: RATE_LIMIT_MESSAGE_BILINGUAL },
       { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds) } },
     );
   }
@@ -55,7 +55,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const duplicate = dedupe(userId);
     if (!duplicate.allowed) {
       return NextResponse.json(
-        { error: "A generation is already in progress. Please wait a few seconds." },
+        { error: RATE_LIMIT_MESSAGE_BILINGUAL },
         { status: 429, headers: { "Retry-After": String(duplicate.retryAfterSeconds) } },
       );
     }
