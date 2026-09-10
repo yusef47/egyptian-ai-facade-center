@@ -12,6 +12,9 @@ create table if not exists public.profiles (
   generations_used integer not null default 0
 );
 
+-- Idempotent upgrade for databases created before generations_used existed.
+alter table public.profiles add column if not exists generations_used integer not null default 0;
+
 -- Provision a profile with 10 credits for every new Google sign-up.
 create or replace function public.handle_new_user()
 returns trigger
