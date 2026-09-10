@@ -169,7 +169,29 @@ describe("Frontend restore — Supabase bearer token & credit balance relay", ()
     window.removeEventListener(QATTAN_CREDITS_EVENT, listener);
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ credits: 7 });
+    // Event contract: detail IS the new balance (bare number) — 10 -> 7 sync.
+    expect((listener.mock.calls[0][0] as CustomEvent).detail).toBe(7);
+  });
+
+  it("syncs the header counter with the post-refund balance on failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "Generation failed.", creditsRemaining: 10 }), {
+          status: 502,
+        }),
+      ),
+    );
+
+    const listener = vi.fn();
+    window.addEventListener(QATTAN_CREDITS_EVENT, listener);
+    await expect(
+      restoreFacade({ imageDataUrl: "data:image/png;base64,AAAA", prompt: "x" }),
+    ).rejects.toThrow("Generation failed.");
+    window.removeEventListener(QATTAN_CREDITS_EVENT, listener);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((listener.mock.calls[0][0] as CustomEvent).detail).toBe(10);
   });
 
   it("propagates the server error message on failure", async () => {

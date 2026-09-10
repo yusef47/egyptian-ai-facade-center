@@ -77,6 +77,12 @@ export async function restoreFacade(request: RestoreRequest): Promise<string> {
   }
 
   if (!response.ok) {
+    // A failed generation is refunded server-side; if the API relayed the
+    // post-refund balance, sync the header counter so it never drifts.
+    const refundedCredits = (data as RestoreResult | null)?.creditsRemaining;
+    if (typeof refundedCredits === "number" && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: refundedCredits }));
+    }
     const message =
       data && typeof data === "object" && "error" in data
         ? String((data as { error: unknown }).error)
@@ -86,11 +92,10 @@ export async function restoreFacade(request: RestoreRequest): Promise<string> {
 
   // Push the authoritative remaining balance to the header credit counter
   // so it updates instantly after every generation — no page refresh.
+  // Contract: detail IS the new balance (bare number), e.g. 10 -> 9.
   const creditsRemaining = (data as RestoreResult | null)?.creditsRemaining;
   if (typeof creditsRemaining === "number" && typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent(QATTAN_CREDITS_EVENT, { detail: { credits: creditsRemaining } }),
-    );
+    window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: creditsRemaining }));
   }
 
   const output = (data as RestoreResult | null)?.imageDataUrl;

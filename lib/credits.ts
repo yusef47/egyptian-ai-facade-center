@@ -26,6 +26,10 @@ export type CreditDeduction = {
   remaining?: number;
 };
 
+/** Bilingual exhaustion notice surfaced to users on 429 (gate + deduction). */
+export const CREDITS_EXHAUSTED_BILINGUAL =
+  "انتهى رصيدك اليومي (10 كريديت)! يتجدد رصيدك أوتوماتيكياً كل 24 ساعة. | Daily credit limit reached (10 credits)! It renews automatically every 24 hours.";
+
 function envConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -232,7 +236,7 @@ export async function checkGenerationCredits(
     }
     return balance !== null && balance > 0
       ? { allowed: true, remaining: balance, userId }
-      : { allowed: false, status: 429, message: "Daily credit limit reached. Credits renew every 24 hours." };
+      : { allowed: false, status: 429, message: CREDITS_EXHAUSTED_BILINGUAL };
   }
 
   return credits > 0
@@ -240,7 +244,7 @@ export async function checkGenerationCredits(
     : {
         allowed: false,
         status: 429,
-        message: "Daily credit limit reached. Credits renew every 24 hours.",
+        message: CREDITS_EXHAUSTED_BILINGUAL,
       };
 }
 
@@ -261,6 +265,8 @@ export async function deductGenerationCreditWithAdmin(
   admin: SupabaseClient,
   userId: string,
 ): Promise<CreditDeduction> {
+  // Service-role client: bypasses RLS, updates credits AND generations_used
+  // atomically inside the deduct_credit Postgres function.
   const { data, error } = await admin.rpc("deduct_credit", {
     p_user_id: userId,
     p_amount: 1,
@@ -280,5 +286,30 @@ export async function deductGenerationCreditWithAdmin(
         ? Number((data as Record<string, unknown>).credits)
         : Number.NaN;
 
+  return Number.isFinite(remaining) ? { ok: true, remaining } : { ok: true };
+}
+
+/**
+ * Compensating transaction for failed generations: refunds exactly one
+ * credit (and decrements generations_used) after a successful deduction.
+ * Uses the same service-role authority as the deduction.
+ */
+export async function refundGenerationCredit(userId: string): Promise<CreditDeduction> {
+  const admin = getSupabaseAdminClient();
+  if (!admin) return { ok: true, remaining: DAILY_CREDITS };
+  return refundGenerationCreditWithAdmin(admin, userId);
+}
+
+/** Refund core, factored out for direct service-role/test injection. */
+export async function refundGenerationCreditWithAdmin(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<CreditDeduction> {
+  const { data, error } = await admin.rpc("refund_credit", { p_user_id: userId });
+  if (error) return { ok: false };
+  const remaining =
+    typeof data === "number"
+      ? data
+      : Number.NaN;
   return Number.isFinite(remaining) ? { ok: true, remaining } : { ok: true };
 }

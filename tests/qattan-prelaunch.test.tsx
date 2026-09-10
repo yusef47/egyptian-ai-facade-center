@@ -91,7 +91,11 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(route).toContain("deductGenerationCredit(userId)");
     // The RPC call site must appear exactly once — no loops or retries.
     expect(route.match(/deductGenerationCredit\(/g)?.length).toBe(1);
-    expect(route).toContain("[credits] deducted userId=");
+    // Audit log fires with userId + remaining balance (pre-generation order).
+    expect(route).toContain("[CREDIT_DEDUCTED]");
+    expect(route.indexOf("deductGenerationCredit(userId)")).toBeLessThan(
+      route.indexOf("executeRestore(body"),
+    );
   });
 
   it("preserves the balance when last_credit_reset is recent and only true 24h+ triggers reset", () => {
@@ -161,7 +165,12 @@ describe("P5/P6 — OG metadata, favicon, and tab title", () => {
   it("declares the full OG/Twitter metadata and tab title", () => {
     expect(String(rootMetadata.title)).toContain("Qattan AI");
     expect(String(rootMetadata.title)).toContain("منصة قطان المعمارية");
-    expect(rootMetadata.openGraph?.images?.[0]).toMatchObject({ url: "/og-image.jpg", width: 1200, height: 630 });
+    const ogImages = Array.isArray(rootMetadata.openGraph?.images)
+      ? rootMetadata.openGraph.images
+      : rootMetadata.openGraph?.images
+        ? [rootMetadata.openGraph.images]
+        : [];
+    expect(ogImages[0]).toMatchObject({ url: "/og-image.jpg", width: 1200, height: 630 });
     expect((rootMetadata.twitter as { card?: string }).card).toBe("summary_large_image");
     expect(rootMetadata.icons).toBeDefined();
   });

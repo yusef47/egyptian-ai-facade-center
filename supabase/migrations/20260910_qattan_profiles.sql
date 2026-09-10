@@ -86,6 +86,33 @@ begin
 end;
 $$;
 
+-- ── Compensating refund: +1 credit, -1 generation ─────────────────────
+-- Used only when a pre-charged generation fails upstream, so failed renders
+-- never consume credits. Bounds credits at the daily allowance.
+create or replace function public.refund_credit(p_user_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated integer;
+begin
+  update public.profiles
+  set credits = least(credits + 1, 10),
+      generations_used = greatest(generations_used - 1, 0)
+  where id = p_user_id
+  returning credits into updated;
+
+  if updated is null then
+    raise exception 'PROFILE_NOT_FOUND' using errcode = 'P0001';
+  end if;
+
+  raise notice 'CREDIT_REFUND user=% new=%', p_user_id, updated;
+  return updated;
+end;
+$$;
+
 -- ── Daily refresh helper: resets ONLY after a true 24h elapsed ────────
 create or replace function public.refresh_daily_credit(p_user_id uuid)
 returns integer

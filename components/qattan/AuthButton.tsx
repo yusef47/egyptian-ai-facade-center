@@ -72,8 +72,16 @@ export default function AuthButton() {
     // After each generation the API returns the authoritative remaining
     // balance; restore.ts re-broadcasts it here so the header counter
     // updates instantly without a page refresh.
+    // Accept both event contracts: a bare number balance (detail: 9) or a
+    // wrapped shape ({ credits: 9 }) — keeps the pill in sync either way.
     const onCreditsEvent = (event: Event) => {
-      const credits = (event as CustomEvent<{ credits?: unknown }>).detail?.credits;
+      const detail = (event as CustomEvent<unknown>).detail;
+      const credits =
+        typeof detail === "number"
+          ? detail
+          : typeof detail === "object" && detail !== null && "credits" in detail
+            ? (detail as { credits?: unknown }).credits
+            : undefined;
       if (typeof credits === "number" && active) setCredits(credits);
     };
     window.addEventListener(QATTAN_CREDITS_EVENT, onCreditsEvent);
