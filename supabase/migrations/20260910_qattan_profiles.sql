@@ -1,5 +1,5 @@
 -- Qattan AI — user profiles with 10 daily recurring credits.
--- Run in the Supabase SQL editor (or as a migration).
+-- Run in the Supabase SQL editor (or as a migration). Idempotent: safe to re-run.
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -36,6 +36,65 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- Atomic credit deduction: decrements only when the balance stays >= 0 and
+-- returns the authoritative remaining balance. Called by lib/credits.ts
+-- (service-role) after every successful generation.
+create or replace function public.deduct_credit(p_user_id uuid, p_amount integer default 1)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  remaining integer;
+begin
+  update public.profiles
+  set credits = credits - p_amount
+  where id = p_user_id
+    and credits >= p_amount
+  returning credits into remaining;
+
+  if remaining is null then
+    raise exception 'INSUFFICIENT_CREDITS' using errcode = 'P0001';
+  end if;
+
+  return remaining;
+end;
+$$;
+
+-- Daily refresh helper: resets the balance to the daily allowance when the
+-- last reset is older than 24 hours. Used by lib/credits.ts on each request.
+create or replace function public.refresh_daily_credit(p_user_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_row public.profiles;
+begin
+  select * into current_row from public.profiles where id = p_user_id;
+
+  if not found then
+    insert into public.profiles (id, credits, last_credit_reset)
+    values (p_user_id, 10, now())
+    on conflict (id) do nothing;
+    return 10;
+  end if;
+
+  if current_row.last_credit_reset is null
+     or current_row.last_credit_reset < now() - interval '24 hours' then
+    update public.profiles
+    set credits = 10, last_credit_reset = now()
+    where id = p_user_id
+    returning credits into remaining;
+    return coalesce(remaining, 10);
+  end if;
+
+  return current_row.credits;
+end;
+$$;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
@@ -48,5 +107,6 @@ create policy "profiles_insert_own"
   on public.profiles for insert
   with check (auth.uid() = id);
 
--- Credit updates happen exclusively through the server-side service-role
--- client (lib/credits.ts), which bypasses RLS by design.
+-- Credit updates happen exclusively server-side through the service-role
+-- client and the deduct_credit / refresh_daily_credit RPCs, which bypass
+-- RLS by design.

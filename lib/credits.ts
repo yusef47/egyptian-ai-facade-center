@@ -24,7 +24,6 @@ export type CreditCheck =
 export type CreditDeduction = {
   ok: boolean;
   remaining?: number;
-  retried?: boolean;
 };
 
 function envConfigured(): boolean {
@@ -156,8 +155,10 @@ export async function checkGenerationCredits(
 }
 
 /**
- * Deduct one credit after a successful generation. A conditional update
- * (credits > 0) guards against concurrent requests draining below zero.
+ * Deduct one credit after a successful generation, atomically, via the
+ * `deduct_credit` RPC (see supabase/migrations). The RPC decrements only
+ * when credits > 0 and returns the authoritative remaining balance, so
+ * concurrent requests can never drain a balance below zero.
  */
 export async function deductGenerationCredit(userId: string): Promise<CreditDeduction> {
   const admin = getSupabaseAdminClient();
@@ -170,21 +171,24 @@ export async function deductGenerationCreditWithAdmin(
   admin: SupabaseClient,
   userId: string,
 ): Promise<CreditDeduction> {
-  const { data, error } = await admin
-    .from("profiles")
-    .update({ credits: sqlDecrement() })
-    .gt("credits", 0)
-    .eq("id", userId)
-    .select("credits")
-    .maybeSingle();
+  const { data, error } = await admin.rpc("deduct_credit", {
+    p_user_id: userId,
+    p_amount: 1,
+  });
 
-  if (error || !data) return { ok: false };
-  return { ok: true, remaining: data.credits };
-}
+  if (error) {
+    const code = (error as { code?: string }).code;
+    // P0001 = the RPC's explicit "insufficient credits" raise.
+    if (code === "P0001") return { ok: false, remaining: 0 };
+    return { ok: false };
+  }
 
-/** PostgREST-shaped decrement expression. */
-function sqlDecrement() {
-  // supabase-js serializes raw expressions when the value is a string that
-  // looks like one; keep it explicit for clarity and type-safety.
-  return "credits-1" as unknown as number;
+  const remaining =
+    typeof data === "number"
+      ? data
+      : typeof data === "object" && data !== null && "credits" in (data as Record<string, unknown>)
+        ? Number((data as Record<string, unknown>).credits)
+        : Number.NaN;
+
+  return Number.isFinite(remaining) ? { ok: true, remaining } : { ok: true };
 }

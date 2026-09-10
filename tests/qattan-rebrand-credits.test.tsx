@@ -174,27 +174,30 @@ describe("Daily 10-credit refresh rule", () => {
 });
 
 describe("Credit deduction", () => {
-  it("deducts exactly one credit atomically while balance is positive", async () => {
-    const chain = queryChain([{ data: { credits: 3 }, error: null }]);
-    const admin = { from: vi.fn(() => chain) };
+  it("deducts exactly one credit through the atomic RPC and reports the remaining balance", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: 3, error: null });
+    const admin = { rpc };
     const result = await deductGenerationCreditWithAdmin(
       admin as unknown as Parameters<typeof deductGenerationCreditWithAdmin>[0],
       "user-1",
     );
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(3);
-    expect(chain.update).toHaveBeenCalledWith(expect.anything());
-    expect(chain.gt).toHaveBeenCalledWith("credits", 0);
+    expect(rpc).toHaveBeenCalledWith("deduct_credit", { p_user_id: "user-1", p_amount: 1 });
   });
 
-  it("reports failure without going negative when balance hits zero", async () => {
-    const chain = queryChain([{ data: null, error: null }]);
-    const admin = { from: vi.fn(() => chain) };
+  it("reports failure without going negative when the RPC raises insufficient credits", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "P0001", message: "INSUFFICIENT_CREDITS" },
+    });
+    const admin = { rpc };
     const result = await deductGenerationCreditWithAdmin(
       admin as unknown as Parameters<typeof deductGenerationCreditWithAdmin>[0],
       "user-1",
     );
     expect(result.ok).toBe(false);
+    expect(result.remaining).toBe(0);
   });
 });
 
