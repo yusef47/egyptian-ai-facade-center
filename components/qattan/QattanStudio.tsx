@@ -77,16 +77,33 @@ function QattanStudioContent({ initialMode }: { initialMode: StudioModeInput }) 
     [mode, activeToolTitle],
   );
 
-  const handleModeChange = useCallback((nextMode: ToolId) => {
-    setMode(nextMode);
-    setSession((current) => ({ ...current, status: "" }));
+  // App-like mobile behavior: switching tools snaps the canvas and upload
+  // zone back into view immediately (no hunt-and-scroll on phones).
+  const scrollToCanvasOnMobile = useCallback(() => {
+    try {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+      if (!window.matchMedia("(max-width: 820px)").matches) return;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      /* Environments without matchMedia/scrollTo — nothing to do. */
+    }
   }, []);
+
+  const handleModeChange = useCallback(
+    (nextMode: ToolId) => {
+      setMode(nextMode);
+      setSession((current) => ({ ...current, status: "" }));
+      scrollToCanvasOnMobile();
+    },
+    [scrollToCanvasOnMobile],
+  );
 
   // The legacy facade triptych keeps a pill in the mobile tool rail.
   const handleFacadeSelect = useCallback(() => {
     setMode("facade");
     setSession((current) => ({ ...current, status: "" }));
-  }, []);
+    scrollToCanvasOnMobile();
+  }, [scrollToCanvasOnMobile]);
 
   return (
     <div className="qattan-page qattan-studio-page" dir={direction} lang={locale}>

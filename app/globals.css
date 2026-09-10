@@ -695,3 +695,156 @@ html[data-qattan-theme="light"] .qattan-output-toggle-option-active { color: #ff
   .qattan-auth-credits { padding: 4px 8px; font-size: 11px; }
   .qattan-auth-name { display: none; }
 }
+
+/* ============================================================
+   LIGHT MODE STUDIO REPAIR — crisp white surfaces for every
+   studio region (was: stray obsidian panels in light theme)
+   ============================================================ */
+html[data-qattan-theme="light"] .qattan-studio-intro,
+html[data-qattan-theme="light"] .qattan-studio-shell { color: #1e293b; background: #ffffff; }
+html[data-qattan-theme="light"] .qattan-studio-intro p:not(.qattan-eyebrow),
+html[data-qattan-theme="light"] .qattan-studio-rail,
+html[data-qattan-theme="light"] .qattan-studio-viewport,
+html[data-qattan-theme="light"] .qattan-tool-panel,
+html[data-qattan-theme="light"] .qattan-tool-canvas,
+html[data-qattan-theme="light"] .qattan-history-list,
+html[data-qattan-theme="light"] .qattan-studio-engine-meta,
+html[data-qattan-theme="light"] .qattan-guide { color: #334155; }
+html[data-qattan-theme="light"] .qattan-studio-intro-badge,
+html[data-qattan-theme="light"] .qattan-studio-rail,
+html[data-qattan-theme="light"] .qattan-studio-viewport,
+html[data-qattan-theme="light"] .qattan-tool-panel,
+html[data-qattan-theme="light"] .qattan-tool-canvas,
+html[data-qattan-theme="light"] .qattan-guide { background: #ffffff; border-color: rgba(15,23,42,.12); box-shadow: 0 6px 24px rgba(15,23,42,.06); }
+html[data-qattan-theme="light"] .qattan-studio-rail-heading,
+html[data-qattan-theme="light"] .qattan-studio-rail-heading h2,
+html[data-qattan-theme="light"] .qattan-studio-engine-meta strong,
+html[data-qattan-theme="light"] .qattan-history-item strong,
+html[data-qattan-theme="light"] .qattan-tool-upload-hint,
+html[data-qattan-theme="light"] .qattan-guide-item strong,
+html[data-qattan-theme="light"] .qattan-planned-notice h2 { color: #0f172a; }
+html[data-qattan-theme="light"] .qattan-eyebrow { color: #a5813f; }
+html[data-qattan-theme="light"] .qattan-studio-mode { color: #475569; }
+html[data-qattan-theme="light"] .qattan-studio-mode:hover, html[data-qattan-theme="light"] .qattan-studio-mode:focus-visible,
+html[data-qattan-theme="light"] .qattan-studio-mode-selected { color: #0f172a; }
+html[data-qattan-theme="light"] .qattan-studio-mode-index,
+html[data-qattan-theme="light"] .qattan-studio-rail-icon,
+html[data-qattan-theme="light"] .qattan-studio-mode .qattan-status { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-studio-mode-selected .qattan-studio-mode-icon { color: #a5813f; background: rgba(212,175,55,.16); }
+html[data-qattan-theme="light"] .qattan-studio-mode-highlight { border-color: rgba(165,129,63,.5); background: rgba(212,175,55,.14); box-shadow: none; }
+html[data-qattan-theme="light"] .qattan-tool-upload { color: #64748b; background: #f8fafc; border-color: rgba(165,129,63,.45); }
+html[data-qattan-theme="light"] .qattan-tool-select,
+html[data-qattan-theme="light"] .qattan-tool-textarea { color: #0f172a; background: #ffffff; border-color: rgba(15,23,42,.16); }
+html[data-qattan-theme="light"] .qattan-tool-control-label,
+html[data-qattan-theme="light"] .qattan-studio-meta-label,
+html[data-qattan-theme="light"] .qattan-history-empty,
+html[data-qattan-theme="light"] .qattan-studio-disclaimer,
+html[data-qattan-theme="light"] .qattan-studio-disclaimer p { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-tool-generate { color: #ffffff; background: linear-gradient(120deg, #b8912e, #d4af37); }
+html[data-qattan-theme="light"] .qattan-tool-fab { color: #ffffff; background: linear-gradient(120deg, #b8912e, #d4af37); }
+html[data-qattan-theme="light"] .qattan-tool-chip { color: #475569; border-color: rgba(15,23,42,.16); }
+html[data-qattan-theme="light"] .qattan-tool-chip-active { color: #ffffff; background: #b8912e; border-color: #b8912e; }
+html[data-qattan-theme="light"] .qattan-output-toggle { background: #f8fafc; border-color: rgba(15,23,42,.1); }
+html[data-qattan-theme="light"] .qattan-output-toggle-option { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-output-toggle-option-active { color: #ffffff; }
+html[data-qattan-theme="light"] .qattan-tool-canvas { background: #f8fafc; }
+html[data-qattan-theme="light"] .qattan-tool-empty { color: #94a3b8; }
+html[data-qattan-theme="light"] .qattan-history-item { background: #f8fafc; border-color: rgba(15,23,42,.1); }
+html[data-qattan-theme="light"] .qattan-history-download { color: #8a6d1f; border-color: rgba(165,129,63,.4); background: rgba(212,175,55,.08); }
+html[data-qattan-theme="light"] .qattan-tool-download { color: #8a6d1f; border-color: rgba(165,129,63,.4); }
+html[data-qattan-theme="light"] .qattan-tool-download:hover { background: rgba(212,175,55,.1); }
+html[data-qattan-theme="light"] .qattan-guide { background: #f8fafc; }
+html[data-qattan-theme="light"] .qattan-guide-toggle { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-guide-item p { color: #475569; }
+html[data-qattan-theme="light"] .qattan-guide-icon { color: #8a6d1f; background: rgba(212,175,55,.14); }
+html[data-qattan-theme="light"] .qattan-result-frame img { border-color: rgba(15,23,42,.12); }
+html[data-qattan-theme="light"] .qattan-result-zoom-hint { color: #8a6d1f; background: rgba(255,255,255,.88); border-color: rgba(165,129,63,.4); }
+html[data-qattan-theme="light"] .qattan-studio-intro-inner,
+html[data-qattan-theme="light"] .qattan-studio-viewport-live h2 { color: #0f172a; }
+html[data-qattan-theme="light"] .qattan-tool-error { color: #b91c1c; }
+
+/* ============================================================
+   APP-LIKE MOBILE STUDIO (< 820px) — bottom tab bar navigation
+   ============================================================ */
+@media (max-width: 820px) {
+  /* The tool rail becomes a fixed bottom tab bar: icon over label, snap
+     scrolling, safe-area padding, gold selected state. */
+  .qattan-studio-layout > .qattan-studio-control-rail {
+    position: fixed;
+    left: 0; right: 0; bottom: 0; top: auto;
+    z-index: 40;
+    order: 3;
+    margin: 0;
+    padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    border: 0;
+    border-top: 1px solid rgba(212,175,55,.28);
+    border-radius: 0;
+    background: rgba(9,10,15,.96);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 -8px 28px rgba(0,0,0,.4);
+  }
+  .qattan-studio-layout-facade > .qattan-studio-control-rail { position: fixed; }
+  .qattan-studio-control-rail .qattan-studio-rail-heading { display: none; }
+  .qattan-studio-mode-list,
+  .qattan-studio-mode-list.qattan-studio-mode-rail {
+    margin-top: 0;
+    padding: 2px 2px 0;
+    scroll-padding-inline: 8px;
+    gap: 6px;
+  }
+  .qattan-studio-mode-pill {
+    width: 76px;
+    min-height: 58px;
+    padding: 7px 4px 6px;
+    gap: 4px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+  }
+  .qattan-studio-mode-pill .qattan-studio-mode-icon { width: 24px; height: 24px; border-radius: 8px; }
+  .qattan-studio-mode-pill .qattan-studio-mode-icon svg { width: 15px; height: 15px; }
+  .qattan-studio-mode-pill .qattan-studio-mode-title { max-width: 72px; font-size: 9.5px; font-weight: 700; line-height: 1.25; letter-spacing: .01em; }
+  .qattan-studio-mode-pill .qattan-status { display: none; }
+  .qattan-studio-mode-pill .qattan-studio-mode-index { display: none; }
+  .qattan-studio-mode-pill.qattan-studio-mode-selected { background: rgba(212,175,55,.14); }
+  .qattan-studio-mode-pill.qattan-studio-mode-selected .qattan-studio-mode-title { color: #f3e5ab; }
+  .qattan-studio-mode-pill.qattan-studio-mode-selected .qattan-studio-mode-icon { color: #e5c158; background: rgba(212,175,55,.2); }
+  /* Crisp touch feedback on every tab press. */
+  .qattan-studio-mode-pill { -webkit-tap-highlight-color: transparent; transition: background .18s ease, transform .12s ease; }
+  .qattan-studio-mode-pill:active { transform: scale(.94); background: rgba(212,175,55,.2); }
+  /* Room for the bottom tab bar + generate FAB above it. */
+  .qattan-studio-shell { padding-bottom: calc(196px + env(safe-area-inset-bottom, 0px)); }
+  .qattan-tool-fab { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; z-index: 41; }
+  /* History rail scrolls above the fixed bars. */
+  .qattan-studio-layout > .qattan-studio-history-rail { order: 2; }
+
+  /* Light theme tab bar: white glass instead of obsidian. */
+  html[data-qattan-theme="light"] .qattan-studio-layout > .qattan-studio-control-rail {
+    background: rgba(255,255,255,.96);
+    border-top-color: rgba(15,23,42,.1);
+    box-shadow: 0 -8px 28px rgba(15,23,42,.1);
+  }
+  html[data-qattan-theme="light"] .qattan-studio-mode-pill.qattan-studio-mode-selected { background: rgba(212,175,55,.16); }
+  html[data-qattan-theme="light"] .qattan-studio-mode-pill.qattan-studio-mode-selected .qattan-studio-mode-title { color: #8a6d1f; }
+
+  /* Mobile header: single row, never wraps or overflows. */
+  .qattan-header-inner { flex-wrap: nowrap; max-width: 100%; overflow: hidden; gap: 8px; }
+  .qattan-header-actions { flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; min-width: 0; }
+  .qattan-brand { flex: 1 1 auto; min-width: 0; }
+  .qattan-brand-copy { max-width: 100%; }
+  .qattan-brand-copy small { max-width: 160px; }
+  .qattan-locale { flex: 0 0 auto; font-size: 11.5px; gap: 0; }
+  .qattan-locale a { min-width: 40px; min-height: 40px; padding: 0 6px; }
+  .qattan-theme-toggle { width: 40px; height: 40px; flex: 0 0 auto; }
+  .qattan-menu { width: 40px; height: 40px; flex: 0 0 auto; }
+  .qattan-auth-user { flex: 0 1 auto; min-width: 0; gap: 6px; }
+  .qattan-auth-credits { padding: 4px 8px; font-size: 11px; flex: 0 0 auto; }
+  .qattan-auth-avatar { width: 28px; height: 28px; flex: 0 0 auto; }
+  .qattan-auth-signout { width: 32px; height: 32px; flex: 0 0 auto; }
+  .qattan-auth-google { padding: 0 10px; min-height: 40px; font-size: 12px; gap: 6px; }
+}
+@media (max-width: 360px) {
+  .qattan-locale a { min-width: 36px; padding: 0 4px; }
+  .qattan-theme-toggle, .qattan-menu { width: 36px; height: 36px; }
+  .qattan-brand-copy small { display: none; }
+}
