@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Compass, Download, ImagePlus, RefreshCw, Sparkles, X, ZoomIn } from "lucide-react";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type TouchEvent } from "react";
+import { createPortal } from "react-dom";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
 import {
@@ -62,6 +63,8 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const [results, setResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+  const [zoomDragOffset, setZoomDragOffset] = useState(0);
+  const zoomTouchStartY = useRef<number | null>(null);
 
   // One-thumb access: on phones the sticky FAB triggers the same submission
   // as the inline generate button.
@@ -70,6 +73,8 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   // Lock background scroll while the fullscreen result zoom is open.
   useEffect(() => {
     if (zoomIndex === null) return;
+    setZoomDragOffset(0);
+    zoomTouchStartY.current = null;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setZoomIndex(null);
     };
@@ -81,6 +86,33 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       document.body.style.overflow = previousOverflow;
     };
   }, [zoomIndex]);
+
+  // Touch-drag dismiss: dragging the lightbox content down ≥80px closes it.
+  const onZoomTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    zoomTouchStartY.current = event.touches[0]?.clientY ?? null;
+  };
+  const onZoomTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+    if (zoomTouchStartY.current === null) return;
+    const delta = (event.touches[0]?.clientY ?? 0) - zoomTouchStartY.current;
+    if (delta > 0) setZoomDragOffset(delta);
+  };
+  const onZoomTouchEnd = () => {
+    if (zoomDragOffset > 80) setZoomIndex(null);
+    zoomTouchStartY.current = null;
+    setZoomDragOffset(0);
+  };
+
+  // Download every result (one for single mode, all three for gallery/board).
+  const downloadResults = () => {
+    results.forEach((src, index) => {
+      const anchor = document.createElement("a");
+      anchor.href = src;
+      anchor.download = `qattan-${tool.id}${results.length > 1 ? `-v${index + 1}` : ""}.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    });
+  };
 
   const handleFiles = async (files: FileList | null) => {
     const file = files?.[0];
@@ -432,32 +464,84 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
         <span>{loading ? (L ? "جارٍ التوليد…" : "Generating…") : L ? "توليد" : "Generate"}</span>
       </button>
 
-      {/* Single-tap fullscreen zoom for the generated result. */}
-      {zoomIndex !== null && results[zoomIndex] ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={L ? "عرض النتيجة بحجم كامل" : "Result fullscreen view"}
-          className="qattan-result-zoom fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md"
-          onClick={() => setZoomIndex(null)}
-        >
-          <img
-            src={results[zoomIndex]}
-            alt={L ? `النتيجة المولدة — ${tool.title.ar}` : `Generated ${tool.title.en} result`}
-            referrerPolicy="no-referrer"
-            className="qattan-result-zoom-image"
-            onClick={(event) => event.stopPropagation()}
-          />
-          <button
-            type="button"
-            className="qattan-result-zoom-close"
-            aria-label={L ? "إغلاق العرض" : "Close fullscreen view"}
-            onClick={() => setZoomIndex(null)}
-          >
-            <X size={18} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
+      {/* Fullscreen lightbox, portaled to document.body so transformed/filtered
+          ancestors (Framer Motion reveals) can never trap position:fixed or
+          dilute the z-[9999] stacking — overlays header, rails, FAB, tab bar. */}
+      {zoomIndex !== null && results[zoomIndex]
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={L ? "عرض النتيجة بحجم كامل" : "Result fullscreen view"}
+              className="qattan-result-zoom fixed inset-0 z-[9999] bg-black/92 backdrop-blur-md flex flex-col items-center justify-center p-4 md:p-8"
+              onClick={() => setZoomIndex(null)}
+            >
+              <div
+                className="qattan-result-zoom-panel"
+                style={
+                  zoomDragOffset > 0
+                    ? { transform: `translateY(${zoomDragOffset}px)`, transition: "none" }
+                    : undefined
+                }
+                onClick={(event) => event.stopPropagation()}
+                onTouchStart={onZoomTouchStart}
+                onTouchMove={onZoomTouchMove}
+                onTouchEnd={onZoomTouchEnd}
+              >
+                <div className="qattan-result-zoom-bar">
+                  <span className="qattan-result-zoom-title">
+                    {L
+                      ? `${tool.title.ar}${results.length > 1 ? ` — لوحة (${results.length})` : ""}`
+                      : `${tool.title.en}${results.length > 1 ? ` — Board (${results.length})` : ""}`}
+                  </span>
+                  <div className="qattan-result-zoom-actions">
+                    <button
+                      type="button"
+                      className="qattan-result-zoom-download"
+                      onClick={downloadResults}
+                      aria-label={L ? "تنزيل الصورة" : "Download image"}
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      <span>{L ? "تنزيل" : "Download"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="qattan-result-zoom-close"
+                      aria-label={L ? "إغلاق العرض" : "Close fullscreen view"}
+                      onClick={() => setZoomIndex(null)}
+                    >
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                {/* Single render → one image; gallery/triptych → the whole
+                    board scales together inside the same viewport bounds. */}
+                <div
+                  className={`qattan-result-zoom-board ${results.length > 1 ? "qattan-result-zoom-board-multi" : ""}`}
+                >
+                  {results.map((output, index) => (
+                    <img
+                      key={output.slice(0, 48) + index}
+                      src={output}
+                      alt={
+                        results.length > 1
+                          ? L
+                            ? `النتيجة المولدة ${index + 1} من ${results.length} — ${tool.title.ar}`
+                            : `Generated variation ${index + 1} of ${results.length} — ${tool.title.en}`
+                          : L
+                            ? `النتيجة المولدة — ${tool.title.ar}`
+                            : `Generated ${tool.title.en} result`
+                      }
+                      referrerPolicy="no-referrer"
+                      className="qattan-result-zoom-image"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }

@@ -594,15 +594,147 @@ html[data-qattan-theme="light"] .qattan-output-toggle-option-active { color: #ff
   background: rgba(9,10,15,.74); backdrop-filter: blur(8px);
   border: 1px solid rgba(212,175,55,.4); font-size: 11px; font-weight: 600; pointer-events: none;
 }
-.qattan-result-zoom { touch-action: manipulation; }
-.qattan-result-zoom-image { max-width: min(96vw, 1600px); max-height: 88vh; width: auto; height: auto; border-radius: 12px; border: 1px solid rgba(212,175,55,.35); box-shadow: 0 40px 120px rgba(0,0,0,.6); }
-.qattan-result-zoom-close {
-  position: absolute; top: max(16px, env(safe-area-inset-top)); inset-inline-end: max(16px, env(safe-area-inset-end));
-  display: grid; place-items: center; width: 44px; height: 44px;
-  border: 1px solid rgba(212,175,55,.4); border-radius: 999px; color: #f3e5ab;
-  background: rgba(9,10,15,.72); backdrop-filter: blur(8px); cursor: pointer;
+.qattan-result-zoom {
+  /* Explicit stacking: unlayered CSS wins over Tailwind utility layers, and the
+     modal is portaled to document.body so no ancestor stacking context can
+     dilute it — overlays header, sidebar, history rail, FAB, mobile tab bar. */
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+  touch-action: manipulation;
 }
-.qattan-result-zoom-close:hover { background: rgba(212,175,55,.16); }
+
+.qattan-result-zoom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Everything (title bar + image) fits inside the viewport: no scrolling. */
+  max-width: 95vw;
+  max-height: 82vh;
+  max-height: 82dvh;
+  width: 100%;
+  transition: transform 0.25s ease;
+  touch-action: none;
+}
+
+.qattan-result-zoom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.qattan-result-zoom-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #f3e5ab;
+}
+
+.qattan-result-zoom-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.qattan-result-zoom-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.24), rgba(229, 193, 88, 0.12));
+  color: #f3e5ab;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.qattan-result-zoom-download:hover {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.4), rgba(229, 193, 88, 0.2));
+  border-color: rgba(229, 193, 88, 0.8);
+}
+
+.qattan-result-zoom-board {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.qattan-result-zoom-board-multi {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.qattan-result-zoom-image {
+  /* Bounded by the panel: the full image (or the whole 3-panel board) always
+     fits inside the viewport — object-contain, no scrolling required. */
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
+  background: rgba(9, 10, 15, 0.5);
+}
+
+.qattan-result-zoom-board:not(.qattan-result-zoom-board-multi) .qattan-result-zoom-image {
+  width: auto;
+  max-width: 100%;
+}
+
+.qattan-result-zoom-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  border-radius: 999px;
+  color: #f3e5ab;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.24), rgba(229, 193, 88, 0.12));
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.qattan-result-zoom-close:hover {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.4), rgba(229, 193, 88, 0.2));
+  border-color: rgba(229, 193, 88, 0.8);
+}
+
+/* Mobile portrait: tighter bar, drag-to-dismiss affordance. */
+@media (max-width: 820px) {
+  .qattan-result-zoom-panel { gap: 8px; }
+  .qattan-result-zoom-download span { display: none; } /* icon-only button */
+  .qattan-result-zoom-download { min-height: 44px; padding: 0 12px; }
+  .qattan-result-zoom-title { font-size: 12px; }
+  .qattan-result-zoom-board-multi { grid-template-columns: 1fr; }
+}
+
+/* Mobile landscape: keep the whole board visible with minimal chrome. */
+@media (max-height: 480px) {
+  .qattan-result-zoom-panel { max-height: 88vh; max-height: 88dvh; gap: 6px; }
+  .qattan-result-zoom-bar { gap: 8px; }
+}
 
 /* --- Tool preview modal: fullscreen zoom state + 44px controls --- */
 .qattan-preview-stage { touch-action: manipulation; }
