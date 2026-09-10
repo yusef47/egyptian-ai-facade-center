@@ -8,7 +8,8 @@ create table if not exists public.profiles (
   avatar_url text,
   credits integer not null default 10,
   last_credit_reset timestamptz not null default now(),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  generations_used integer not null default 0
 );
 
 -- Provision a profile with 10 credits for every new Google sign-up.
@@ -49,7 +50,8 @@ declare
   remaining integer;
 begin
   update public.profiles
-  set credits = credits - p_amount
+  set credits = credits - p_amount,
+      generations_used = generations_used + p_amount
   where id = p_user_id
     and credits >= p_amount
   returning credits into remaining;
@@ -72,6 +74,7 @@ set search_path = public
 as $$
 declare
   current_row public.profiles;
+  remaining integer;
 begin
   select * into current_row from public.profiles where id = p_user_id;
 
@@ -110,3 +113,45 @@ create policy "profiles_insert_own"
 -- Credit updates happen exclusively server-side through the service-role
 -- client and the deduct_credit / refresh_daily_credit RPCs, which bypass
 -- RLS by design.
+
+-- Platform statistics for the /admin dashboard. SECURITY DEFINER so the
+-- aggregates run over profiles regardless of RLS; authorization is enforced
+-- in application code (lib/admin.ts) before this RPC is ever invoked.
+create or replace function public.admin_platform_stats()
+returns table (
+  total_users bigint,
+  total_generations bigint,
+  total_credits_remaining bigint,
+  active_users bigint
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    (select count(*) from public.profiles),
+    (select coalesce(sum(generations_used), 0) from public.profiles),
+    (select coalesce(sum(credits), 0) from public.profiles),
+    (select count(*) from public.profiles where last_credit_reset >= now() - interval '24 hours');
+$$;
+
+-- Per-user credit ledger used by the /admin dashboard table.
+create or replace function public.admin_recent_profiles(p_limit integer default 20)
+returns table (
+  id uuid,
+  email text,
+  full_name text,
+  credits integer,
+  generations_used integer,
+  last_credit_reset timestamptz,
+  created_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select id, email, full_name, credits, generations_used, last_credit_reset, created_at
+  from public.profiles
+  order by created_at desc
+  limit least(greatest(p_limit, 1), 100);
+$$;

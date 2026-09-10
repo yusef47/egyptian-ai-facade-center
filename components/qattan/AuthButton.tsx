@@ -7,6 +7,7 @@ import {
   getSupabaseBrowserClient,
   supabaseEnvConfigured,
 } from "../../lib/supabase";
+import { QATTAN_CREDITS_EVENT } from "../../client/src/lib/restore";
 import { useQattan } from "./QattanProviders";
 
 type SessionUser = {
@@ -67,8 +68,19 @@ export default function AuthButton() {
 
     void load();
     const { data: subscription } = supabase.auth.onAuthStateChange(() => void load());
+
+    // After each generation the API returns the authoritative remaining
+    // balance; restore.ts re-broadcasts it here so the header counter
+    // updates instantly without a page refresh.
+    const onCreditsEvent = (event: Event) => {
+      const credits = (event as CustomEvent<{ credits?: unknown }>).detail?.credits;
+      if (typeof credits === "number" && active) setCredits(credits);
+    };
+    window.addEventListener(QATTAN_CREDITS_EVENT, onCreditsEvent);
+
     return () => {
       active = false;
+      window.removeEventListener(QATTAN_CREDITS_EVENT, onCreditsEvent);
       subscription?.subscription.unsubscribe();
     };
   }, [supabase]);

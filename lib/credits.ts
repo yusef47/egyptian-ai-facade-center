@@ -82,9 +82,92 @@ export async function refreshDailyCredits(
 }
 
 /**
+ * Read-only cookie adapter for verifying a session inside a route handler —
+ * never writes cookies back on the request.
+ */
+function getRequestCookieAccessor(request: Request) {
+  return {
+    getAll: () => {
+      const header = request.headers.get("cookie") ?? "";
+      return header
+        .split(";")
+        .map((part) => {
+          const index = part.indexOf("=");
+          return index < 0
+            ? null
+            : { name: part.slice(0, index).trim(), value: part.slice(index + 1) };
+        })
+        .filter((entry): entry is { name: string; value: string } => entry !== null);
+    },
+    setAll: () => {
+      /* Read-only verification inside a route handler — no cookie writes. */
+    },
+  };
+}
+
+/**
+ * Verify the caller's Supabase identity. The Authorization bearer token sent
+ * by client/src/lib/restore.ts is authoritative; the session cookie serves as
+ * a fallback (e.g. after the OAuth callback has just set it). Returns the
+ * verified user id, or null when unauthenticated.
+ */
+export async function verifySupabaseUser(request: Request): Promise<string | null> {
+  if (!envConfigured()) return null;
+  const { createClient } = await import("@supabase/supabase-js");
+
+  const authorization = request.headers.get("authorization");
+  if (authorization?.toLowerCase().startsWith("bearer ")) {
+    const token = authorization.slice("bearer ".length).trim();
+    if (token) {
+      const bearer = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+          global: {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        },
+      );
+      const { data } = await bearer.auth.getUser();
+      if (data?.user) return data.user.id;
+    }
+  }
+
+  const { createServerClient } = await import("@supabase/ssr");
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    { cookies: getRequestCookieAccessor(request) },
+  );
+  const { data } = await supabase.auth.getUser();
+  return data?.user?.id ?? null;
+}
+
+/** Extract the verified user id from an allowed credit check. */
+export function getGenerationUserId(creditCheck: CreditCheck): string | undefined {
+  return creditCheck.allowed ? creditCheck.userId : undefined;
+}
+
+/**
+ * Current remaining daily balance for a user (after applying the 24h
+ * refresh rule), or null when unknown/unresolvable.
+ */
+export async function getRemainingCredits(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<number | null> {
+  return refreshDailyCredits(admin, userId);
+}
+
+/**
  * Gate a generation request: verifies the Supabase session from the request's
- * cookies, applies the 24h refresh rule, and enforces a positive balance.
- * When Supabase is not configured the request is allowed unchanged.
+ * bearer token (with cookie fallback), applies the 24h refresh rule, and
+ * enforces a positive balance. When Supabase is not configured the request is
+ * allowed unchanged.
  */
 export async function checkGenerationCredits(
   request: Request,
@@ -92,33 +175,8 @@ export async function checkGenerationCredits(
   const admin = getSupabaseAdminClient();
   if (!admin) return { allowed: true, remaining: DAILY_CREDITS };
 
-  const { createServerClient } = await import("@supabase/ssr");
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
-
-  const supabase = createServerClient(url, anon, {
-    cookies: {
-      getAll: () => {
-        const header = request.headers.get("cookie") ?? "";
-        return header
-          .split(";")
-          .map((part) => {
-            const index = part.indexOf("=");
-            return index < 0
-              ? null
-              : { name: part.slice(0, index).trim(), value: part.slice(index + 1) };
-          })
-          .filter((entry): entry is { name: string; value: string } => entry !== null);
-      },
-      setAll: () => {
-        /* Read-only verification inside a route handler — no cookie writes. */
-      },
-    },
-  });
-
-  const { data } = await supabase.auth.getUser();
-  const user = data?.user;
-  if (!user) {
+  const userId = await verifySupabaseUser(request);
+  if (!userId) {
     return {
       allowed: false,
       status: 401,
@@ -126,13 +184,13 @@ export async function checkGenerationCredits(
     };
   }
 
-  const credits = await refreshDailyCredits(admin, user.id);
+  const credits = await refreshDailyCredits(admin, userId);
   if (credits === null) {
     // Profile missing (trigger not yet applied): provision on first use.
     const { data: created, error: createError } = await admin
       .from("profiles")
       .upsert(
-        { id: user.id, email: user.email ?? null, credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() },
+        { id: userId, credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() },
         { onConflict: "id" },
       )
       .select("credits")
@@ -141,12 +199,12 @@ export async function checkGenerationCredits(
       return { allowed: false, status: 503, message: "Credit service unavailable. Try again shortly." };
     }
     return created && created.credits > 0
-      ? { allowed: true, remaining: created.credits, userId: user.id }
+      ? { allowed: true, remaining: created.credits, userId }
       : { allowed: false, status: 429, message: "Daily credit limit reached. Credits renew every 24 hours." };
   }
 
   return credits > 0
-    ? { allowed: true, remaining: credits, userId: user.id }
+    ? { allowed: true, remaining: credits, userId }
     : {
         allowed: false,
         status: 429,

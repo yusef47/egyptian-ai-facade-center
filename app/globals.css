@@ -848,3 +848,236 @@ html[data-qattan-theme="light"] .qattan-tool-error { color: #b91c1c; }
   .qattan-theme-toggle, .qattan-menu { width: 36px; height: 36px; }
   .qattan-brand-copy small { display: none; }
 }
+
+/* ============================================================
+   ADMIN DASHBOARD (/admin) — obsidian & gold
+   ============================================================ */
+.qattan-admin {
+  min-height: 100vh;
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(212, 175, 55, 0.12), transparent 60%),
+    radial-gradient(50rem 26rem at 0% 110%, rgba(212, 175, 55, 0.08), transparent 55%),
+    #050507;
+  color: #f4f1e8;
+  padding: 48px 20px 64px;
+}
+
+.qattan-admin-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.qattan-admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.qattan-admin-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #d4af37;
+  margin: 0 0 10px;
+}
+
+.qattan-admin-title {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(100deg, #f4f1e8 20%, #e5c158 55%, #d4af37 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.qattan-admin-back,
+.qattan-admin-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: rgba(212, 175, 55, 0.08);
+  color: #f3e5ab;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.qattan-admin-back:hover,
+.qattan-admin-refresh:hover {
+  background: rgba(212, 175, 55, 0.16);
+  border-color: rgba(212, 175, 55, 0.55);
+}
+
+.qattan-admin-refresh:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.qattan-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.qattan-admin-card {
+  position: relative;
+  padding: 22px 20px;
+  border-radius: 18px;
+  background: rgba(15, 16, 22, 0.8);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.qattan-admin-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent);
+}
+
+.qattan-admin-card-icon {
+  color: #d4af37;
+  margin-bottom: 12px;
+}
+
+.qattan-admin-card-value {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #f3e5ab;
+  font-variant-numeric: tabular-nums;
+}
+
+.qattan-admin-card-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #cfd3de;
+}
+
+.qattan-admin-card-label-ar {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #8b90a0;
+}
+
+.qattan-admin-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 48px 24px;
+  border-radius: 20px;
+  background: rgba(15, 16, 22, 0.8);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.qattan-admin-gate svg {
+  color: #d4af37;
+}
+
+.qattan-admin-gate h2 {
+  margin: 6px 0 0;
+  font-size: 1.25rem;
+  color: #f4f1e8;
+}
+
+.qattan-admin-gate p {
+  margin: 0 0 10px;
+  color: #aab0c0;
+  max-width: 46ch;
+}
+
+.qattan-admin-note {
+  margin: 0;
+  font-size: 13px;
+  color: #8b90a0;
+}
+
+.qattan-admin-table-wrap {
+  border-radius: 18px;
+  background: rgba(15, 16, 22, 0.8);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  overflow: hidden;
+}
+
+.qattan-admin-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.16);
+}
+
+.qattan-admin-table-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f4f1e8;
+}
+
+.qattan-admin-table-scroll {
+  overflow-x: auto;
+}
+
+.qattan-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 640px;
+}
+
+.qattan-admin-table th {
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d4af37;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.16);
+}
+
+.qattan-admin-table td {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #cfd3de;
+}
+
+.qattan-admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.qattan-admin-credits-cell {
+  color: #f3e5ab;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .qattan-admin {
+    padding: 28px 14px 48px;
+  }
+
+  .qattan-admin-table {
+    min-width: 560px;
+  }
+}

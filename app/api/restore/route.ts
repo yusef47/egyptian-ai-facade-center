@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { executeRestore } from "../../../lib/openrouter-engine.js";
-import { checkGenerationCredits, deductGenerationCredit } from "../../../lib/credits.js";
+import {
+  checkGenerationCredits,
+  deductGenerationCredit,
+  getGenerationUserId,
+} from "../../../lib/credits.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,24 +26,19 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  // Daily credit gate: 10 free generations per 24h per signed-in user.
-  // Bypassed (allowed) when Supabase credentials are not configured yet.
+  // Identity + daily credit gate: verifies the caller's Supabase session
+  // (bearer token first, cookie fallback) and enforces a positive balance.
+  // Bypassed (allowed) while Supabase credentials are not configured yet.
   const creditCheck = await checkGenerationCredits(request);
   if (!creditCheck.allowed) {
-    return NextResponse.json(
-      { error: creditCheck.message },
-      { status: creditCheck.status },
-    );
+    return NextResponse.json({ error: creditCheck.message }, { status: creditCheck.status });
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: "صيغة الطلب غير صالحة." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "صيغة الطلب غير صالحة." }, { status: 400 });
   }
 
   const result = await executeRestore(body, {
@@ -48,16 +47,26 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   if (!result.ok) {
-    return NextResponse.json(
-      { error: result.message },
-      { status: result.status },
-    );
+    return NextResponse.json({ error: result.message }, { status: result.status });
   }
 
-  // Charge one credit only after a successful, clean, watermark-free render.
-  if (creditCheck.userId) {
-    void deductGenerationCredit(creditCheck.userId);
+  // Charge one credit only after a successful, clean, watermark-free render,
+  // then return the authoritative balance so the UI counter updates instantly.
+  const userId = getGenerationUserId(creditCheck);
+  let creditsRemaining: number | null = null;
+  if (userId) {
+    const deduction = await deductGenerationCredit(userId);
+    if (deduction.ok && typeof deduction.remaining === "number") {
+      creditsRemaining = deduction.remaining;
+    } else if (!deduction.ok) {
+      // A concurrent request drained the balance mid-flight (P0001); report
+      // the exhausted state so the header counter drops to zero.
+      creditsRemaining = 0;
+    }
   }
 
-  return NextResponse.json({ imageDataUrl: result.imageDataUrl });
+  return NextResponse.json({
+    imageDataUrl: result.imageDataUrl,
+    creditsRemaining,
+  });
 }
