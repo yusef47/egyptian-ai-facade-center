@@ -6,7 +6,7 @@ import TermsPage from "../app/terms/page";
 import ArabicPrivacyPage from "../app/ar/privacy/page";
 import ArabicTermsPage from "../app/ar/terms/page";
 import { metadata as rootMetadata } from "../app/layout";
-import { dedupe, rateLimit, resetRequestGuards } from "../lib/request-guards";
+import { rateLimit, resetRequestGuards } from "../lib/request-guards";
 import { validateImageDataUrl } from "../lib/image-validation";
 
 // A tiny real PNG (8-byte signature + minimal IHDR) for magic-byte tests.
@@ -34,12 +34,13 @@ describe("P1/P8 — request guards on the generation API", () => {
     expect(rateLimit("user-b").allowed).toBe(true);
   });
 
-  it("blocks a duplicate generation from the same user within 3 seconds", () => {
-    expect(dedupe("user-a").allowed).toBe(true);
-    const second = dedupe("user-a");
-    expect(second.allowed).toBe(false);
-    if (!second.allowed) expect(second.retryAfterSeconds).toBeGreaterThan(0);
-    expect(dedupe("user-b").allowed).toBe(true);
+  it("has no dedupe window blocking legitimate consecutive generations", () => {
+    // The dedupe layer was removed per the launch spec: back-to-back
+    // generations from the same key are throttled only by the 15/min limit.
+    const guards = readFileSync("lib/request-guards.ts", "utf8");
+    expect(guards).not.toMatch(/__qattanDedupe|DEDUPE_WINDOW_MS|export function dedupe/);
+    const route = readFileSync("app/api/restore/route.ts");
+    expect(route).not.toContain("dedupe(");
   });
 });
 
@@ -86,13 +87,21 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
   it("sources the guards, validation, and audit log in the route", () => {
     const route = readFileSync("app/api/restore/route.ts", "utf8");
     expect(route).toContain("rateLimit(");
-    expect(route).toContain("dedupe(userId)");
     expect(route).toContain("validateImageDataUrl(");
+    // Exact simplified flow: refresh → gate → deduct → engine, with logs.
+    expect(route).toContain("[RESTORE_START]");
+    expect(route).toContain("[REFRESH_CHECK]");
+    expect(route).toContain("[PRE_DEDUCT]");
+    expect(route).toContain("[POST_DEDUCT]");
+    expect(route).toContain("[CALLING_ENGINE]");
+    expect(route.indexOf("refreshDailyCredits(admin, userId)")).toBeLessThan(
+      route.indexOf("deductGenerationCredit(userId)"),
+    );
     expect(route).toContain("deductGenerationCredit(userId)");
     // The RPC call site must appear exactly once — no loops or retries.
     expect(route.match(/deductGenerationCredit\(/g)?.length).toBe(1);
     // Audit log fires with userId + remaining balance (pre-generation order).
-    expect(route).toContain("[CREDIT_DEDUCTED]");
+    expect(route).toContain("[POST_DEDUCT]");
     expect(route.indexOf("deductGenerationCredit(userId)")).toBeLessThan(
       route.indexOf("executeRestore(body"),
     );

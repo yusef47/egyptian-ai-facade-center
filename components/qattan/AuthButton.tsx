@@ -69,20 +69,11 @@ export default function AuthButton() {
     void load();
     const { data: subscription } = supabase.auth.onAuthStateChange(() => void load());
 
-    // After each generation the API returns the authoritative remaining
-    // balance; restore.ts re-broadcasts it here so the header counter
-    // updates instantly without a page refresh.
-    // Accept both event contracts: a bare number balance (detail: 9) or a
-    // wrapped shape ({ credits: 9 }) — keeps the pill in sync either way.
-    const onCreditsEvent = (event: Event) => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      const credits =
-        typeof detail === "number"
-          ? detail
-          : typeof detail === "object" && detail !== null && "credits" in detail
-            ? (detail as { credits?: unknown }).credits
-            : undefined;
-      if (typeof credits === "number" && active) setCredits(credits);
+    // After each generation the API signals a balance change; instead of
+    // trusting the event payload, RE-FETCH the real balance from the profiles
+    // table so the badge always reflects the database truth.
+    const onCreditsEvent = () => {
+      void load();
     };
     window.addEventListener(QATTAN_CREDITS_EVENT, onCreditsEvent);
 

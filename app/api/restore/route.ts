@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { executeRestore } from "../../../lib/openrouter-engine.js";
 import {
   CREDITS_EXHAUSTED_BILINGUAL,
-  checkGenerationCredits,
   deductGenerationCredit,
-  getGenerationUserId,
+  refreshDailyCredits,
   refundGenerationCredit,
+  verifySupabaseUser,
 } from "../../../lib/credits.js";
-import { RATE_LIMIT_MESSAGE_BILINGUAL, dedupe, rateLimit } from "../../../lib/request-guards.js";
+import { RATE_LIMIT_MESSAGE_BILINGUAL, rateLimit } from "../../../lib/request-guards.js";
+import { getSupabaseAdminClient } from "../../../lib/credits.js";
 import { validateImageDataUrl } from "../../../lib/image-validation.js";
 
 export const runtime = "nodejs";
@@ -30,10 +31,9 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  // ── Security hardening ────────────────────────────────────────────────
-  // 1) Per-user rate limit: max 15 generation requests per rolling minute.
-  const limiterKey = getClientKey(request);
-  const limited = rateLimit(limiterKey);
+  // ── Simple, linear credit flow (per launch spec) ──────────────────────
+  // 1) Per-IP abuse guard: 15 requests per rolling minute (keeps bursts off).
+  const limited = rateLimit(getClientKey(request));
   if (!limited.allowed) {
     return NextResponse.json(
       { error: RATE_LIMIT_MESSAGE_BILINGUAL },
@@ -41,29 +41,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // 2) Identity + balance gate: verifies the caller's Supabase session
-  //    (bearer token first, cookie fallback) and re-fetches the REAL balance
-  //    from Supabase — client-sent credit values are never trusted.
-  const creditCheck = await checkGenerationCredits(request);
-  if (!creditCheck.allowed) {
-    console.log(
-      `[GATE_REJECTED] ${JSON.stringify({ status: creditCheck.status, message: creditCheck.message })}`,
-    );
-    return NextResponse.json({ error: creditCheck.message }, { status: creditCheck.status });
-  }
-  const userId = getGenerationUserId(creditCheck);
+  // 2) Authenticate: bearer token first, cookie fallback. No user → 401.
+  const userId = await verifySupabaseUser(request);
   const hasSession = Boolean(userId);
   console.log(`[RESTORE_START] ${JSON.stringify({ userId: userId ?? null, hasSession })}`);
-
-  // 3) Duplicate-request guard: same user within 3s is rejected outright.
-  if (userId) {
-    const duplicate = dedupe(userId);
-    if (!duplicate.allowed) {
-      return NextResponse.json(
-        { error: RATE_LIMIT_MESSAGE_BILINGUAL },
-        { status: 429, headers: { "Retry-After": String(duplicate.retryAfterSeconds) } },
-      );
-    }
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Sign in with Google to generate. Every account gets 10 free credits daily." },
+      { status: 401 },
+    );
   }
 
   let body: unknown;
@@ -73,52 +59,59 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "صيغة الطلب غير صالحة." }, { status: 400 });
   }
 
-  // 4) Input validation: genuine image only (MIME allowlist + magic bytes,
-  //    max 10MB) — before any credit is touched.
+  // 3) Input validation: genuine image only — before any credit is touched.
   const payload = (body ?? {}) as { imageDataUrl?: unknown };
   const imageCheck = validateImageDataUrl(payload.imageDataUrl);
   if (!imageCheck.ok) {
     return NextResponse.json({ error: imageCheck.message }, { status: imageCheck.status });
   }
 
-  // ── STRICT PRE-GENERATION DEDUCTION ───────────────────────────────────
-  // The credit is deducted (atomic RPC via the service-role client, which
-  // bypasses RLS and updates credits -1 / generations_used +1) BEFORE any
-  // OpenRouter call. If the balance is exhausted or the deduction fails,
-  // we abort here — the generation API is never invoked.
-  let creditsRemaining: number | null = null;
-  if (userId) {
-    console.log(`[PRE_DEDUCT] ${JSON.stringify({ userId, gateRemaining: creditCheck.allowed ? creditCheck.remaining : null })}`);
-    const deduction = await deductGenerationCredit(userId);
-    if (!deduction.ok) {
-      // Insufficient funds or RPC failure: abort WITHOUT calling OpenRouter.
-      console.log(`[DEDUCT_FAILED] ${JSON.stringify({ userId, remaining: deduction.remaining ?? null })}`);
-      return NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 });
-    }
-    creditsRemaining = typeof deduction.remaining === "number" ? deduction.remaining : null;
-    console.log(`[POST_DEDUCT] ${JSON.stringify({ userId, ok: deduction.ok, newBalance: creditsRemaining })}`);
-    console.log(
-      `[CREDIT_DEDUCTED] ${JSON.stringify({ userId, remaining: creditsRemaining })}`,
+  const admin = getSupabaseAdminClient();
+  if (!admin) {
+    console.log("[NO_ADMIN_CLIENT] SUPABASE env vars missing on server");
+    return NextResponse.json(
+      { error: "Credit service unavailable. Try again shortly." },
+      { status: 503 },
     );
   }
 
-  // ── Generation (only reached when deduction succeeded or auth dormant) ─
-  console.log(`[CALLING_ENGINE] ${JSON.stringify({ userId: userId ?? null })}`);
+  // 4) Refresh: RPC returns the current balance (resets to 10 after 24h).
+  const creditsAfterRefresh = await refreshDailyCredits(admin, userId);
+  console.log(`[REFRESH_CHECK] ${JSON.stringify({ userId, creditsAfterRefresh })}`);
+  if (creditsAfterRefresh === null || creditsAfterRefresh <= 0) {
+    return NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 });
+  }
+
+  // 5) Deduct exactly 1 credit atomically (pre-generation).
+  console.log(`[PRE_DEDUCT] ${JSON.stringify({ userId, currentCredits: creditsAfterRefresh })}`);
+  const deduction = await deductGenerationCredit(userId);
+  if (!deduction.ok) {
+    console.log(`[DEDUCT_FAILED] ${JSON.stringify({ userId, remaining: deduction.remaining ?? null })}`);
+    return NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 });
+  }
+  let creditsRemaining = typeof deduction.remaining === "number" ? deduction.remaining : null;
+  console.log(`[POST_DEDUCT] ${JSON.stringify({ userId, ok: deduction.ok, newBalance: creditsRemaining })}`);
+
+  // 6) Generate — only reached when the deduction succeeded.
+  console.log(`[CALLING_ENGINE] ${JSON.stringify({ userId, toolId: (body as { toolId?: string })?.toolId ?? null })}`);
   const result = await executeRestore(body, {
     apiKey: process.env.OPENROUTER_API_KEY,
     clientKey: getClientKey(request),
   });
 
   if (!result.ok) {
-    // Compensating transaction: a failed generation must not consume a
-    // credit. Refund exactly what the pre-deduction charged.
-    if (userId) {
-      const refund = await refundGenerationCredit(userId);
-      console.log(
-        `[CREDIT_REFUNDED] ${JSON.stringify({ userId, ok: refund.ok, remaining: refund.remaining ?? null })}`,
-      );
-    }
-    return NextResponse.json({ error: result.message }, { status: result.status });
+    // 7) Compensating transaction: a failed generation must not consume a
+    // credit. Refund exactly what the pre-deduction charged, and report the
+    // post-refund balance so the header badge stays truthful.
+    const refund = await refundGenerationCredit(userId);
+    creditsRemaining = typeof refund.remaining === "number" ? refund.remaining : creditsRemaining;
+    console.log(
+      `[CREDIT_REFUNDED] ${JSON.stringify({ userId, ok: refund.ok, remaining: refund.remaining ?? null })}`,
+    );
+    return NextResponse.json(
+      { error: result.message, creditsRemaining },
+      { status: result.status },
+    );
   }
 
   return NextResponse.json({

@@ -67,9 +67,6 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const zoomTouchStartY = useRef<number | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   // Synchronous mutex: blocks re-entrant submits (double-clicks) during the
-  // async gate check before the loading state renders. EXACTLY one request
-  // per click, and one click until the previous flow fully settles.
-  const submittingRef = useRef(false);
 
   // One-thumb access: on phones the sticky FAB triggers the same submission
   // as the inline generate button.
@@ -167,19 +164,10 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   };
 
   const handleSubmit = async () => {
-    // Mutex: ignore any re-trigger while a submission is in flight (the
-    // Generate button + FAB are disabled, but keyboard/rapid taps can race
-    // the async auth-gate check before `loading` is set).
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    try {
-      await runSubmit();
-    } finally {
-      submittingRef.current = false;
-    }
-  };
-
-  const runSubmit = async () => {
+    // Single in-flight guard: the `loading` state. The Generate button and
+    // FAB are disabled only while a request is in-flight and re-enable
+    // immediately on response (success or error) — no cooldowns, no mutexes.
+    if (loading) return;
     // Mandatory auth gate: block the generation request and surface the
     // luxury sign-in modal when Supabase is configured but no session exists.
     const gate = await getSupabaseSessionGate();

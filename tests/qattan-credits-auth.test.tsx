@@ -374,9 +374,10 @@ describe("Header credit counter updates live after generation", () => {
     await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
     expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7");
 
-    window.dispatchEvent(
-      new CustomEvent(QATTAN_CREDITS_EVENT, { detail: { credits: 5 } }),
-    );
+    // The event is only a refetch signal — the badge must show what the
+    // profiles table actually returns (the deduction already committed).
+    state.profile = { credits: 5, email: OWNER_EMAIL };
+    window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: 5 }));
 
     await waitFor(() =>
       expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("5"),

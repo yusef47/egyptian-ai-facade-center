@@ -1,11 +1,14 @@
 /**
- * In-memory request guards for the generation API (single-serverless-instance
+ * In-memory request guard for the generation API (single-serverless-instance
  * scope — sufficient for the current deployment scale, and still effective
  * across warm invocations).
  *
- * - `rateLimit`: max N requests per key per rolling 60s window (security brief).
- * - `dedupe`: blocks concurrent duplicate requests from the same user within
- *   a 3-second window, protecting the credit balance from double-fires.
+ * - `rateLimit`: max N requests per key per rolling 60s window.
+ *
+ * Deliberately simple: no dedupe windows, no client mutexes, no credit
+ * caching — those layers produced false rejections in production and were
+ * removed per the launch spec. The atomic deduct_credit RPC is the sole
+ * authority on balances.
  */
 
 export type GuardResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
@@ -16,7 +19,6 @@ const RATE_WINDOW_MS = 60_000;
  * 9 tools during a testing session, while still blunting abusive bursts.
  */
 const RATE_MAX_REQUESTS = 15;
-const DEDUPE_WINDOW_MS = 3_000;
 
 type Bucket = { hits: number[]; lastSeen: number };
 
@@ -29,11 +31,9 @@ export const RATE_LIMIT_MESSAGE_BILINGUAL =
 
 const globalGuards = globalThis as unknown as {
   __qattanRateBuckets?: Map<string, Bucket>;
-  __qattanDedupe?: Map<string, number>;
 };
 
 const rateBuckets: Map<string, Bucket> = (globalGuards.__qattanRateBuckets ??= new Map());
-const dedupeMap: Map<string, number> = (globalGuards.__qattanDedupe ??= new Map());
 
 function pruneExpired(now: number) {
   for (const [key, bucket] of rateBuckets) {
@@ -42,12 +42,9 @@ function pruneExpired(now: number) {
       rateBuckets.delete(key);
     }
   }
-  for (const [key, ts] of dedupeMap) {
-    if (now - ts > DEDUPE_WINDOW_MS) dedupeMap.delete(key);
-  }
 }
 
-/** Rolling-window rate limit: max 5 requests per key per minute. */
+/** Rolling-window rate limit: max 15 requests per key per minute. */
 export function rateLimit(key: string): GuardResult {
   const now = Date.now();
   pruneExpired(now);
@@ -63,20 +60,7 @@ export function rateLimit(key: string): GuardResult {
   return { allowed: true };
 }
 
-/** Duplicate-generation guard: one request per user per 3-second window. */
-export function dedupe(key: string): GuardResult {
-  const now = Date.now();
-  pruneExpired(now);
-  const last = dedupeMap.get(key);
-  if (last !== undefined && now - last < DEDUPE_WINDOW_MS) {
-    return { allowed: false, retryAfterSeconds: Math.ceil((DEDUPE_WINDOW_MS - (now - last)) / 1000) };
-  }
-  dedupeMap.set(key, now);
-  return { allowed: true };
-}
-
 /** Test seam: clear all guard state. */
 export function resetRequestGuards() {
   rateBuckets.clear();
-  dedupeMap.clear();
 }
