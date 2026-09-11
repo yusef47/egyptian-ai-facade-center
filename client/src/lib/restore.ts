@@ -81,6 +81,7 @@ export async function restoreFacade(request: RestoreRequest): Promise<string> {
     // post-refund balance, sync the header counter so it never drifts.
     const refundedCredits = (data as RestoreResult | null)?.creditsRemaining;
     if (typeof refundedCredits === "number" && typeof window !== "undefined") {
+      console.log("[CREDITS_EVENT_DISPATCH]", refundedCredits);
       window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: refundedCredits }));
     }
     const message =
@@ -95,6 +96,7 @@ export async function restoreFacade(request: RestoreRequest): Promise<string> {
   // Contract: detail IS the new balance (bare number), e.g. 10 -> 9.
   const creditsRemaining = (data as RestoreResult | null)?.creditsRemaining;
   if (typeof creditsRemaining === "number" && typeof window !== "undefined") {
+    console.log("[CREDITS_EVENT_DISPATCH]", creditsRemaining);
     window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: creditsRemaining }));
   }
 

@@ -186,6 +186,26 @@ export async function getRemainingCredits(
 }
 
 /**
+ * Plain authoritative read of the balance straight from the service-role
+ * client (no refresh rule, no RPC). Used so the generation response ALWAYS
+ * carries a numeric `creditsRemaining`: a credit RPC that succeeds but whose
+ * scalar return cannot be parsed used to yield null, which silently stopped
+ * the header badge from ever updating after a generation.
+ */
+export async function readProfileCredits(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<number | null> {
+  const { data, error } = await admin
+    .from("profiles")
+    .select("credits")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) return null;
+  return typeof data?.credits === "number" ? data.credits : null;
+}
+
+/**
  * Gate a generation request: verifies the Supabase session from the request's
  * bearer token (with cookie fallback), applies the 24h refresh rule, and
  * enforces a positive balance. When Supabase is not configured the request is

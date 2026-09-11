@@ -111,6 +111,25 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(route).toContain("ENGINE_BUSY_BILINGUAL");
   });
 
+  it("always returns a numeric creditsRemaining so the header badge can update", () => {
+    const route = readFileSync("app/api/restore/route.ts", "utf8");
+    // Every response path logs and returns the balance — a null here used to
+    // silently freeze the badge at its stale value.
+    expect(route).toContain("[RESPONSE]");
+    expect(route).toContain("[CREDITS_FALLBACK_READ]");
+    expect(route).toContain("readProfileCredits(admin, userId)");
+    expect(route).toMatch(/imageDataUrl: result\.imageDataUrl,\s*\n\s*creditsRemaining,/);
+
+    // Client broadcasts the value, badge applies it immediately.
+    const client = readFileSync("client/src/lib/restore.ts", "utf8");
+    expect(client).toContain("[CREDITS_EVENT_DISPATCH]");
+    const authButton = readFileSync("components/qattan/AuthButton.tsx", "utf8");
+    expect(authButton).toContain("[CREDITS_EVENT_RECEIVED]");
+    expect(authButton).toContain("setCredits(next)");
+    // A failed/empty profiles read never clobbers a known-good balance.
+    expect(authButton).toMatch(/typeof profile\?\.credits === "number"/);
+  });
+
   it("preserves the balance when last_credit_reset is recent and only true 24h+ triggers reset", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
     expect(sql).toMatch(/last_credit_reset < now\(\) - interval '24 hours'/);

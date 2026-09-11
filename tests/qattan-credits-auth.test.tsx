@@ -364,7 +364,18 @@ describe("Header credit counter updates live after generation", () => {
     state.browserSession = null;
   });
 
-  it("re-renders the balance when the API broadcasts the new remaining credits", async () => {
+  it("shows the real database balance on mount, not the 10-credit default", async () => {
+    render(
+      <QattanProviders locale="en">
+        <AuthButton />
+      </QattanProviders>,
+    );
+
+    await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
+    expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7");
+  });
+
+  it("applies the broadcast balance immediately after a generation", async () => {
     render(
       <QattanProviders locale="en">
         <AuthButton />
@@ -374,9 +385,28 @@ describe("Header credit counter updates live after generation", () => {
     await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
     expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7");
 
-    // The event is only a refetch signal — the badge must show what the
-    // profiles table actually returns (the deduction already committed).
+    // /api/restore returns creditsRemaining: 5; restore.ts re-broadcasts it as
+    // the bare new balance. The badge must follow it without a page refresh.
     state.profile = { credits: 5, email: OWNER_EMAIL };
+    window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: 5 }));
+
+    await waitFor(() =>
+      expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("5"),
+    );
+  });
+
+  it("still updates when the profiles read is unavailable (payload is authoritative)", async () => {
+    render(
+      <QattanProviders locale="en">
+        <AuthButton />
+      </QattanProviders>,
+    );
+
+    await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
+
+    // A null/errored profile read must never clobber or block the update —
+    // the server-computed balance wins.
+    state.profile = null;
     window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: 5 }));
 
     await waitFor(() =>

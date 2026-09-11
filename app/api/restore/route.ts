@@ -3,6 +3,7 @@ import { ENGINE_BUSY_BILINGUAL, executeRestore } from "../../../lib/openrouter-e
 import {
   CREDITS_EXHAUSTED_BILINGUAL,
   deductGenerationCredit,
+  readProfileCredits,
   refreshDailyCredits,
   refundGenerationCredit,
   verifySupabaseUser,
@@ -100,7 +101,20 @@ export async function POST(request: Request): Promise<NextResponse> {
       ? NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 })
       : NextResponse.json({ error: ENGINE_BUSY_BILINGUAL }, { status: 503 });
   }
+  // The response MUST always carry a numeric balance: the client only
+  // broadcasts the header-badge update when `creditsRemaining` is a number,
+  // so a null here freezes the badge at its stale value.
   let creditsRemaining = typeof deduction.remaining === "number" ? deduction.remaining : null;
+  if (creditsRemaining === null) {
+    creditsRemaining = await readProfileCredits(admin, userId);
+    console.log(`[CREDITS_FALLBACK_READ] ${JSON.stringify({ userId, creditsRemaining })}`);
+  }
+  if (creditsRemaining === null) {
+    // Last resort: the pre-deduction balance we refreshed at step 4 minus the
+    // single credit just charged — guarantees the badge still moves.
+    creditsRemaining = Math.max((creditsAfterRefresh ?? 1) - 1, 0);
+    console.log(`[CREDITS_ESTIMATED] ${JSON.stringify({ userId, creditsRemaining })}`);
+  }
   console.log(`[POST_DEDUCT] ${JSON.stringify({ userId, ok: deduction.ok, newBalance: creditsRemaining })}`);
 
   // 6) Generate — only reached when the deduction succeeded.
@@ -116,15 +130,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     // post-refund balance so the header badge stays truthful.
     const refund = await refundGenerationCredit(userId);
     creditsRemaining = typeof refund.remaining === "number" ? refund.remaining : creditsRemaining;
+    if (creditsRemaining === null) creditsRemaining = await readProfileCredits(admin, userId);
     console.log(
       `[CREDIT_REFUNDED] ${JSON.stringify({ userId, ok: refund.ok, remaining: refund.remaining ?? null })}`,
     );
+    console.log(`[RESPONSE] ${JSON.stringify({ ok: false, status: result.status, creditsRemaining })}`);
     return NextResponse.json(
       { error: result.message, creditsRemaining },
       { status: result.status },
     );
   }
 
+  console.log(`[RESPONSE] ${JSON.stringify({ ok: true, status: 200, creditsRemaining })}`);
   return NextResponse.json({
     imageDataUrl: result.imageDataUrl,
     creditsRemaining,

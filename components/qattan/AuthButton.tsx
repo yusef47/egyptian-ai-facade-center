@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
 import {
   DAILY_CREDITS,
@@ -27,6 +27,7 @@ export default function AuthButton() {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const userIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -35,16 +36,39 @@ export default function AuthButton() {
     }
     let active = true;
 
+    /**
+     * Reads the authoritative balance from the profiles table. A failed or
+     * empty read NEVER clobbers a known-good value — otherwise the badge would
+     * regress to the 10-credit default while the database still says 8.
+     */
+    const syncCredits = async (userId: string) => {
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("credits")
+          .eq("id", userId)
+          .maybeSingle();
+        if (active && typeof profile?.credits === "number") {
+          console.log("[CREDITS_SYNCED]", profile.credits);
+          setCredits(profile.credits);
+        }
+      } catch {
+        /* keep the last known balance */
+      }
+    };
+
     const load = async () => {
       const { data } = await supabase.auth.getSession();
       const sessionUser = data.session?.user;
       if (!active) return;
       if (!sessionUser) {
+        userIdRef.current = null;
         setUser(null);
         setCredits(null);
         setReady(true);
         return;
       }
+      userIdRef.current = sessionUser.id;
       const meta = sessionUser.user_metadata ?? {};
       setUser({
         email: sessionUser.email ?? null,
@@ -53,27 +77,29 @@ export default function AuthButton() {
         avatarUrl:
           (meta.avatar_url as string | undefined) ?? (meta.picture as string | undefined) ?? null,
       });
-      try {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("credits")
-          .eq("id", sessionUser.id)
-          .maybeSingle();
-        if (active) setCredits(typeof profile?.credits === "number" ? profile.credits : null);
-      } catch {
-        if (active) setCredits(null);
-      }
+      await syncCredits(sessionUser.id);
       setReady(true);
     };
 
     void load();
     const { data: subscription } = supabase.auth.onAuthStateChange(() => void load());
 
-    // After each generation the API signals a balance change; instead of
-    // trusting the event payload, RE-FETCH the real balance from the profiles
-    // table so the badge always reflects the database truth.
-    const onCreditsEvent = () => {
-      void load();
+    // After each generation /api/restore broadcasts the authoritative new
+    // balance. Apply it IMMEDIATELY (the badge must drop 10 → 9 without any
+    // refresh), then reconcile against the database as a background safety net.
+    const onCreditsEvent = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const next =
+        typeof detail === "number"
+          ? detail
+          : typeof detail === "object" && detail !== null && "credits" in detail
+            ? Number((detail as { credits?: unknown }).credits)
+            : Number.NaN;
+      console.log("[CREDITS_EVENT_RECEIVED]", detail);
+      if (!Number.isFinite(next)) return;
+      setCredits(next);
+      const id = userIdRef.current;
+      if (id) void syncCredits(id);
     };
     window.addEventListener(QATTAN_CREDITS_EVENT, onCreditsEvent);
 
