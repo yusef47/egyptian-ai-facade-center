@@ -57,3 +57,7 @@ create policy "profiles_insert_own"
 -- Credit updates happen exclusively server-side via the service-role client
 -- and the deduct_credit / refresh_daily_credit RPCs, which bypass RLS by
 -- design. No public update/insert policies exist for the balances.
+
+-- Flush PostgREST's schema cache so the admin RPCs above are immediately
+-- callable through the Supabase JS client.
+notify pgrst, 'reload schema';

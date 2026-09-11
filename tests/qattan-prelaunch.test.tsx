@@ -105,13 +105,17 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(route.indexOf("deductGenerationCredit(userId)")).toBeLessThan(
       route.indexOf("executeRestore(body"),
     );
+    // A failed RPC (parameter-name mismatch, missing function, permission) is
+    // an infrastructure problem: 503 + busy copy, never "credits exhausted".
+    expect(route).toContain('deduction.reason === "insufficient"');
+    expect(route).toContain("ENGINE_BUSY_BILINGUAL");
   });
 
   it("preserves the balance when last_credit_reset is recent and only true 24h+ triggers reset", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
     expect(sql).toMatch(/last_credit_reset < now\(\) - interval '24 hours'/);
     // Stamping legacy rows must NOT touch credits.
-    expect(sql).toMatch(/set last_credit_reset = now\(\)\s*\n\s*where id = p_user_id\s*\n\s*returning credits into stamped;/);
+    expect(sql).toMatch(/set last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*returning credits into stamped;/);
   });
 });
 

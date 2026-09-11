@@ -47,7 +47,14 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- ── Atomic deduction: EXACTLY -1 credit, +1 generation per call ────────
-create or replace function public.deduct_credit(p_user_id uuid, p_amount integer default 1)
+-- The parameter is named `user_id` to match what the Supabase JS client
+-- sends. `drop function` must come first: Postgres rejects renaming an input
+-- parameter through CREATE OR REPLACE ("cannot change name of input
+-- parameter"), so re-running this migration over a database created with the
+-- older `p_user_id` name would fail silently and leave the deployed signature
+-- out of sync with the app.
+drop function if exists public.deduct_credit(uuid, integer);
+create function public.deduct_credit(user_id uuid, p_amount integer default 1)
 returns integer
 language plpgsql
 security definer
@@ -62,26 +69,26 @@ begin
     raise exception 'INVALID_AMOUNT' using errcode = 'P0001';
   end if;
 
-  select credits into previous from public.profiles where id = p_user_id;
+  select credits into previous from public.profiles where id = user_id;
 
   update public.profiles
   set credits = credits - 1,
       generations_used = generations_used + 1
-  where id = p_user_id
+  where id = user_id
     and credits >= 1
   returning credits into remaining;
 
   if remaining is null then
     if previous is null then
       insert into public.profiles (id, credits, last_credit_reset, generations_used)
-      values (p_user_id, 0, now(), 0)
+      values (user_id, 0, now(), 0)
       on conflict (id) do nothing;
     end if;
     raise exception 'INSUFFICIENT_CREDITS' using errcode = 'P0001';
   end if;
 
   -- Server-side audit trail (visible in the Supabase log explorer).
-  raise notice 'CREDIT_DEDUCTION user=% old=% new=%', p_user_id, previous, remaining;
+  raise notice 'CREDIT_DEDUCTION user=% old=% new=%', user_id, previous, remaining;
   return remaining;
 end;
 $$;
@@ -89,7 +96,8 @@ $$;
 -- ── Compensating refund: +1 credit, -1 generation ─────────────────────
 -- Used only when a pre-charged generation fails upstream, so failed renders
 -- never consume credits. Bounds credits at the daily allowance.
-create or replace function public.refund_credit(p_user_id uuid)
+drop function if exists public.refund_credit(uuid);
+create function public.refund_credit(user_id uuid)
 returns integer
 language plpgsql
 security definer
@@ -101,20 +109,21 @@ begin
   update public.profiles
   set credits = least(credits + 1, 10),
       generations_used = greatest(generations_used - 1, 0)
-  where id = p_user_id
+  where id = user_id
   returning credits into updated;
 
   if updated is null then
     raise exception 'PROFILE_NOT_FOUND' using errcode = 'P0001';
   end if;
 
-  raise notice 'CREDIT_REFUND user=% new=%', p_user_id, updated;
+  raise notice 'CREDIT_REFUND user=% new=%', user_id, updated;
   return updated;
 end;
 $$;
 
 -- ── Daily refresh helper: resets ONLY after a true 24h elapsed ────────
-create or replace function public.refresh_daily_credit(p_user_id uuid)
+drop function if exists public.refresh_daily_credit(uuid);
+create function public.refresh_daily_credit(user_id uuid)
 returns integer
 language plpgsql
 security definer
@@ -125,11 +134,11 @@ declare
   remaining integer;
   stamped integer;
 begin
-  select * into current_row from public.profiles where id = p_user_id;
+  select * into current_row from public.profiles where id = user_id;
 
   if not found then
     insert into public.profiles (id, credits, last_credit_reset)
-    values (p_user_id, 10, now())
+    values (user_id, 10, now())
     on conflict (id) do nothing;
     return 10;
   end if;
@@ -138,7 +147,7 @@ begin
   if current_row.last_credit_reset is null then
     update public.profiles
     set last_credit_reset = now()
-    where id = p_user_id
+    where id = user_id
     returning credits into stamped;
     return coalesce(stamped, current_row.credits);
   end if;
@@ -147,7 +156,7 @@ begin
   if current_row.last_credit_reset < now() - interval '24 hours' then
     update public.profiles
     set credits = 10, last_credit_reset = now()
-    where id = p_user_id
+    where id = user_id
     returning credits into remaining;
     return coalesce(remaining, 10);
   end if;
@@ -155,3 +164,19 @@ begin
   return current_row.credits;
 end;
 $$;
+
+-- Flush PostgREST's schema cache so the recreated functions are immediately
+-- callable through the Supabase JS client (no more PGRST202 "Could not find
+-- the function" after a migration).
+notify pgrst, 'reload schema';
+
+-- Lock the credit engine down to the server. CREATE FUNCTION grants EXECUTE
+-- to PUBLIC by default, which would let anyone holding the anon key call
+-- deduct_credit(other_user, 1) through PostgREST and burn credits that are
+-- not theirs. Balances are modified exclusively by the service-role client.
+revoke execute on function public.deduct_credit(uuid, integer) from public, anon, authenticated;
+revoke execute on function public.refund_credit(uuid) from public, anon, authenticated;
+revoke execute on function public.refresh_daily_credit(uuid) from public, anon, authenticated;
+grant execute on function public.deduct_credit(uuid, integer) to service_role;
+grant execute on function public.refund_credit(uuid) to service_role;
+grant execute on function public.refresh_daily_credit(uuid) to service_role;

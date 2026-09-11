@@ -185,7 +185,45 @@ describe("Credit deduction", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(3);
-    expect(rpc).toHaveBeenCalledWith("deduct_credit", { p_user_id: "user-1", p_amount: 1 });
+    expect(rpc).toHaveBeenCalledWith("deduct_credit", { user_id: "user-1", p_amount: 1 });
+  });
+
+  it("falls back to the legacy argument names when the canonical signature is absent", async () => {
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: "PGRST202",
+          message: "Could not find the function public.deduct_credit(user_id, p_amount) in the schema cache",
+        },
+      })
+      .mockResolvedValueOnce({ data: 9, error: null });
+    const admin = { rpc };
+    const result = await deductGenerationCreditWithAdmin(
+      admin as unknown as Parameters<typeof deductGenerationCreditWithAdmin>[0],
+      "user-1",
+    );
+    expect(rpc).toHaveBeenNthCalledWith(1, "deduct_credit", { user_id: "user-1", p_amount: 1 });
+    expect(rpc).toHaveBeenNthCalledWith(2, "deduct_credit", { p_user_id: "user-1", p_amount: 1 });
+    expect(result.ok).toBe(true);
+    expect(result.remaining).toBe(9);
+  });
+
+  it("reports an infrastructure failure — never an empty balance — when no signature matches", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function public.deduct_credit" },
+    });
+    const admin = { rpc };
+    const result = await deductGenerationCreditWithAdmin(
+      admin as unknown as Parameters<typeof deductGenerationCreditWithAdmin>[0],
+      "user-1",
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("unavailable");
+    // Both argument-name strategies were attempted before giving up.
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 
   it("reports failure without going negative when the RPC raises insufficient credits", async () => {
@@ -200,6 +238,7 @@ describe("Credit deduction", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.remaining).toBe(0);
+    if (!result.ok) expect(result.reason).toBe("insufficient");
   });
 });
 

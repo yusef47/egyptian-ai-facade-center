@@ -21,10 +21,9 @@ export type CreditCheck =
   | { allowed: true; remaining: number; userId?: string }
   | { allowed: false; status: number; message: string };
 
-export type CreditDeduction = {
-  ok: boolean;
-  remaining?: number;
-};
+export type CreditDeduction =
+  | { ok: true; remaining?: number }
+  | { ok: false; reason: "insufficient" | "unavailable"; remaining?: number };
 
 /** Bilingual exhaustion notice surfaced to users on 429 (gate + deduction). */
 export const CREDITS_EXHAUSTED_BILINGUAL =
@@ -249,6 +248,85 @@ export async function checkGenerationCredits(
 }
 
 /**
+ * Argument-name strategies for the credit RPCs.
+ *
+ * Postgres identifies a function by its argument TYPES, not their names, and
+ * `CREATE OR REPLACE FUNCTION` cannot rename an input parameter. A database
+ * whose functions were created under the older names therefore keeps them, and
+ * PostgREST answers a call made with the wrong names as
+ * `PGRST202: Could not find the function …`. We call with the canonical names
+ * first and transparently retry with the legacy names, so the app works
+ * against either deployed signature.
+ */
+const CREDIT_RPC_PRIMARY = { user: "user_id", amount: "p_amount" } as const;
+const CREDIT_RPC_LEGACY = { user: "p_user_id", amount: "p_amount" } as const;
+
+type CreditRpcName = "deduct_credit" | "refund_credit";
+type RpcResponse = { data: unknown; error: { code?: string; message?: string } | null };
+
+/** Raw server-side trace of every credit RPC call (never user-visible). */
+function logRpcRaw(rpcName: CreditRpcName, argName: string, response: RpcResponse): void {
+  console.log(
+    `[RPC_RAW_RESPONSE] ${JSON.stringify({
+      rpcName,
+      args: argName,
+      data: response.data,
+      error: response.error?.message ?? null,
+      code: response.error?.code ?? null,
+    })}`,
+  );
+}
+
+/** True when the RPC could not be resolved — i.e. an argument-name mismatch. */
+function isMissingFunctionError(error: RpcResponse["error"]): boolean {
+  if (!error) return false;
+  if (error.code === "PGRST202" || error.code === "42883") return true;
+  return /could not find the function|does not exist|no function matches/i.test(error.message ?? "");
+}
+
+/**
+ * Calls a credit RPC, retrying once with the legacy argument names when the
+ * canonical signature is absent from the database.
+ */
+async function callCreditRpc(
+  admin: SupabaseClient,
+  rpcName: CreditRpcName,
+  userId: string,
+  amount?: number,
+): Promise<RpcResponse> {
+  const argsFor = (names: { user: string; amount: string }) =>
+    amount === undefined
+      ? { [names.user]: userId }
+      : { [names.user]: userId, [names.amount]: amount };
+
+  const primary = (await admin.rpc(rpcName, argsFor(CREDIT_RPC_PRIMARY))) as RpcResponse;
+  logRpcRaw(rpcName, CREDIT_RPC_PRIMARY.user, primary);
+  if (!isMissingFunctionError(primary.error)) return primary;
+
+  const legacy = (await admin.rpc(rpcName, argsFor(CREDIT_RPC_LEGACY))) as RpcResponse;
+  logRpcRaw(rpcName, CREDIT_RPC_LEGACY.user, legacy);
+  console.log(
+    `[RPC_ARG_FALLBACK] ${JSON.stringify({
+      rpcName,
+      from: CREDIT_RPC_PRIMARY.user,
+      to: CREDIT_RPC_LEGACY.user,
+      ok: !legacy.error,
+    })}`,
+  );
+  return legacy;
+}
+
+/** PostgREST returns a plain scalar for `returns integer`; tolerate shapes. */
+function parseScalar(data: unknown): number {
+  if (typeof data === "number") return data;
+  if (Array.isArray(data) && data.length > 0) return parseScalar(data[0]);
+  if (typeof data === "object" && data !== null && "credits" in data) {
+    return Number((data as Record<string, unknown>).credits);
+  }
+  return Number.NaN;
+}
+
+/**
  * Deduct one credit after a successful generation, atomically, via the
  * `deduct_credit` RPC (see supabase/migrations). The RPC decrements only
  * when credits > 0 and returns the authoritative remaining balance, so
@@ -267,30 +345,24 @@ export async function deductGenerationCreditWithAdmin(
 ): Promise<CreditDeduction> {
   // Service-role client: bypasses RLS, updates credits AND generations_used
   // atomically inside the deduct_credit Postgres function.
-  const { data, error } = await admin.rpc("deduct_credit", {
-    p_user_id: userId,
-    p_amount: 1,
-  });
+  const { data, error } = await callCreditRpc(admin, "deduct_credit", userId, 1);
 
   if (error) {
-    const code = (error as { code?: string }).code;
-    const errorMessage = (error as { message?: string }).message ?? "";
+    const code = error.code;
     // Server-side diagnostics: the exact RPC failure reason (missing function,
     // permission, signature mismatch, or the explicit insufficient-credits
     // raise) — never surfaced to users, only visible in server logs.
-    console.log(`[RPC_DEDUCT_ERROR] code=${code ?? "unknown"} message=${errorMessage.slice(0, 200)}`);
-    // P0001 = the RPC's explicit "insufficient credits" raise.
-    if (code === "P0001") return { ok: false, remaining: 0 };
-    return { ok: false };
+    console.log(`[RPC_DEDUCT_ERROR] code=${code ?? "unknown"} message=${(error.message ?? "").slice(0, 200)}`);
+    // P0001 = the RPC's explicit "insufficient credits" raise. Anything else
+    // (missing function, permission, connectivity) is an infrastructure
+    // failure and must never be reported to the user as an empty balance.
+    return code === "P0001"
+      ? { ok: false, reason: "insufficient", remaining: 0 }
+      : { ok: false, reason: "unavailable" };
   }
 
-  const remaining =
-    typeof data === "number"
-      ? data
-      : typeof data === "object" && data !== null && "credits" in (data as Record<string, unknown>)
-        ? Number((data as Record<string, unknown>).credits)
-        : Number.NaN;
-
+  const remaining = parseScalar(data);
+  if (!Number.isFinite(remaining)) console.log("[RPC_EMPTY_RESULT] deduct_credit returned no scalar");
   return Number.isFinite(remaining) ? { ok: true, remaining } : { ok: true };
 }
 
@@ -310,11 +382,13 @@ export async function refundGenerationCreditWithAdmin(
   admin: SupabaseClient,
   userId: string,
 ): Promise<CreditDeduction> {
-  const { data, error } = await admin.rpc("refund_credit", { p_user_id: userId });
-  if (error) return { ok: false };
-  const remaining =
-    typeof data === "number"
-      ? data
-      : Number.NaN;
+  const { data, error } = await callCreditRpc(admin, "refund_credit", userId);
+  if (error) {
+    console.log(
+      `[RPC_REFUND_ERROR] code=${error.code ?? "unknown"} message=${(error.message ?? "").slice(0, 200)}`,
+    );
+    return { ok: false, reason: "unavailable" };
+  }
+  const remaining = parseScalar(data);
   return Number.isFinite(remaining) ? { ok: true, remaining } : { ok: true };
 }

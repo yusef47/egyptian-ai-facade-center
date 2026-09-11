@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { executeRestore } from "../../../lib/openrouter-engine.js";
+import { ENGINE_BUSY_BILINGUAL, executeRestore } from "../../../lib/openrouter-engine.js";
 import {
   CREDITS_EXHAUSTED_BILINGUAL,
   deductGenerationCredit,
@@ -86,8 +86,19 @@ export async function POST(request: Request): Promise<NextResponse> {
   console.log(`[PRE_DEDUCT] ${JSON.stringify({ userId, currentCredits: creditsAfterRefresh })}`);
   const deduction = await deductGenerationCredit(userId);
   if (!deduction.ok) {
-    console.log(`[DEDUCT_FAILED] ${JSON.stringify({ userId, remaining: deduction.remaining ?? null })}`);
-    return NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 });
+    console.log(
+      `[DEDUCT_FAILED] ${JSON.stringify({
+        userId,
+        reason: deduction.reason,
+        remaining: deduction.remaining ?? null,
+      })}`,
+    );
+    // Only a genuinely empty balance is reported as such. A failed RPC (bad
+    // parameter name, missing function, permission) is an engine problem and
+    // must never be presented to the user as "your credits ran out".
+    return deduction.reason === "insufficient"
+      ? NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 })
+      : NextResponse.json({ error: ENGINE_BUSY_BILINGUAL }, { status: 503 });
   }
   let creditsRemaining = typeof deduction.remaining === "number" ? deduction.remaining : null;
   console.log(`[POST_DEDUCT] ${JSON.stringify({ userId, ok: deduction.ok, newBalance: creditsRemaining })}`);

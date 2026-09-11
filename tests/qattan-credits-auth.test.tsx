@@ -399,7 +399,17 @@ describe("Admin dashboard surface & migration contract", () => {
 
   it("keeps the migration aligned with the credit + admin RPC contract", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
-    expect(sql).toContain("public.deduct_credit(p_user_id uuid, p_amount integer default 1)");
+    expect(sql).toContain("public.deduct_credit(user_id uuid, p_amount integer default 1)");
+    // Postgres cannot rename an input parameter via CREATE OR REPLACE, so the
+    // migration must drop the old signature first and flush the PostgREST
+    // schema cache — otherwise a re-run leaves the deployed function uncallable.
+    expect(sql).toContain("drop function if exists public.deduct_credit(uuid, integer);");
+    expect(sql).toContain("notify pgrst, 'reload schema';");
+    // The credit engine is callable only by the service-role server client.
+    expect(sql).toContain(
+      "revoke execute on function public.deduct_credit(uuid, integer) from public, anon, authenticated;",
+    );
+    expect(sql).toContain("grant execute on function public.deduct_credit(uuid, integer) to service_role;");
     // Hardened: exactly -1 credit / +1 generation, and non-1 amounts rejected.
     expect(sql).toContain("generations_used = generations_used + 1");
     expect(sql).toMatch(/p_amount <> 1/);
