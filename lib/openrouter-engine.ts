@@ -446,6 +446,14 @@ export async function executeRestore(
     }
 
     if (!upstream.ok) {
+      // Server-side diagnostic (never sent to the client): the sanitized HTTP
+      // status pinpoints invalid-key vs empty-account vs model errors without
+      // naming the provider anywhere a user can see.
+      console.log(
+        `[ENGINE_UPSTREAM] status=${upstream.status} detail=${JSON.stringify(
+          extractUpstreamMessage(data).slice(0, 200),
+        )}`,
+      );
       const upstreamMessage = extractUpstreamMessage(data);
       if (
         upstream.status === 402 ||
