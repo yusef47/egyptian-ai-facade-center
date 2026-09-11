@@ -46,9 +46,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   //    from Supabase — client-sent credit values are never trusted.
   const creditCheck = await checkGenerationCredits(request);
   if (!creditCheck.allowed) {
+    console.log(
+      `[GATE_REJECTED] ${JSON.stringify({ status: creditCheck.status, message: creditCheck.message })}`,
+    );
     return NextResponse.json({ error: creditCheck.message }, { status: creditCheck.status });
   }
   const userId = getGenerationUserId(creditCheck);
+  const hasSession = Boolean(userId);
+  console.log(`[RESTORE_START] ${JSON.stringify({ userId: userId ?? null, hasSession })}`);
 
   // 3) Duplicate-request guard: same user within 3s is rejected outright.
   if (userId) {
@@ -83,18 +88,22 @@ export async function POST(request: Request): Promise<NextResponse> {
   // we abort here — the generation API is never invoked.
   let creditsRemaining: number | null = null;
   if (userId) {
+    console.log(`[PRE_DEDUCT] ${JSON.stringify({ userId, gateRemaining: creditCheck.allowed ? creditCheck.remaining : null })}`);
     const deduction = await deductGenerationCredit(userId);
     if (!deduction.ok) {
       // Insufficient funds or RPC failure: abort WITHOUT calling OpenRouter.
+      console.log(`[DEDUCT_FAILED] ${JSON.stringify({ userId, remaining: deduction.remaining ?? null })}`);
       return NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 });
     }
     creditsRemaining = typeof deduction.remaining === "number" ? deduction.remaining : null;
+    console.log(`[POST_DEDUCT] ${JSON.stringify({ userId, ok: deduction.ok, newBalance: creditsRemaining })}`);
     console.log(
       `[CREDIT_DEDUCTED] ${JSON.stringify({ userId, remaining: creditsRemaining })}`,
     );
   }
 
   // ── Generation (only reached when deduction succeeded or auth dormant) ─
+  console.log(`[CALLING_ENGINE] ${JSON.stringify({ userId: userId ?? null })}`);
   const result = await executeRestore(body, {
     apiKey: process.env.OPENROUTER_API_KEY,
     clientKey: getClientKey(request),

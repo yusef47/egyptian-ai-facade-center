@@ -274,6 +274,11 @@ export async function deductGenerationCreditWithAdmin(
 
   if (error) {
     const code = (error as { code?: string }).code;
+    const errorMessage = (error as { message?: string }).message ?? "";
+    // Server-side diagnostics: the exact RPC failure reason (missing function,
+    // permission, signature mismatch, or the explicit insufficient-credits
+    // raise) — never surfaced to users, only visible in server logs.
+    console.log(`[RPC_DEDUCT_ERROR] code=${code ?? "unknown"} message=${errorMessage.slice(0, 200)}`);
     // P0001 = the RPC's explicit "insufficient credits" raise.
     if (code === "P0001") return { ok: false, remaining: 0 };
     return { ok: false };
