@@ -89,14 +89,11 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
         outputImageDataUrl: output,
       });
     } catch (err) {
+      // The server already sends brand-safe bilingual messages (credits,
+      // rate limit, sign-in, busy engine) — surface them verbatim instead of
+      // rewriting them client-side.
       const message = err instanceof Error ? err.message : "";
-      if (/credit|balance|quota|402|429/i.test(message)) {
-        setError(t("studio.creditsHint"));
-      } else if (message) {
-        setError(message);
-      } else {
-        setError(t("studio.errorGeneric"));
-      }
+      setError(message || t("studio.errorGeneric"));
     } finally {
       setLoading(false);
     }

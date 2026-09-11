@@ -32,8 +32,6 @@ type ToolWorkspaceProps = {
   }) => void;
 };
 
-const CREDITS_RE = /credit|balance|quota|402|429/i;
-
 const resultReveal = {
   initial: { opacity: 0, scale: 0.96, filter: "blur(8px)" },
   animate: {
@@ -243,16 +241,12 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
         outputImageDataUrl: outputs[0],
       });
     } catch (err) {
+      // The server sends polished bilingual, brand-safe messages for every
+      // failure class: rate limit, daily-credit exhaustion, sign-in required,
+      // busy engine. Surface them VERBATIM — client-side rewriting masked
+      // real causes (e.g. credits exhausted) behind a misleading "busy".
       const message = err instanceof Error ? err.message : "";
-      if (CREDITS_RE.test(message)) {
-        setError(
-          L
-            ? "عذراً، محرك قطان المعماري مشغول حالياً. يرجى المحاولة بعد قليل."
-            : "Qattan Architectural Engine is currently busy. Please retry in a moment.",
-        );
-      } else {
-        setError(message || (L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again."));
-      }
+      setError(message || (L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again."));
     } finally {
       setLoading(false);
     }

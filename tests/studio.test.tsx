@@ -73,7 +73,8 @@ describe("EngineSection restoration studio", () => {
       () => expect(screen.getByRole("alert")).toBeInTheDocument(),
       { timeout: 15000 },
     );
-    expect(screen.getByRole("alert").textContent).toMatch(/busy|retry|مشغول/i);
+    // The server message must surface verbatim — no client-side masking.
+    expect(screen.getByRole("alert").textContent).toMatch(/Quota exceeded/i);
   });
 
   it("shows the triptych panel labels and the official syndicate report download button", { timeout: 20000 }, async () => {
