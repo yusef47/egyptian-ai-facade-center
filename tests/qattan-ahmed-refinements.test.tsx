@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import QattanStudio from "../components/qattan/QattanStudio";
 import { QattanMarketingPage } from "../components/qattan/QattanMarketingPage";
 import {
-  GALLERY_VARIATION_DIRECTIVES,
+  GALLERY_VARIATION_DIRECTIVE,
   NONE_OPTION,
   OUTPUT_PRESENTATIONS,
   QATTAN_TOOLS,
@@ -139,7 +139,7 @@ describe("Refinement 2 — Output presentation toggle", () => {
     expect(body.prompt).toContain(TRIPTYCH_DIRECTIVE.slice(0, 60));
   });
 
-  it("fires three independent variation requests in 3 Separate Cards mode", async () => {
+  it("fires EXACTLY ONE request in 3 gallery-cards mode with the variations directive in the prompt", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ imageDataUrl: "https://cdn.test/out.png" }), { status: 200 }),
     );
@@ -154,12 +154,10 @@ describe("Refinement 2 — Output presentation toggle", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
-    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String(call[1].body)) as { prompt: string });
-    bodies.forEach((body, index) => {
-      expect(body.prompt).toContain(GALLERY_VARIATION_DIRECTIVES[index].slice(0, 40));
-    });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as { prompt: string };
+    expect(body.prompt).toContain(GALLERY_VARIATION_DIRECTIVE.slice(0, 60));
   });
 
   it("keeps single mode to exactly one request with no directive", async () => {

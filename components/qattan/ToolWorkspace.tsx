@@ -8,7 +8,7 @@ import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
 import { getSupabaseSessionGate, QATTAN_AUTH_REQUIRED_EVENT } from "../../lib/supabase";
 import {
-  GALLERY_VARIATION_DIRECTIVES,
+  GALLERY_VARIATION_DIRECTIVE,
   OUTPUT_PRESENTATIONS,
   OUTPUT_PRESENTATION_LABELS,
   TRIPTYCH_DIRECTIVE,
@@ -66,7 +66,6 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const [zoomDragOffset, setZoomDragOffset] = useState(0);
   const zoomTouchStartY = useRef<number | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  // Synchronous mutex: blocks re-entrant submits (double-clicks) during the
 
   // One-thumb access: on phones the sticky FAB triggers the same submission
   // as the inline generate button.
@@ -112,7 +111,9 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
     setZoomDragOffset(0);
   };
 
-  // Download every result (one for single mode, all three for gallery/board).
+  // Download the generation. Every output mode returns ONE wide image, so
+  // there is always a single file (the gallery board splits on the user's
+  // device if they want the panels separately).
   const downloadResults = () => {
     results.forEach((src, index) => {
       const anchor = document.createElement("a");
@@ -204,29 +205,23 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
     setError(null);
     setLoading(true);
     try {
-      let outputs: string[];
-      if (presentation === "gallery") {
-        // Three independent style variations, generated as three separate cards.
-        const settled = await Promise.allSettled(
-          GALLERY_VARIATION_DIRECTIVES.map((directive) => runGeneration(directive)),
-        );
-        outputs = settled
-          .filter((entry): entry is PromiseFulfilledResult<string> => entry.status === "fulfilled")
-          .map((entry) => entry.value);
-        if (outputs.length === 0) {
-          const failure = settled.find((entry): entry is PromiseRejectedResult => entry.status === "rejected");
-          throw failure?.reason ?? new Error(L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again.");
-        }
-      } else {
-        const output = await runGeneration(presentation === "triptych" ? TRIPTYCH_DIRECTIVE : undefined);
-        outputs = [output];
-      }
-      setResults(outputs);
+      // EXACTLY ONE API call (and therefore exactly one credit) for every
+      // output presentation: the mode only shapes the PROMPT, never the
+      // number of requests. Gallery/triptych variations are composed inside
+      // a single wide image by the engine and shown as one board/card.
+      const directive =
+        presentation === "gallery"
+          ? GALLERY_VARIATION_DIRECTIVE
+          : presentation === "triptych"
+            ? TRIPTYCH_DIRECTIVE
+            : undefined;
+      const output = await runGeneration(directive);
+      setResults([output]);
       onSessionChange?.({
         prompt: fullPrompt,
         status: L ? "اكتمل التوليد" : "Generation complete",
         inputImageDataUrl: imageDataUrl,
-        outputImageDataUrl: outputs[0],
+        outputImageDataUrl: output,
       });
     } catch (err) {
       // The server sends polished bilingual, brand-safe messages for every
