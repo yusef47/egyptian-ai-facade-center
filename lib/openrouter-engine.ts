@@ -1,5 +1,12 @@
 import sharp from "sharp";
-import { QUAD_MASTER_DIRECTIVE, TOOL_IDS, type ToolId, type ToolPromptMode } from "../tools/registry.js";
+import {
+  GALLERY_VARIATION_DIRECTIVE,
+  QUAD_MASTER_DIRECTIVE,
+  TOOL_IDS,
+  TRIPTYCH_DIRECTIVE,
+  type ToolId,
+  type ToolPromptMode,
+} from "../tools/registry.js";
 
 export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -40,13 +47,14 @@ MASTER ARCHITECTS
 - Antonio Lasciac: eclectic Khedivial palace facades blending French classicism with Egyptian ornament — dramatic cornices and balconies.
 - Mario Rossi: the modern movement applied to Egyptian public architecture — clean geometric volumes, deep sun-shading, refined brick and stone detailing.
 
-MANDATORY 3-PANEL TRIPTYCH RULE (NON-NEGOTIABLE)
-Every single restoration output MUST be ONE cohesive 8K 3-Panel Architectural Presentation Board (Triptych) of the SAME building, divided by thin elegant Cairo-gold borders, panels side by side, each panel a complete photorealistic high-detail rendering.
-Generate the architectural triptych as an ULTRA-WIDE PANORAMIC image with a 3:1 width-to-height ratio (e.g. 3072×1024 or wider). Each of the 3 panels must occupy exactly one-third of the total width, so that EACH individual panel has the same level of detail, resolution, and visual quality as a standalone full-size architectural render. Do NOT compress or narrow the panels. Treat the wide canvas as a native-resolution architectural presentation board, not as three narrow thumbnails:
+3-PANEL PRESENTATION BOARD (APPLIES WHEN THE BRIEF REQUESTS IT)
+When the brief requests the 3-panel presentation board, the entire output MUST be ONE cohesive 8K 3-Panel Architectural Presentation Board (Triptych) of the SAME building, divided by thin elegant Cairo-gold borders, panels side by side, each panel a complete photorealistic high-detail rendering.
+Generate the board as a wide 16:9 LANDSCAPE canvas (e.g. 2048×1152 or wider) containing EXACTLY THREE TALL VERTICAL panels side by side that together occupy 100% of the canvas width, so that EACH individual panel has the same level of detail, resolution, and visual quality as a standalone full-size architectural render. Each panel occupies exactly one-third of the total width. Do NOT compress or narrow the panels. Treat the canvas as a native-resolution architectural presentation board, not as three narrow thumbnails:
 - Panel 1 (left): KHEDIVIAL CLASSIC — ornate Khedivial Cairo restoration with stucco ornament, cast-iron balconies, and warm evening lighting.
 - Panel 2 (center): HASHAMI / BIOPHILIC — hashami limestone restoration with greenery, timber mashrabiya shading, and natural daylight.
 - Panel 3 (right): ISLAMIC MASHRABIYA — Mamluk/Fatimid-inspired restoration with wooden mashrabiya screens, pointed arches, and golden-hour light.
-Preserve the source building's massing, proportions, floor levels and window rhythm identically across all three panels; only the architectural skin and materiality change. NEVER produce a single panel, NEVER add more than three panels, NEVER add watermarks, logos or unrelated content. Small elegant panel labels (1/2/3 or the style names) are allowed.
+Preserve the source building's massing, proportions, floor levels and window rhythm identically across all three panels; only the architectural skin and materiality change. NEVER add more than three panels, NEVER add watermarks, logos or unrelated content. A short style title centred directly above each panel is allowed; everything else stays pure photorealistic architectural rendering.
+When the brief does NOT request the 3-panel board, produce ONE single photorealistic 8K architectural render of the building — identical geometry, with no panels, no dividing borders, and no poster framing.
 
 TECHNICAL STANDARDS
 Photorealistic 8K architectural visualization: crisp edges, correct perspective, realistic materials and reflections, cinematic natural or night lighting, deep depth of field, sharp focus throughout, no warped geometry, no duplicated windows, no visible artifacts.`.trim();
@@ -77,6 +85,22 @@ Generate a single large 4-quadrant engineering master board containing all views
 - Draw thin clean separator lines between the four quadrants and keep every view aligned on the shared centerlines that cross the full canvas.
 - The 3D isometric quadrant uses true 30-degree isometric axes; the three orthographic quadrants follow first-angle projection relationships.
 - Keep the entire board text-free except the small quadrant captions the brief explicitly requests.`.trim();
+
+/**
+ * Layout enforcement for the 3-panel presentation board (Triptych and
+ * 3-gallery modes). Appended to the system prompt ONLY when the brief carries
+ * one of the board directives, so single-image generations stay clean.
+ */
+export const THREE_PANEL_BOARD_LAYOUT_CLAUSE = `3-PANEL PRESENTATION BOARD LAYOUT (NON-NEGOTIABLE)
+- ORIENTATION: one wide 16:9 LANDSCAPE canvas (e.g. 2048×1152 or wider) containing EXACTLY THREE TALL VERTICAL panels side by side, together occupying 100% of the canvas width, edge to edge.
+- STYLE: a clean architectural presentation board with thin elegant gold dividing lines between the panels and a short style title centred directly above each panel.
+- CONTENT: each panel is a complete photorealistic architectural render at full standalone detail; the building's geometry, floor levels, and opening rhythm stay identical across all three panels — only style, materials, and lighting differ.
+STRICT NEGATIVES (NEVER INCLUDE): no infographics, no vertical side text, no bottom thumbnail rows, no diagrams, no technical charts, no poster margins, no annotated callouts, no watermarks. Pure photorealistic architectural renders only.`;
+
+/** True when the brief asks for the 3-panel presentation board. */
+export function wantsThreePanelBoard(prompt: string): boolean {
+  return prompt.includes(TRIPTYCH_DIRECTIVE) || prompt.includes(GALLERY_VARIATION_DIRECTIVE);
+}
 
 export const GENERAL_VISUALIZATION_SYSTEM_PROMPT = `You are the Qattan AI Architectural Visualization Engine for interiors, sketches, masterplans, landscapes, virtual staging, and render enhancement.
 
@@ -167,7 +191,10 @@ export function buildOpenRouterRequest(
           ? GENERAL_VISUALIZATION_SYSTEM_PROMPT
           : MASTER_ARCHITECTURAL_SYSTEM_PROMPT;
   const briefLabel = promptMode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
-  const finalSystemPrompt = `${systemPrompt}\n\n${NO_WATERMARK_CLAUSE}`;
+  // The board layout rules are injected only for Triptych / 3-gallery briefs:
+  // single-image generations must never receive panel or board framing.
+  const boardClause = wantsThreePanelBoard(prompt) ? `${THREE_PANEL_BOARD_LAYOUT_CLAUSE}\n\n` : "";
+  const finalSystemPrompt = `${systemPrompt}\n\n${boardClause}${NO_WATERMARK_CLAUSE}`;
   const messages = opts.inlineSystemPrompt
     ? [
         {

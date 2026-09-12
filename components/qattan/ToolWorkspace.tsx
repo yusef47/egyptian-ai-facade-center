@@ -53,6 +53,10 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const L = locale === "ar";
   const t = (value: { en: string; ar: string }) => (L ? value.ar : value.en);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Synchronous in-flight guard: set BEFORE the first await so two rapid
+  // clicks (or an inline click plus a FAB tap) can never both pass the async
+  // `loading` check and fire two generations — two engine calls, two credits.
+  const inFlightRef = useRef(false);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [values, setValues] = useState<ToolControlValues>({});
@@ -165,50 +169,55 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   };
 
   const handleSubmit = async () => {
-    // Single in-flight guard: the `loading` state. The Generate button and
-    // FAB are disabled only while a request is in-flight and re-enable
-    // immediately on response (success or error) — no cooldowns, no mutexes.
-    if (loading) return;
-    // Mandatory auth gate: block the generation request and surface the
-    // luxury sign-in modal when Supabase is configured but no session exists.
-    const gate = await getSupabaseSessionGate();
-    if (gate === "signed-out") {
-      setAuthModalOpen(true);
-      return;
-    }
-
-    if (!imageDataUrl) {
-      setError(L ? "ارفع صورة أولاً." : "Please upload an image first.");
-      return;
-    }
-    const basePrompt = prompt.trim();
-    if (basePrompt.length < 3) {
-      setError(L ? "اكتب وصفاً للتصميم المطلوب." : "Please describe the design direction you want.");
-      return;
-    }
-
-    const promptValues: ToolControlValues = { ...values };
-    for (const control of tool.controls) {
-      if (control.type === "multi") {
-        promptValues[control.id] = multiSelections[control.id] ?? [control.options[0]?.value ?? ""];
-      }
-    }
-    const fullPrompt = `${buildToolPrompt(tool.id, promptValues)} Additional direction: ${basePrompt}`;
-
-    const runGeneration = (extraDirective?: string) =>
-      restoreFacade({
-        imageDataUrl,
-        prompt: extraDirective ? `${fullPrompt} ${extraDirective}` : fullPrompt,
-        toolId: tool.id,
-      });
-
-    setError(null);
+    // EXACTLY ONE HTTP request per Generate click: the synchronous ref guard
+    // is claimed before any await, so a double-click / rapid re-fire cannot
+    // start a second generation (and a second credit charge). Released the
+    // instant the request settles — this is not a cooldown. The `loading`
+    // state only reflects the disabled button/FAB, which is set in the same
+    // tick as the click.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setLoading(true);
+
     try {
+      // Mandatory auth gate: block the generation request and surface the
+      // luxury sign-in modal when Supabase is configured but no session exists.
+      const gate = await getSupabaseSessionGate();
+      if (gate === "signed-out") {
+        setAuthModalOpen(true);
+        return;
+      }
+
+      if (!imageDataUrl) {
+        setError(L ? "ارفع صورة أولاً." : "Please upload an image first.");
+        return;
+      }
+      const basePrompt = prompt.trim();
+      if (basePrompt.length < 3) {
+        setError(L ? "اكتب وصفاً للتصميم المطلوب." : "Please describe the design direction you want.");
+        return;
+      }
+
+      const promptValues: ToolControlValues = { ...values };
+      for (const control of tool.controls) {
+        if (control.type === "multi") {
+          promptValues[control.id] = multiSelections[control.id] ?? [control.options[0]?.value ?? ""];
+        }
+      }
+      const fullPrompt = `${buildToolPrompt(tool.id, promptValues)} Additional direction: ${basePrompt}`;
+
+      const runGeneration = (extraDirective?: string) =>
+        restoreFacade({
+          imageDataUrl,
+          prompt: extraDirective ? `${fullPrompt} ${extraDirective}` : fullPrompt,
+          toolId: tool.id,
+        });
+
+      setError(null);
       // EXACTLY ONE API call (and therefore exactly one credit) for every
       // output presentation: the mode only shapes the PROMPT, never the
       // number of requests. Gallery/triptych variations are composed inside
-      // a single wide image by the engine and shown as one board/card.
+      // a single wide 16:9 board by the engine.
       const directive =
         presentation === "gallery"
           ? GALLERY_VARIATION_DIRECTIVE
@@ -231,6 +240,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       const message = err instanceof Error ? err.message : "";
       setError(message || (L ? "فشل التوليد. حاول مرة أخرى." : "Generation failed. Please try again."));
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
   };

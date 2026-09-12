@@ -160,6 +160,43 @@ describe("Refinement 2 — Output presentation toggle", () => {
     expect(body.prompt).toContain(GALLERY_VARIATION_DIRECTIVE.slice(0, 60));
   });
 
+  it("fires EXACTLY ONE request even when Generate is clicked twice in rapid succession", async () => {
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) =>
+          setTimeout(
+            () =>
+              resolve(
+                new Response(JSON.stringify({ imageDataUrl: "https://cdn.test/out.png" }), {
+                  status: 200,
+                }),
+              ),
+            20,
+          ),
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<QattanStudio locale="en" initialMode="exterior" />);
+    await uploadSampleImage();
+    fireEvent.click(screen.getByRole("radio", { name: "Triptych board" }));
+    fireEvent.change(screen.getByLabelText("Design brief"), {
+      target: { value: "Modern villa facade" },
+    });
+    const generate = screen.getAllByRole("button", { name: /Generate/i })[0];
+    // Two synchronous clicks: the in-flight guard is claimed before the first
+    // await, so the second click must be ignored (1 request = 1 credit).
+    fireEvent.click(generate);
+    fireEvent.click(generate);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    // Give any late (buggy) second request a chance to surface.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps single mode to exactly one request with no directive", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ imageDataUrl: "https://cdn.test/out.png" }), { status: 200 }),
