@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QATTAN_CREDITS_EVENT, restoreFacade } from "../client/src/lib/restore";
 import { AuthRequiredError } from "../lib/supabase";
@@ -618,6 +618,10 @@ describe("Admin dashboard surface & migration contract", () => {
     const AdminPage = (await import("../app/admin/page")).default;
     const { container } = render(<AdminPage />);
     expect(container.querySelector('[data-testid="admin-dashboard"]')).not.toBeNull();
+    // With no Supabase client there is nothing to verify: the page must state
+    // that instead of spinning on "Verifying access…" forever.
+    expect(container.textContent).toContain("Not activated");
+    expect(container.textContent).not.toContain("Verifying access");
     vi.doUnmock("../lib/supabase");
   });
 

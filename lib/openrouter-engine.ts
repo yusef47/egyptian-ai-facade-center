@@ -4,7 +4,6 @@ import {
   TOOL_IDS,
   TRIPTYCH_DIRECTIVE,
   type ToolId,
-  type ToolPromptMode,
 } from "../tools/registry.js";
 
 export const OPENROUTER_ENDPOINT =

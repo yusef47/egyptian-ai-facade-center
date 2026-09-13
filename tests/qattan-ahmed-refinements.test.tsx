@@ -5,7 +5,6 @@ import QattanStudio from "../components/qattan/QattanStudio";
 import { QattanMarketingPage } from "../components/qattan/QattanMarketingPage";
 import {
   GALLERY_VARIATION_DIRECTIVE,
-  NONE_OPTION,
   OUTPUT_PRESENTATION_LABELS,
   OUTPUT_PRESENTATIONS,
   QATTAN_TOOLS,

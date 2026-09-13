@@ -414,7 +414,7 @@ export function resolveStudioMode(mode: StudioModeInput | string): ToolId | "fac
 
 export type ToolControlValues = Partial<Record<ToolControlId, string | string[]>>;
 
-function valueFor(tool: QattanTool, controlId: ToolControlId, values: ToolControlValues): string | string[] | undefined {
+function valueFor(controlId: ToolControlId, values: ToolControlValues): string | string[] | undefined {
   return values[controlId];
 }
 
@@ -441,7 +441,7 @@ export function buildToolPrompt(id: ToolId, values: ToolControlValues): string {
 
   const pickOrNull = (controlId: ToolControlId): string | null => {
     const control = tool.controls.find((item) => item.id === controlId);
-    const selected = joinValues(valueFor(tool, controlId, values));
+    const selected = joinValues(valueFor(controlId, values));
     if (selected === "none") return null;
     if (selected !== undefined) return selected;
     return control?.options.find((option) => option.value !== NONE_OPTION.value)?.value ?? null;
@@ -498,8 +498,17 @@ export function buildToolPrompt(id: ToolId, values: ToolControlValues): string {
     }
     case "landscape": {
       const control = tool.controls.find((item) => item.id === "landscapeFeatures");
-      const selected = valueFor(tool, "landscapeFeatures", values);
-      const features = joinValues(selected) ?? (control?.options.find((option) => option.value !== NONE_OPTION.value)?.value ?? "professional landscaping");
+      const selected = valueFor("landscapeFeatures", values);
+      // An explicitly empty checklist means the user cleared every feature:
+      // inject no preset at all and let the written brief decide. Only a
+      // missing value (control never shown) falls back to the first option.
+      const clearedEveryFeature = Array.isArray(selected) && selected.length === 0;
+      const features =
+        joinValues(selected) ??
+        (clearedEveryFeature
+          ? "landscaping derived from the written brief"
+          : (control?.options.find((option) => option.value !== NONE_OPTION.value)?.value ??
+            "professional landscaping"));
       const plant = pickOrNull("landscapePlantStyle");
       return `Design a luxurious landscape for this outdoor space featuring ${features}. Use ${plant ? `${plant} planting` : "professional planting"} with professional hardscape, ambient lighting, and premium outdoor furniture. Produce a photorealistic evening visualization.`;
     }

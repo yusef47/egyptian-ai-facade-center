@@ -98,7 +98,6 @@ describe("Mandatory auth gate in ToolWorkspace", () => {
     expect(fetchMock.mock.calls.length).toBe(fetchCallsBefore);
   });
 
-  let signedInPass = 0;
   it("proceeds with generation when signed in", async () => {
     state.session = { access_token: "token" };
     const fetchMock = vi.fn().mockResolvedValue({

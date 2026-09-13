@@ -6,6 +6,14 @@
 @source "../tools";
 @source "../tests";
 @source "../client/src/lib";
+/* The studio's facade/floorplan engines live under client/src/components and
+   are imported by components/qattan/StudioViewport: their utilities must be
+   compiled too, or the live studio views render unstyled. Sourced per FILE
+   rather than per directory so the large unused legacy tree (ui/*, Navbar,
+   HeroSection, Map, pages/*) does not add ~88 KB of dead CSS. A test fails if
+   StudioViewport ever imports another one without adding it here. */
+@source "../client/src/components/EngineSection.tsx";
+@source "../client/src/components/CadVectorizerSection.tsx";
 @import "tw-animate-css";
 
 @theme inline {
@@ -895,6 +903,13 @@ html[data-qattan-theme="light"] .qattan-guide-toggle { color: #8a6d1f; }
 html[data-qattan-theme="light"] .qattan-guide-item p { color: #475569; }
 html[data-qattan-theme="light"] .qattan-guide-icon { color: #8a6d1f; background: rgba(212,175,55,.14); }
 html[data-qattan-theme="light"] .qattan-result-frame img { border-color: rgba(15,23,42,.12); }
+/* Facade/floorplan engines render inside .qattan-studio-viewport-live: their
+   image frame is obsidian by default, so pair it with a slate surface. */
+html[data-qattan-theme="light"] .qattan-engine-frame { background: #f1f5f9; border-color: rgba(15,23,42,.12); }
+/* Those engines also tint body copy for obsidian: gold labels and red-300
+   error text are near-invisible on white, so remap them to readable tones. */
+html[data-qattan-theme="light"] .qattan-studio-viewport-live .text-gold { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-studio-viewport-live .text-red-300 { color: #b91c1c; }
 html[data-qattan-theme="light"] .qattan-result-zoom-hint { color: #8a6d1f; background: rgba(255,255,255,.88); border-color: rgba(165,129,63,.4); }
 html[data-qattan-theme="light"] .qattan-studio-intro-inner,
 html[data-qattan-theme="light"] .qattan-studio-viewport-live h2 { color: #0f172a; }

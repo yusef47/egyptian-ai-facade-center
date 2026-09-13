@@ -251,7 +251,7 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
                   </div>
                 ) : result && imageDataUrl ? (
                   <div className="w-full space-y-4">
-                    <div className="relative w-full overflow-x-auto rounded-lg border border-gold/20 bg-black/30">
+                    <div className="qattan-engine-frame relative w-full overflow-x-auto rounded-lg border border-gold/20 bg-black/30">
                       <button
                         type="button"
                         aria-label={t("studio.openGenerated")}
@@ -263,7 +263,7 @@ export default function EngineSection({ onSessionChange }: EngineSectionProps) {
                           alt={t("studio.outputRestored")}
                           loading="lazy"
                           referrerPolicy="no-referrer"
-                          className="block h-auto w-auto max-w-none min-w-[1024px] bg-black/30 transition-opacity group-hover:opacity-90"
+                          className="qattan-engine-frame block h-auto w-auto max-w-none min-w-[1024px] bg-black/30 transition-opacity group-hover:opacity-90"
                         />
                         <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto flex w-fit items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3 py-1.5 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                           <Maximize2 size={13} /> {t("studio.openGenerated")}

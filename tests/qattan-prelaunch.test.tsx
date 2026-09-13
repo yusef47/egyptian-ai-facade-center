@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import PrivacyPage from "../app/privacy/page";
 import TermsPage from "../app/terms/page";
 import ArabicPrivacyPage from "../app/ar/privacy/page";
@@ -333,6 +333,12 @@ describe("P5/P6 — OG metadata, favicon, and tab title", () => {
     expect(rootMetadata.icons).toBeDefined();
   });
 
+  it("declares a metadataBase so link-preview images resolve absolutely", () => {
+    // Without this, Next resolves the relative /og-image.jpg against
+    // localhost, so shared WhatsApp/Facebook/X cards showed no image.
+    expect(rootMetadata.metadataBase?.toString()).toMatch(/^https:\/\/[^/]+\/?$/);
+  });
+
   it("ships the generated OG image and gold Q favicon", () => {
     const icon = readFileSync("public/icon.svg", "utf8");
     expect(icon).toContain("<svg");
@@ -349,5 +355,32 @@ describe("P7 — light-mode counterparts for new surfaces", () => {
     expect(css).toMatch(/data-qattan-theme="light"\] \.qattan-legal \{/);
     expect(css).toMatch(/data-qattan-theme="light"\] \.qattan-admin \{/);
     expect(css).toMatch(/data-qattan-theme="light"\] \.qattan-admin-card[\s,]/);
+  });
+
+  it("compiles Tailwind utilities for every legacy component the studio renders", () => {
+    // app/globals.css uses source(none), so a live component outside the
+    // @source list gets NO CSS at all — the facade/floorplan studio views
+    // silently rendered unstyled until this was fixed.
+    const css = readFileSync("app/globals.css", "utf8");
+    const viewport = readFileSync("components/qattan/StudioViewport.tsx", "utf8");
+    const imports = [...viewport.matchAll(/from "@\/components\/([A-Za-z0-9_./-]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(imports).toContain("EngineSection");
+    expect(imports).toContain("CadVectorizerSection");
+    for (const name of imports) {
+      expect(css, `@source missing for client/src/components/${name}`).toContain(
+        `../client/src/components/${name}`,
+      );
+    }
+  });
+
+  it("pairs the studio engine's obsidian frame with a light surface", () => {
+    const engine = readFileSync("client/src/components/EngineSection.tsx", "utf8");
+    // The render frame (container + image) must be light-mode aware, or the
+    // facade studio shows a stray dark panel in light theme.
+    expect(engine.match(/qattan-engine-frame/g)?.length).toBe(2);
+    const css = readFileSync("app/globals.css", "utf8");
+    expect(css).toMatch(/html\[data-qattan-theme="light"\] \.qattan-engine-frame \{/);
   });
 });

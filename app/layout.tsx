@@ -2,14 +2,26 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+/**
+ * Canonical origin for social/meta URLs. Without metadataBase, Next resolves
+ * the relative OG/Twitter image paths against localhost, so link previews
+ * (WhatsApp, Facebook, X) came out broken. Overridable per environment.
+ */
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "https://egyptian-ai-facade-center.vercel.app");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Qattan AI | منصة قطان المعمارية",
   description:
     "Transform architectural sketches into photorealistic renders with AI. 10 free daily credits.",
   openGraph: {
     title: "Qattan AI – AI Architectural Visualization",
     description: "Transform sketches into photorealistic architectural renders. Free daily credits.",
-    url: "https://egyptian-ai-facade-center.vercel.app",
+    url: SITE_URL,
     siteName: "Qattan AI",
     type: "website",
     images: [{ url: "/og-image.jpg", width: 1200, height: 630 }],

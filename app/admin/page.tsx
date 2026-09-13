@@ -27,6 +27,7 @@ type AdminStatsPayload = {
 
 type LoadState =
   | { kind: "loading" }
+  | { kind: "unconfigured" }
   | { kind: "signed-out" }
   | { kind: "forbidden" }
   | { kind: "error"; message: string }
@@ -41,7 +42,11 @@ type LoadState =
 export default function AdminPage() {
   const supabase = getSupabaseBrowserClient();
   const configured = Boolean(supabase);
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  // Without Supabase credentials there is no session to verify and no admin
+  // API to call, so say so explicitly instead of spinning on "Verifying…".
+  const [state, setState] = useState<LoadState>(
+    configured ? { kind: "loading" } : { kind: "unconfigured" },
+  );
   const [refreshing, setRefreshing] = useState(false);
 
   const loadStats = useCallback(async () => {
@@ -138,6 +143,17 @@ export default function AdminPage() {
           <p className="qattan-admin-note" role="status">
             Verifying access…
           </p>
+        )}
+
+        {state.kind === "unconfigured" && (
+          <section className="qattan-admin-gate" aria-live="polite">
+            <ShieldCheck aria-hidden="true" />
+            <h2>Not activated</h2>
+            <p>
+              Supabase credentials are not configured on this deployment, so administrator access
+              cannot be verified and no statistics can be loaded.
+            </p>
+          </section>
         )}
 
         {state.kind === "signed-out" && (
