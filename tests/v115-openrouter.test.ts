@@ -1,6 +1,43 @@
 import { describe, expect, it } from "vitest";
 import { buildOpenRouterRequest } from "../api/restore";
-import { GALLERY_VARIATION_DIRECTIVE, TRIPTYCH_DIRECTIVE } from "../tools/registry";
+import {
+  STRUCTURAL_FIDELITY_CLAUSE,
+  resolveToolRequest,
+  type OpenRouterRequest,
+} from "../lib/openrouter-engine";
+import {
+  GALLERY_VARIATION_DIRECTIVE,
+  TOOL_IDS,
+  TRIPTYCH_DIRECTIVE,
+} from "../tools/registry";
+
+/** Extracts the system prompt from an already-built request. */
+type BuiltBody = {
+  messages: { role: string; content: string | { type: string; text?: string }[] }[];
+};
+
+function systemPromptFrom(request: OpenRouterRequest): string {
+  const body = JSON.parse(String(request.init.body)) as BuiltBody;
+  const system = body.messages.find((message) => message.role === "system");
+  return typeof system?.content === "string"
+    ? system.content
+    : system?.content.find((part) => part.type === "text")?.text ?? "";
+}
+
+/**
+ * Every text part across all messages. The inline path folds the system prompt
+ * into the user turn, so a system-only extractor would miss it entirely.
+ */
+function allPromptText(request: OpenRouterRequest): string {
+  const body = JSON.parse(String(request.init.body)) as BuiltBody;
+  return body.messages
+    .map((message) =>
+      typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) => part.text ?? "").join("\n"),
+    )
+    .join("\n");
+}
 
 /** Extracts the system prompt from a built request body. */
 function systemPromptFor(prompt: string): string {
@@ -73,5 +110,57 @@ describe("V115 triptych restoration request", () => {
       expect(instruction).toMatch(/no poster margins/i);
       expect(instruction).toMatch(/Pure photorealistic architectural renders only/i);
     }
+  });
+});
+
+describe("Structural fidelity — enforced across all 8 tools", () => {
+  it("carries the structural preservation directive for every registered tool", () => {
+    expect(TOOL_IDS).toHaveLength(8);
+    for (const toolId of TOOL_IDS) {
+      const instruction = systemPromptFrom(
+        resolveToolRequest(toolId, "Redesign per the brief.", "sk-test"),
+      );
+      expect(instruction, `${toolId} must carry the fidelity clause`).toContain(
+        STRUCTURAL_FIDELITY_CLAUSE,
+      );
+    }
+  });
+
+  it("states each structural guarantee explicitly and verbatim", () => {
+    for (const phrase of [
+      "Maintain 100% exact architectural structural fidelity from the source image",
+      "exact camera perspective",
+      "room proportions",
+      "door openings",
+      "window placements",
+      "ceiling heights",
+      "structural columns",
+      "wall boundaries",
+      "ONLY within the existing structural bounds of the uploaded image",
+      "without shifting structural elements",
+    ]) {
+      expect(STRUCTURAL_FIDELITY_CLAUSE).toContain(phrase);
+    }
+  });
+
+  it("places the directive ahead of the board layout and watermark rules", () => {
+    const instruction = systemPromptFrom(
+      resolveToolRequest(
+        "exterior",
+        `Redesign this building. ${TRIPTYCH_DIRECTIVE}`,
+        "sk-test",
+      ),
+    );
+    expect(instruction.indexOf(STRUCTURAL_FIDELITY_CLAUSE)).toBeGreaterThan(-1);
+    expect(instruction.indexOf(STRUCTURAL_FIDELITY_CLAUSE)).toBeLessThan(
+      instruction.indexOf("3-PANEL PRESENTATION BOARD LAYOUT"),
+    );
+  });
+
+  it("survives the inline-system-prompt path used by the restore route", () => {
+    const inline = resolveToolRequest("interior", "Furnish this room.", "sk-test", {
+      inlineSystemPrompt: true,
+    });
+    expect(allPromptText(inline)).toContain(STRUCTURAL_FIDELITY_CLAUSE);
   });
 });

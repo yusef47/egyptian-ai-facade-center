@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import QattanStudio from "../components/qattan/QattanStudio";
@@ -5,6 +6,7 @@ import { QattanMarketingPage } from "../components/qattan/QattanMarketingPage";
 import {
   GALLERY_VARIATION_DIRECTIVE,
   NONE_OPTION,
+  OUTPUT_PRESENTATION_LABELS,
   OUTPUT_PRESENTATIONS,
   QATTAN_TOOLS,
   TRIPTYCH_DIRECTIVE,
@@ -195,6 +197,43 @@ describe("Refinement 2 — Output presentation toggle", () => {
     // Give any late (buggy) second request a chance to surface.
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("bills exactly one credit in EVERY presentation mode (single, gallery, triptych)", async () => {
+    // One credit per generation is the product contract, so assert it across
+    // every mode in one place rather than trusting each mode individually.
+    for (const presentation of OUTPUT_PRESENTATIONS) {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ imageDataUrl: "https://cdn.test/out.png" }), {
+          status: 200,
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { unmount } = render(<QattanStudio locale="en" initialMode="exterior" />);
+      await uploadSampleImage();
+      fireEvent.click(
+        screen.getByRole("radio", { name: OUTPUT_PRESENTATION_LABELS[presentation].en }),
+      );
+      fireEvent.change(screen.getByLabelText("Design brief"), {
+        target: { value: "Restore with warm stone" },
+      });
+      fireEvent.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
+
+      await waitFor(() => {
+        expect(fetchMock, `${presentation} must issue one request`).toHaveBeenCalledTimes(1);
+      });
+      // A late second request would mean a second deducted credit.
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(fetchMock, `${presentation} must not re-request`).toHaveBeenCalledTimes(1);
+      unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("has exactly one generation call site, so no mode can fan out into more credits", () => {
+    const workspace = readFileSync("components/qattan/ToolWorkspace.tsx", "utf8");
+    expect(workspace.match(/restoreFacade\(/g) ?? []).toHaveLength(1);
   });
 
   it("keeps single mode to exactly one request with no directive", async () => {

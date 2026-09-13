@@ -186,6 +186,34 @@ describe("Frontend restore — Supabase bearer token & credit balance relay", ()
     expect((listener.mock.calls[0][0] as CustomEvent).detail).toBe(7);
   });
 
+  it("broadcasts the balance BEFORE the generation call resolves (instant drop)", async () => {
+    // The badge must fall in the same tick the response lands — never on a
+    // later timer or after the image has already rendered.
+    state.browserSession = {
+      access_token: "test-access-token",
+      user: { id: "u-1", email: "a@b.c", user_metadata: {} },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ imageDataUrl: "data:image/png;base64,AAAA", creditsRemaining: 9 }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const order: string[] = [];
+    const listener = () => order.push("credits");
+    window.addEventListener(QATTAN_CREDITS_EVENT, listener);
+    await restoreFacade({ imageDataUrl: "data:image/png;base64,AAAA", prompt: "x" }).then(() =>
+      order.push("resolved"),
+    );
+    window.removeEventListener(QATTAN_CREDITS_EVENT, listener);
+
+    expect(order).toEqual(["credits", "resolved"]);
+  });
+
   it("syncs the header counter with the post-refund balance on failure", async () => {
     vi.stubGlobal(
       "fetch",

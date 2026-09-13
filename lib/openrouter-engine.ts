@@ -90,6 +90,18 @@ UNIVERSAL RULES
 - Never add watermarks, logos, text, borders, or split-panel layouts unless the brief requests them.
 - Never change the architectural intent into a different building or space type.`.trim();
 
+/**
+ * Structural fidelity directive injected into EVERY tool's system prompt.
+ *
+ * Restyling is a surface operation: the engine may change finishes, materials
+ * and furnishing, but never the building itself. Stated once here so all eight
+ * tools inherit an identical, verifiable guarantee — a tool cannot silently
+ * omit it, because it is appended during prompt assembly rather than being
+ * duplicated inside each individual prompt template.
+ */
+export const STRUCTURAL_FIDELITY_CLAUSE =
+  "CRITICAL: Maintain 100% exact architectural structural fidelity from the source image. Preserve the exact camera perspective, room proportions, door openings, window placements, ceiling heights, structural columns, and wall boundaries. Apply internal finishes, materials, and furniture ONLY within the existing structural bounds of the uploaded image without shifting structural elements.";
+
 const MAX_DATA_URL_BYTES = 3_500_000;
 const MAX_OUTPUT_DATA_URL_BYTES = 2_000_000;
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+)\s*\)/i;
@@ -161,7 +173,10 @@ export function buildOpenRouterRequest(
   // The board layout rules are injected only for Triptych / 3-gallery briefs:
   // single-image generations must never receive panel or board framing.
   const boardClause = wantsThreePanelBoard(prompt) ? `${THREE_PANEL_BOARD_LAYOUT_CLAUSE}\n\n` : "";
-  const finalSystemPrompt = `${systemPrompt}\n\n${boardClause}${NO_WATERMARK_CLAUSE}`;
+  // Every tool — exterior, interior, sketch, masterplan, landscape, staging,
+  // enhancer and floorplan — carries the structural fidelity directive ahead
+  // of the layout/watermark rules, so surface redesign can never move a wall.
+  const finalSystemPrompt = `${systemPrompt}\n\n${STRUCTURAL_FIDELITY_CLAUSE}\n\n${boardClause}${NO_WATERMARK_CLAUSE}`;
   const messages = opts.inlineSystemPrompt
     ? [
         {
