@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
-import {
-  DAILY_CREDITS,
-  getSupabaseBrowserClient,
-  supabaseEnvConfigured,
-} from "../../lib/supabase";
+import { getSupabaseBrowserClient, supabaseEnvConfigured } from "../../lib/supabase";
 import { QATTAN_CREDITS_EVENT } from "../../client/src/lib/restore";
 import { useQattan } from "./QattanProviders";
 
@@ -37,60 +33,46 @@ export default function AuthButton() {
     let active = true;
 
     /**
-     * Authoritative read of the user's balance. The returned number is applied
-     * verbatim — 0 renders as 0. Only a genuinely absent row can lead to the
-     * 10-credit allowance; every other failure stays UNKNOWN, because inventing
-     * 10 is precisely how a 0-balance account appeared to hold 10.
+     * Asks the server for the authoritative balance. The route reads through
+     * the service-role client, so the badge can never disagree with the
+     * database because of a browser-side RLS restriction. The returned number
+     * is applied verbatim — 0 renders as 0.
      */
-    const readProfileCredits = async (userId: string) => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("credits")
-        .eq("id", userId)
-        .single();
-
-      if (!error && typeof data?.credits === "number" && Number.isFinite(data.credits)) {
-        console.log("[CREDITS_DB_READ]", { userId, credits: data.credits });
-        return { ok: true as const, credits: data.credits };
-      }
-
-      // PostgREST PGRST116 = "JSON object requested, 0 (or many) rows returned".
-      // A missing row means the DB trigger has not created the profile yet.
-      if (error?.code === "PGRST116") {
-        console.log("[CREDITS_PROFILE_MISSING]", { userId });
-        return { ok: false as const, missingRow: true };
-      }
-
-      // Denied / offline / malformed payload: report UNKNOWN. Showing 10 here
-      // is exactly the bug this guards against (a 0-balance user would see 10).
-      console.log("[CREDITS_DB_READ_FAILED]", {
-        userId,
-        code: error?.code ?? null,
-        message: error?.message ?? "no numeric credits in payload",
+    const fetchServerCredits = async (accessToken: string | null) => {
+      const response = await fetch("/api/user/credits", {
+        headers: accessToken ? { authorization: `Bearer ${accessToken}` } : {},
+        cache: "no-store",
       });
-      return { ok: false as const, missingRow: false };
+      if (response.status === 401) {
+        console.log("[CREDITS_FETCH] unauthorized");
+        return { ok: false as const };
+      }
+      if (!response.ok) {
+        console.log("[CREDITS_FETCH] failed", response.status);
+        return { ok: false as const };
+      }
+      const payload = (await response.json()) as { credits?: unknown };
+      if (typeof payload.credits !== "number" || !Number.isFinite(payload.credits)) {
+        // The server could not resolve a balance. Stay UNKNOWN — never 10.
+        console.log("[CREDITS_SERVER_UNKNOWN]", payload);
+        return { ok: false as const };
+      }
+      console.log("[CREDITS_SERVER_READ]", payload.credits);
+      return { ok: true as const, credits: payload.credits };
     };
 
     /** One cheap retry absorbs a transient blip without hiding the badge. */
-    const syncCredits = async (userId: string) => {
+    const syncCredits = async (accessToken: string | null) => {
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        let result: Awaited<ReturnType<typeof readProfileCredits>> | null = null;
         try {
-          result = await readProfileCredits(userId);
+          const result = await fetchServerCredits(accessToken);
+          if (!active) return;
+          if (result.ok) {
+            setCredits(result.credits);
+            return;
+          }
         } catch (error) {
-          console.log("[CREDITS_DB_READ_THREW]", error);
-        }
-        if (!active) return;
-        if (result?.ok) {
-          setCredits(result.credits);
-          return;
-        }
-        if (result?.missingRow) {
-          // First-time signup with no row yet: show the documented onboarding
-          // allowance, but never overwrite a balance the API response has
-          // already reported as authoritative.
-          setCredits((prev) => (prev === null ? DAILY_CREDITS : prev));
-          return;
+          console.log("[CREDITS_FETCH_THREW]", error);
         }
         if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400));
         if (!active) return;
@@ -118,7 +100,7 @@ export default function AuthButton() {
         avatarUrl:
           (meta.avatar_url as string | undefined) ?? (meta.picture as string | undefined) ?? null,
       });
-      await syncCredits(sessionUser.id);
+      await syncCredits(data.session?.access_token ?? null);
       setReady(true);
     };
 
@@ -139,8 +121,13 @@ export default function AuthButton() {
       console.log("[CREDITS_EVENT_RECEIVED]", detail);
       if (!Number.isFinite(next)) return;
       setCredits(next);
-      const id = userIdRef.current;
-      if (id) void syncCredits(id);
+      // Reconcile against the server in the background. The broadcast value
+      // came from /api/restore's own authoritative read, so it already wins on
+      // screen; this only corrects it if the database moved in between.
+      void (async () => {
+        const { data } = await supabase.auth.getSession();
+        if (userIdRef.current) await syncCredits(data.session?.access_token ?? null);
+      })();
     };
     window.addEventListener(QATTAN_CREDITS_EVENT, onCreditsEvent);
 
@@ -188,9 +175,22 @@ export default function AuthButton() {
               : `Daily credits: ${credits}`
         }
         data-credits-known={credits === null ? "false" : "true"}
+        aria-label={
+          credits === null
+            ? L
+              ? "جارٍ تحميل الرصيد"
+              : "Loading balance"
+            : L
+              ? `رصيدك اليومي: ${credits}`
+              : `Daily credits: ${credits}`
+        }
       >
         <span className="qattan-auth-credits-gem" aria-hidden="true">◆</span>
-        {credits === null ? "—" : credits}
+        {credits === null ? (
+          <span className="qattan-credits-loading" aria-hidden="true" />
+        ) : (
+          credits
+        )}
       </span>
       {user.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element

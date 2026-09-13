@@ -99,6 +99,7 @@ The OpenRouter key is read only by server-side code. The browser sends an image 
 | `/studio?mode=facade` | Opens Facade Restoration | Live |
 | `/studio?mode=<planned-mode>` | Shows an honest planned-mode notice | Non-submitting showcase state |
 | `/api/restore` | Secure multimodal generation endpoint | `POST` only |
+| `/api/user/credits` | Authoritative daily balance for the header badge (service-role read) | `GET` only, 401 when signed out |
 
 ## Complete directory map
 
@@ -107,7 +108,7 @@ The primary implementation locations are:
 - Public marketing pages: `/app/page.tsx`, `/app/ar/`, and `/app/en/`
 - Unified Architectural Studio: `/app/studio/page.tsx`
 - Qattan product and studio components: `/components/qattan/*`
-- API and engine routes: `/app/api/` — currently `/app/api/restore/route.ts`
+- API and engine routes: `/app/api/` — `/api/restore/route.ts`, `/api/user/credits/route.ts`, `/api/admin/stats/route.ts`
 
 ```text
 .
@@ -117,7 +118,9 @@ The primary implementation locations are:
 │   ├── en/page.tsx                    # Explicit English marketing route
 │   ├── studio/page.tsx                # Unified Architectural Studio route
 │   ├── api/
-│   │   └── restore/route.ts           # Next.js OpenRouter API adapter
+│   │   ├── restore/route.ts            # Generation endpoint (credit-gated)
+│   │   ├── user/credits/route.ts       # Authoritative balance for the badge
+│   │   └── admin/stats/route.ts        # Admin-only platform statistics
 │   ├── layout.tsx                     # Root metadata, document shell, providers
 │   ├── globals.css                    # Qattan tokens, layout, responsive styles
 │   ├── icon.svg                       # App Router favicon

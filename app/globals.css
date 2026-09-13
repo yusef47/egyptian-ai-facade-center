@@ -812,6 +812,11 @@ html[data-qattan-theme="light"] .qattan-output-toggle-option-active { color: #ff
   color: #f3e5ab; background: rgba(212,175,55,.1); font-size: 12px; font-weight: 700;
 }
 .qattan-auth-credits-gem { color: #e5c158; font-size: 10px; }
+/* Unknown balance while /api/user/credits is in flight. Deliberately NOT a
+   number: showing 10 here is what made spent accounts look like they had 10. */
+.qattan-credits-loading { display: block; width: 18px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, rgba(212,175,55,.25), rgba(243,229,171,.85), rgba(212,175,55,.25)); background-size: 200% 100%; animation: qattan-credits-sweep 1.3s ease-in-out infinite; }
+@keyframes qattan-credits-sweep { 0% { background-position: 140% 0; opacity: .65; } 50% { opacity: 1; } 100% { background-position: -40% 0; opacity: .65; } }
+@media (prefers-reduced-motion: reduce) { .qattan-credits-loading { animation: none; } }
 .qattan-auth-avatar { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(212,175,55,.4); object-fit: cover; }
 .qattan-auth-avatar-fallback { display: grid; place-items: center; color: #090a0f; background: linear-gradient(135deg, #e5c158, #d4af37); font-size: 13px; font-weight: 800; }
 .qattan-auth-name { max-width: 140px; overflow: hidden; color: #c7cedb; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }

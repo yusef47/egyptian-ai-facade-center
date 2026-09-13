@@ -362,6 +362,76 @@ describe("Admin stats route authorization", () => {
   });
 });
 
+describe("GET /api/user/credits — authoritative server-side balance", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-test-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-test-key");
+  });
+
+  afterEach(() => {
+    state.adminSession = null;
+    state.serverSession = null;
+  });
+
+  it("returns 401 for anonymous callers", async () => {
+    const { GET } = await import("../app/api/user/credits/route");
+    state.adminSession = null;
+    state.serverSession = null;
+
+    const response = await GET(bearerRequest(null));
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: expect.any(String) }),
+    );
+  });
+
+  it("returns the exact service-role balance, including 0", async () => {
+    const { GET } = await import("../app/api/user/credits/route");
+    state.adminSession = { access_token: "t", user: { id: "owner-1", email: OWNER_EMAIL } };
+
+    state.profile = { credits: 0, email: OWNER_EMAIL };
+    const exhausted = await GET(bearerRequest("jwt"));
+    expect(exhausted.status).toBe(200);
+    await expect(exhausted.json()).resolves.toEqual({ credits: 0 });
+
+    state.profile = { credits: 9, email: OWNER_EMAIL };
+    const funded = await GET(bearerRequest("jwt"));
+    expect(funded.status).toBe(200);
+    await expect(funded.json()).resolves.toEqual({ credits: 9 });
+  });
+
+  it("reports an unresolved balance as null rather than the 10-credit allowance", async () => {
+    const { GET } = await import("../app/api/user/credits/route");
+    state.adminSession = { access_token: "t", user: { id: "owner-1", email: OWNER_EMAIL } };
+    state.profile = null;
+
+    const response = await GET(bearerRequest("jwt"));
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { credits: number | null; reason?: string };
+    expect(payload.credits).toBeNull();
+    expect(payload.credits).not.toBe(10);
+    expect(payload.reason).toBe("profile_unavailable");
+  });
+});
+
+/**
+ * Stubs fetch for GET /api/user/credits. Any other request (none should
+ * happen in these tests) resolves to an empty 200.
+ */
+function stubCreditsEndpoint(payload: { credits: number | null }, status = 200) {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.includes("/api/user/credits")) {
+      return Promise.resolve(new Response(JSON.stringify(payload), { status }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("Header credit counter updates live after generation", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
@@ -371,14 +441,17 @@ describe("Header credit counter updates live after generation", () => {
       user: { id: "owner-1", email: OWNER_EMAIL, user_metadata: { full_name: "Owner" } },
     };
     state.profile = { credits: 7, email: OWNER_EMAIL };
+    stubCreditsEndpoint({ credits: 7 });
   });
 
   afterEach(() => {
     state.browserSession = null;
     state.profileError = null;
+    vi.unstubAllGlobals();
   });
 
-  it("shows the real database balance on mount, not the 10-credit default", async () => {
+  it("reads the balance from /api/user/credits on mount, not the 10-credit default", async () => {
+    const fetchMock = stubCreditsEndpoint({ credits: 7 });
     render(
       <QattanProviders locale="en">
         <AuthButton />
@@ -386,28 +459,37 @@ describe("Header credit counter updates live after generation", () => {
     );
 
     await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
-    expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7");
+    await waitFor(() =>
+      expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7"),
+    );
+    // The badge is fed by the server route — not by a browser profiles query.
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/user/credits"))).toBe(
+      true,
+    );
   });
 
   it("renders 0 — not the 10-credit default — for an account with no credits left", async () => {
-    state.profile = { credits: 0, email: OWNER_EMAIL };
+    stubCreditsEndpoint({ credits: 0 });
     render(
       <QattanProviders locale="en">
         <AuthButton />
       </QattanProviders>,
     );
 
-    await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
+    await waitFor(() =>
+      expect(document.querySelector(".qattan-auth-credits")?.getAttribute("data-credits-known")).toBe(
+        "true",
+      ),
+    );
     const badge = document.querySelector(".qattan-auth-credits");
-    expect(badge?.getAttribute("data-credits-known")).toBe("true");
     expect(badge?.textContent).toBe("◆0");
     expect(badge?.textContent).not.toContain("10");
   });
 
-  it("shows an unknown placeholder instead of 10 when the profiles read fails", async () => {
-    // An RLS denial (or offline blip) must never be reported as a 10-credit
-    // balance — that is exactly how a spent account appeared to still hold 10.
-    state.profileError = { code: "42501", message: "permission denied for table profiles" };
+  it("shows a loading placeholder instead of 10 when the server cannot resolve the balance", async () => {
+    // A service-role read that resolves to nothing must never be rendered as a
+    // 10-credit balance — that is exactly how a spent account looked funded.
+    stubCreditsEndpoint({ credits: null });
     render(
       <QattanProviders locale="en">
         <AuthButton />
@@ -418,49 +500,63 @@ describe("Header credit counter updates live after generation", () => {
       () => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull(),
       { timeout: 3000 },
     );
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector(".qattan-auth-credits")?.getAttribute("data-credits-known"),
+        ).toBe("false"),
+      { timeout: 3000 },
+    );
     const badge = document.querySelector(".qattan-auth-credits");
-    expect(badge?.getAttribute("data-credits-known")).toBe("false");
-    expect(badge?.textContent).toBe("◆—");
     expect(badge?.textContent).not.toContain("10");
+    expect(badge?.textContent?.trim()).not.toBe("◆10");
+    expect(badge?.querySelector(".qattan-credits-loading")).not.toBeNull();
   });
 
   it("applies the broadcast balance immediately after a generation", async () => {
+    const fetchMock = stubCreditsEndpoint({ credits: 7 });
     render(
       <QattanProviders locale="en">
         <AuthButton />
       </QattanProviders>,
     );
 
-    await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
-    expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7");
+    await waitFor(() =>
+      expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7"),
+    );
 
     // /api/restore returns creditsRemaining: 5; restore.ts re-broadcasts it as
     // the bare new balance. The badge must follow it without a page refresh.
-    state.profile = { credits: 5, email: OWNER_EMAIL };
+    const before = fetchMock.mock.calls.length;
+    stubCreditsEndpoint({ credits: 5 });
     window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: 5 }));
 
     await waitFor(() =>
       expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("5"),
     );
+    expect(before).toBeGreaterThan(0);
   });
 
-  it("still updates when the profiles read is unavailable (payload is authoritative)", async () => {
+  it("still updates when the server read is unavailable (payload is authoritative)", async () => {
+    // Every credits fetch fails: the badge must still follow the balance the
+    // generation response reported, and must never fall back to 10.
+    stubCreditsEndpoint({ credits: null }, 503);
     render(
       <QattanProviders locale="en">
         <AuthButton />
       </QattanProviders>,
     );
 
-    await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
-
-    // A null/errored profile read must never clobber or block the update —
-    // the server-computed balance wins.
-    state.profile = null;
+    await waitFor(
+      () => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull(),
+      { timeout: 3000 },
+    );
     window.dispatchEvent(new CustomEvent(QATTAN_CREDITS_EVENT, { detail: 5 }));
 
     await waitFor(() =>
       expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("5"),
     );
+    expect(document.querySelector(".qattan-auth-credits")?.textContent).not.toContain("10");
   });
 });
 

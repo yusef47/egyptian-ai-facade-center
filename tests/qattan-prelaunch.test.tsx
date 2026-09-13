@@ -126,14 +126,20 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     const authButton = readFileSync("components/qattan/AuthButton.tsx", "utf8");
     expect(authButton).toContain("[CREDITS_EVENT_RECEIVED]");
     expect(authButton).toContain("setCredits(next)");
-    // The mount read is authoritative and strict: it uses .single(), applies
-    // the returned number verbatim (0 included), and a failed/empty read never
-    // clobbers a known-good balance.
-    expect(authButton).toMatch(/typeof data\?\.credits === "number"/);
-    expect(authButton).toContain(".single()");
-    // The 10-credit allowance is reserved for a genuinely absent profile row.
-    expect(authButton).toMatch(/PGRST116/);
+    // The mount read is authoritative and server-side: the badge is fed by
+    // /api/user/credits (service-role read), applies the number verbatim
+    // (0 included), and NEVER falls back to the 10-credit allowance.
+    expect(authButton).toContain("/api/user/credits");
+    expect(authButton).toMatch(/typeof payload\.credits !== "number"/);
     expect(authButton).not.toMatch(/credits \?\? DAILY_CREDITS/);
+
+    // The endpoint resolves the balance through the service-role client so the
+    // value never depends on the browser's RLS policies.
+    const creditsRoute = readFileSync("app/api/user/credits/route.ts", "utf8");
+    expect(creditsRoute).toContain("getSupabaseAdminClient");
+    expect(creditsRoute).toContain("verifySupabaseUser");
+    expect(creditsRoute).toContain("status: 401");
+    expect(creditsRoute).toContain("force-dynamic");
   });
 
   it("preserves the balance when last_credit_reset is recent and only true 24h+ triggers reset", () => {
