@@ -133,6 +133,32 @@ describe("Tool #9 — Engineering Multiview & 3D", () => {
     expect(body.messages[0].content).toContain("NEVER invent doors, windows, masses");
   });
 
+  it("drafts as a mechanical drafter with strict part-geometry integrity", () => {
+    const system = ENGINEERING_DEDUCTION_SYSTEM_PROMPT;
+    // Mechanical/industrial drafting identity, not architectural only.
+    expect(system).toMatch(/Mechanical & Industrial Engineering Drafter/i);
+    expect(system).toMatch(/preparatory engineering/i);
+    expect(system).toMatch(/إعدادي هندسة/);
+    // Deduces both the missing view and the 30-degree isometric.
+    expect(system).toMatch(/MISSING ORTHOGRAPHIC VIEW/i);
+    expect(system).toMatch(/30-degree isometric axes/i);
+    // Feature-level integrity: slots, U-channels, inclined planes, holes.
+    expect(system).toMatch(/U-slot/i);
+    expect(system).toMatch(/counterbore/i);
+    expect(system).toMatch(/inclined slope/i);
+    expect(system).toContain("GEOMETRIC INTEGRITY (NON-NEGOTIABLE)");
+    // Never fall back to generic blocks.
+    expect(system).toMatch(/DO NOT hallucinate generic wedge blocks, plain rectangular solids, or simplified boxes/i);
+    // Sheet layout: white paper, black CAD line work, bottom-right isometric, labels.
+    expect(system).toContain("SHEET LAYOUT & LABELS");
+    expect(system).toMatch(/solid white paper background/i);
+    expect(system).toMatch(/crisp black CAD line work/i);
+    expect(system).toMatch(/bottom-right of the sheet/i);
+    for (const label of ["FRONT ELEVATION", "SIDE VIEW", "TOP PLAN", "ISOMETRIC PROJECTION"]) {
+      expect(system).toContain(label);
+    }
+  });
+
   it("accepts toolId:engineering payloads and stamps the engineering prompt mode", () => {
     const result = validateRestorePayload({
       imageDataUrl: "data:image/png;base64,abc",
