@@ -1,8 +1,12 @@
 {
   "framework": "nextjs",
+  "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
     "app/api/restore/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/engineering/analyze/route.ts": {
       "maxDuration": 60
     }
   }

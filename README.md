@@ -333,14 +333,27 @@ The root `vercel.json` intentionally selects Next.js and does not configure the 
 ```json
 {
   "framework": "nextjs",
+  "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "functions": {
     "app/api/restore/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/engineering/analyze/route.ts": {
       "maxDuration": 60
     }
   }
 }
 ```
+
+`installCommand: "npm ci"` is deliberate. Vercel restores a cached `node_modules`
+between deployments, and that cached tree can satisfy an older lockfile while
+still missing a dependency added since — producing a one-line
+`Module not found: Can't resolve '<package>'` in the build. `npm ci` wipes
+`node_modules` and installs exactly what `package-lock.json` pins, so the
+installed tree can never drift from the lockfile. The trade-off is a full
+reinstall on every deploy (slower), and a hard failure if `package.json` and
+`package-lock.json` ever disagree instead of a silent repair.
 
 Configure `OPENROUTER_API_KEY` in Vercel Project Settings for the required Preview and Production environments. The serverless restore route has a 60-second maximum duration. Vercel should run the standard Next.js build and use `.next` as its generated output; no `outputDirectory: "dist"` setting is required.
 
