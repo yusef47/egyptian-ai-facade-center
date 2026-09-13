@@ -159,6 +159,26 @@ describe("Tool #9 — Engineering Multiview & 3D", () => {
     }
   });
 
+  it("decomposes dual-cut and bottom-tunnel features before drawing", () => {
+    const system = ENGINEERING_DEDUCTION_SYSTEM_PROMPT;
+    // Ordered spatial chain-of-thought: discover -> reconstruct -> verify parity.
+    expect(system).toContain("SPATIAL FEATURE DECOMPOSITION (MANDATORY, IN THIS ORDER)");
+    expect(system).toContain("STEP 1 — FEATURE DISCOVERY");
+    expect(system).toContain("STEP 2 — 3D VOLUME RECONSTRUCTION");
+    expect(system).toContain("STEP 3 — PROJECTION CONSISTENCY");
+    // Step 1: top and bottom cutouts, H-profiles, dashed = internal geometry.
+    expect(system).toMatch(/BOTH top and bottom cutouts/i);
+    expect(system).toMatch(/H-profiles/i);
+    expect(system).toMatch(/horizontal dashed lines indicate internal ceiling cuts or through-tunnels/i);
+    // Step 2: the bottom tunnel is a real through-void with a visible opening.
+    expect(system).toMatch(/cut all the way through the base of the 3D Isometric object from front face to back face/i);
+    expect(system).toMatch(/hollowed arch\/tunnel opening at the bottom front face/i);
+    expect(system).toMatch(/Top Plan View, render the bottom tunnel walls as parallel dashed hidden lines extending along the full length/i);
+    // Step 3: four-way feature parity.
+    expect(system).toMatch(/100% feature parity/i);
+    expect(system).toMatch(/Front Elevation, Side View \(H-profile\), Top Plan View, and 3D Isometric/i);
+  });
+
   it("accepts toolId:engineering payloads and stamps the engineering prompt mode", () => {
     const result = validateRestorePayload({
       imageDataUrl: "data:image/png;base64,abc",
