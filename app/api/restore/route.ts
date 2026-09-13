@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ENGINE_BUSY_BILINGUAL, executeRestore } from "../../../lib/openrouter-engine.js";
 import {
+  AUTH_REQUIRED_BILINGUAL,
   CREDITS_EXHAUSTED_BILINGUAL,
   deductGenerationCredit,
   readProfileCredits,
@@ -42,15 +43,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // 2) Authenticate: bearer token first, cookie fallback. No user → 401.
+  // 2) Authenticate: bearer token first, cookie fallback. No verified user →
+  //    401 with nothing generated. This route has NO unauthenticated
+  //    fallback: every render past this point is attributed to `userId` and
+  //    paid for by a real deduction, so a missing Authorization header can
+  //    never produce a free generation.
   const userId = await verifySupabaseUser(request);
   const hasSession = Boolean(userId);
   console.log(`[RESTORE_START] ${JSON.stringify({ userId: userId ?? null, hasSession })}`);
   if (!userId) {
-    return NextResponse.json(
-      { error: "Sign in with Google to generate. Every account gets 10 free credits daily." },
-      { status: 401 },
+    // Diagnostics for the "generated but never charged" failure class: record
+    // whether the browser attached a credential at all.
+    console.log(
+      `[AUTH_REQUIRED] ${JSON.stringify({
+        hasBearerHeader: Boolean(request.headers.get("authorization")),
+        hasCookie: Boolean(request.headers.get("cookie")),
+      })}`,
     );
+    return NextResponse.json({ error: AUTH_REQUIRED_BILINGUAL }, { status: 401 });
   }
 
   let body: unknown;

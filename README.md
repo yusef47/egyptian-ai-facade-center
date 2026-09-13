@@ -221,7 +221,7 @@ Shared server behavior is implemented in:
 /lib/openrouter-engine.ts
 ```
 
-The compatibility adapter at `api/restore.ts` remains available for the existing Vercel/server contract, while the deployed Next App Router uses `app/api/restore/route.ts`.
+`app/api/restore/route.ts` is the **only** generation endpoint. The legacy root-level Vercel adapter (`api/restore.ts`) used to call the engine directly with no authentication and no credit deduction; it has been removed rather than left as an unprotected second door into the same provider. Generation requires a verified Supabase bearer token, and exactly one credit is deducted before the engine is called.
 
 ### Request contract
 

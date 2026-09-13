@@ -6,7 +6,6 @@
     "client/src/**/*",
     "shared/**/*",
     "lib/**/*",
-    "api/**/*",
     "tests/**/*",
     ".next/types/**/*.ts"
   ],

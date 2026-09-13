@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QATTAN_CREDITS_EVENT, restoreFacade } from "../client/src/lib/restore";
+import { AuthRequiredError } from "../lib/supabase";
 import { authorizeAdmin } from "../lib/admin";
 import {
   checkGenerationCredits,
@@ -30,6 +31,8 @@ const state = vi.hoisted(() => ({
   /** When set, the browser profiles read fails with this error instead. */
   profileError: null as { code: string; message: string } | null,
   rpcOk: true,
+  /** When true a browser client exists even with no session (the real shape). */
+  clientConfigured: false,
 }));
 
 vi.mock("@supabase/supabase-js", () => ({
@@ -87,7 +90,7 @@ vi.mock("../lib/supabase", async (importOriginal) => {
   return {
     ...actual,
     getSupabaseBrowserClient: () => {
-      if (!state.browserSession) return null;
+      if (!state.browserSession && !state.clientConfigured) return null;
       if (!browserSingleton) {
         const builder: Record<string, unknown> = {};
         builder.select = vi.fn(() => builder);
@@ -128,6 +131,7 @@ describe("Frontend restore — Supabase bearer token & credit balance relay", ()
   beforeEach(() => {
     vi.restoreAllMocks();
     state.browserSession = null;
+    state.clientConfigured = false;
   });
 
   it("attaches the Authorization header when a session exists", async () => {
@@ -150,7 +154,9 @@ describe("Frontend restore — Supabase bearer token & credit balance relay", ()
     expect(headers["Content-Type"]).toBe("application/json");
   });
 
-  it("omits the Authorization header when signed out", async () => {
+  it("omits the Authorization header only when Supabase is unconfigured", async () => {
+    // No Supabase client at all (env vars missing): there is no provider to
+    // sign in to, so the request goes out tokenless and the API answers 401.
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ imageDataUrl: "data:image/png;base64,AAAA" }), { status: 200 }),
     );
@@ -160,6 +166,21 @@ describe("Frontend restore — Supabase bearer token & credit balance relay", ()
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it("never sends a tokenless generation request when configured but signed out", async () => {
+    // The real production shape: Supabase is configured, the visitor has no
+    // session. The request must be blocked in the browser — a tokenless call
+    // reaching the API is what let generations bypass the credit ledger.
+    state.clientConfigured = true;
+    state.browserSession = null;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      restoreFacade({ imageDataUrl: "data:image/png;base64,AAAA", prompt: "x" }),
+    ).rejects.toBeInstanceOf(AuthRequiredError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("broadcasts the returned remaining balance so the header counter updates live", async () => {

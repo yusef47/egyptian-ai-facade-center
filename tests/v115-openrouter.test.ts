@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOpenRouterRequest } from "../api/restore";
+import { buildOpenRouterRequest } from "../lib/openrouter-engine";
 import {
   STRUCTURAL_FIDELITY_CLAUSE,
   resolveToolRequest,

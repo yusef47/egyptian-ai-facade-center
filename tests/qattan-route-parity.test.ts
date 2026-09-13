@@ -12,6 +12,10 @@ describe("Qattan App Router route parity", () => {
     expect(existsSync("app/en/page.tsx")).toBe(true);
     expect(existsSync("app/studio/page.tsx")).toBe(true);
     expect(existsSync("app/api/restore/route.ts")).toBe(true);
+    // The legacy root-level Vercel adapter called the engine with no auth and
+    // no credit deduction. It is the single endpoint again — the App Router
+    // route is the only way to reach the engine.
+    expect(existsSync("api/restore.ts")).toBe(false);
   });
 
   it("does not retain the removed browser/server runtime entrypoints", () => {

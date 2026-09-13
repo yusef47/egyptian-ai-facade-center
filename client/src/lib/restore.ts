@@ -1,7 +1,6 @@
 import type { ToolId } from "@tools/registry";
 import {
   AuthRequiredError,
-  getSupabaseSessionGate,
   QATTAN_AUTH_REQUIRED_EVENT,
 } from "../../../lib/supabase";
 
@@ -24,19 +23,57 @@ export const QATTAN_CREDITS_EVENT = "qattan:credits";
 
 /**
  * Resolves the signed-in Supabase access token so /api/restore can attribute
- * the generation (and its credit deduction) to the caller. Returns null when
- * Supabase is not configured or no session exists.
+ * the generation (and its credit deduction) to the caller.
+ *
+ * MANDATORY: the bearer token is the caller's only identity. This function
+ * resolves it ONCE — there is no second, looser session probe that could
+ * disagree with it — and when Supabase is configured but there is no session
+ * (or the session read fails) it dispatches the auth-required event and
+ * throws AuthRequiredError BEFORE any request leaves the browser. A signed-out
+ * visitor can therefore never reach the generation endpoint tokenless.
+ *
+ * The single exception is a deployment with no Supabase credentials at all:
+ * there is no identity provider to sign in to, so the request goes out
+ * tokenless and the server answers 401 (verifySupabaseUser fails closed when
+ * the server has no Supabase config). That path cannot yield a free render.
  */
-async function getSupabaseAccessToken(): Promise<string | null> {
+async function requireSupabaseAccessToken(): Promise<string | null> {
+  const { getSupabaseBrowserClient } = await import("../../../lib/supabase");
+
+  let supabase: ReturnType<typeof getSupabaseBrowserClient> = null;
   try {
-    const { getSupabaseBrowserClient } = await import("../../../lib/supabase");
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) return null;
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
+    supabase = getSupabaseBrowserClient();
   } catch {
+    supabase = null;
+  }
+
+  if (!supabase) {
+    console.log("[AUTH_UNCONFIGURED] Supabase env vars missing — server will answer 401");
     return null;
   }
+
+  let token: string | null = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data.session?.access_token ?? null;
+  } catch (error) {
+    // Fail closed: a session read that throws must never degrade into a
+    // tokenless request (that is how generations escaped the credit ledger).
+    console.log(
+      `[AUTH_SESSION_ERROR] ${error instanceof Error ? error.message : "unknown session read failure"}`,
+    );
+    token = null;
+  }
+
+  if (!token) {
+    console.log("[AUTH_REQUIRED] no Supabase session — generation blocked client-side");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(QATTAN_AUTH_REQUIRED_EVENT));
+    }
+    throw new AuthRequiredError();
+  }
+
+  return token;
 }
 
 /**
@@ -47,20 +84,14 @@ async function getSupabaseAccessToken(): Promise<string | null> {
  * either a hosted https:// URL or a data:image/... string.
  */
 export async function restoreFacade(request: RestoreRequest): Promise<string> {
-  // Mandatory auth gate: every generating surface (registry tools and the
-  // legacy facade/floorplan engines all funnel through here) must have a
-  // Supabase session before a request is sent. Skipped pre-activation
-  // ("disabled" gate) and overridable per-call for special surfaces.
-  const gate = await getSupabaseSessionGate();
-  if (gate === "signed-out") {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(QATTAN_AUTH_REQUIRED_EVENT));
-    }
-    throw new AuthRequiredError();
-  }
+  // Mandatory auth gate: every generating surface funnels through here (all
+  // eight registry tools plus the legacy facade/floorplan entry points), so
+  // the caller's bearer token is resolved BEFORE the request is built. The
+  // server receives an identity on every generation and deducts exactly one
+  // credit for it — or answers 401 and generates nothing.
+  const accessToken = await requireSupabaseAccessToken();
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const accessToken = await getSupabaseAccessToken();
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const response = await fetch("/api/restore", {

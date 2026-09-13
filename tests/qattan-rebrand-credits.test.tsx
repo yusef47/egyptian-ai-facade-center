@@ -255,13 +255,17 @@ describe("Credit gate", () => {
     expect(await getSupabaseSessionGate()).toBe("disabled");
   });
 
-  it("allows requests when Supabase is not configured yet (pre-activation parity)", async () => {
+  it("fails closed when Supabase is not configured (no unauthenticated fallback)", async () => {
+    // Without the service-role client there is no way to verify a caller or
+    // charge a credit, so no generation may proceed. The old permissive
+    // "pre-activation parity" branch is deliberately gone.
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     const result = await checkGenerationCredits(
       new Request("https://qattan.example/api/restore", { method: "POST" }),
     );
-    expect(result.allowed).toBe(true);
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.status).toBe(503);
   });
 
   it("blocks unauthenticated requests with 401 when configured", async () => {

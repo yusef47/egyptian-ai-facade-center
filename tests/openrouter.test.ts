@@ -7,7 +7,7 @@ import {
   MASTER_ARCHITECTURAL_SYSTEM_PROMPT,
   OPENROUTER_MODEL,
   trimOutputDataUrl,
-} from "../api/restore";
+} from "../lib/openrouter-engine";
 
 describe("OpenRouter restoration request", () => {
   it("targets the fast Qattan Vision image model on the OpenRouter wire", () => {

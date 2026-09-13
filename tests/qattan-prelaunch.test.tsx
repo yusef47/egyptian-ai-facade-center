@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrivacyPage from "../app/privacy/page";
@@ -147,6 +147,47 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(sql).toMatch(/last_credit_reset < now\(\) - interval '24 hours'/);
     // Stamping legacy rows must NOT touch credits.
     expect(sql).toMatch(/set last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*returning credits into stamped;/);
+  });
+});
+
+describe("P1 — mandatory bearer token & no unauthenticated generation path", () => {
+  it("answers unauthenticated callers with the bilingual sign-in notice and generates nothing", () => {
+    const route = readFileSync("app/api/restore/route.ts", "utf8");
+    expect(route).toContain("AUTH_REQUIRED_BILINGUAL");
+    // Ordering: authenticate → deduct → engine. Nothing can skip the charge.
+    expect(route.indexOf("if (!userId)")).toBeLessThan(
+      route.indexOf("deductGenerationCredit(userId)"),
+    );
+    expect(route.indexOf("deductGenerationCredit(userId)")).toBeLessThan(
+      route.indexOf("executeRestore(body"),
+    );
+    // Exactly one engine call site, i.e. exactly one metered generation path.
+    expect(route.match(/executeRestore\(/g)?.length).toBe(1);
+  });
+
+  it("attaches the bearer token client-side and blocks a tokenless generation", () => {
+    const client = readFileSync("client/src/lib/restore.ts", "utf8");
+    expect(client).toContain("supabase.auth.getSession()");
+    expect(client).toContain("headers.Authorization = `Bearer ${accessToken}`");
+    expect(client).toContain("throw new AuthRequiredError()");
+    // Exactly one session probe: a second, looser gate could disagree with
+    // the token actually attached to the outgoing request.
+    expect(client).not.toContain("getSupabaseSessionGate");
+  });
+
+  it("fails closed in the credit authority when the service-role client is missing", () => {
+    const credits = readFileSync("lib/credits.ts", "utf8");
+    expect(credits).toContain("AUTH_REQUIRED_BILINGUAL");
+    // No permissive branches: a missing admin client can never mean "free".
+    expect(credits).not.toContain("if (!admin) return { ok: true");
+    expect(credits).not.toContain("if (!admin) return { allowed: true");
+  });
+
+  it("removes the legacy unauthenticated Vercel adapter", () => {
+    // api/restore.ts called the engine directly: no session check and no
+    // credit deduction. Only the metered App Router route may reach it.
+    expect(existsSync("api/restore.ts")).toBe(false);
+    expect(existsSync("app/api/restore/route.ts")).toBe(true);
   });
 });
 

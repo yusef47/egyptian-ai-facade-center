@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOpenRouterRequest, CAD_SYSTEM_PROMPT } from "../api/restore";
+import { buildOpenRouterRequest, CAD_SYSTEM_PROMPT } from "../lib/openrouter-engine";
 
 describe("V117 CAD OpenRouter request", () => {
   it("uses the dedicated CAD prompt without leaking facade triptych instructions", () => {

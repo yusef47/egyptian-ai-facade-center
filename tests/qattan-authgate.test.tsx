@@ -10,6 +10,7 @@ import { getToolById } from "../tools/registry";
 // Session-gate state, flipped per test.
 const state = vi.hoisted(() => ({
   session: null as { access_token: string } | null,
+  sessionThrows: false,
   signInRedirects: [] as string[],
 }));
 
@@ -17,7 +18,10 @@ vi.mock("../lib/supabase", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/supabase")>();
   const client = {
     auth: {
-      getSession: () => Promise.resolve({ data: { session: state.session } }),
+      getSession: () =>
+        state.sessionThrows
+          ? Promise.reject(new Error("session storage unavailable"))
+          : Promise.resolve({ data: { session: state.session } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
       signInWithOAuth: vi.fn(async ({ options }: { options?: { redirectTo?: string } }) => {
         state.signInRedirects.push(options?.redirectTo ?? "");
@@ -52,6 +56,7 @@ function renderWorkspace() {
 
 beforeEach(() => {
   state.session = null;
+  state.sessionThrows = false;
   state.signInRedirects = [];
   vi.unstubAllGlobals();
 });
@@ -239,5 +244,18 @@ describe("restoreFacade auth gate (legacy facade/floorplan engines)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
     expect(init.headers.Authorization).toBe("Bearer token");
+  });
+
+  it("blocks instead of sending a tokenless request when the session read fails", async () => {
+    // A throw from the session read used to degrade into a request with no
+    // Authorization header — the exact path that produced unmetered renders.
+    state.sessionThrows = true;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      restoreFacade({ imageDataUrl: "data:image/png;base64,AAAA", prompt: "x" }),
+    ).rejects.toBeInstanceOf(AuthRequiredError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

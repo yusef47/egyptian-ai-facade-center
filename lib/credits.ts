@@ -3,9 +3,13 @@ import { CREDIT_REFRESH_MS, DAILY_CREDITS } from "./supabase.js";
 
 /**
  * Server-side credit authority for Qattan AI. Uses the service-role key and
- * must never be imported into client bundles. All functions are null-safe:
- * when Supabase env vars are missing the gate is bypassed so the platform
- * keeps working exactly as before the integration (dev/preview parity).
+ * must never be imported into client bundles.
+ *
+ * Everything here FAILS CLOSED. When the Supabase environment variables are
+ * missing there is no way to verify a caller or charge a credit, so the gate
+ * refuses the request (401/503) instead of allowing an unauthenticated
+ * generation. That is deliberate: a permissive fallback here is exactly what
+ * let generations escape the credit ledger.
  */
 
 export type CreditProfile = {
@@ -28,6 +32,16 @@ export type CreditDeduction =
 /** Bilingual exhaustion notice surfaced to users on 429 (gate + deduction). */
 export const CREDITS_EXHAUSTED_BILINGUAL =
   "انتهى رصيدك اليومي (10 كريديت)! يتجدد رصيدك أوتوماتيكياً كل 24 ساعة. | Daily credit limit reached (10 credits)! It renews automatically every 24 hours.";
+
+/**
+ * Bilingual sign-in notice surfaced on 401. Generation requires a verified
+ * Supabase session, because the credit is charged to that identity.
+ */
+export const AUTH_REQUIRED_BILINGUAL =
+  "تسجيل الدخول مطلوب لتجربة الأدوات | Sign in with Google to generate — every account gets 10 free credits daily.";
+
+/** Service-role credit authority is unreachable (missing/!env or RPC failure). */
+export const CREDIT_SERVICE_UNAVAILABLE = "Credit service unavailable. Try again shortly.";
 
 function envConfigured(): boolean {
   return Boolean(
@@ -215,14 +229,18 @@ export async function checkGenerationCredits(
   request: Request,
 ): Promise<CreditCheck> {
   const admin = getSupabaseAdminClient();
-  if (!admin) return { allowed: true, remaining: DAILY_CREDITS };
+  // Fail closed: without the service-role client we cannot verify a caller or
+  // charge a credit, so no generation may proceed.
+  if (!admin) {
+    return { allowed: false, status: 503, message: CREDIT_SERVICE_UNAVAILABLE };
+  }
 
   const userId = await verifySupabaseUser(request);
   if (!userId) {
     return {
       allowed: false,
       status: 401,
-      message: "Sign in with Google to generate. Every account gets 10 free credits daily.",
+      message: AUTH_REQUIRED_BILINGUAL,
     };
   }
 
@@ -240,7 +258,7 @@ export async function checkGenerationCredits(
       .select("credits")
       .maybeSingle();
     if (createError) {
-      return { allowed: false, status: 503, message: "Credit service unavailable. Try again shortly." };
+      return { allowed: false, status: 503, message: CREDIT_SERVICE_UNAVAILABLE };
     }
     // ignoreDuplicates can return no row when a concurrent provision won the
     // race — read the authoritative row instead of wrongly reporting 429.
@@ -354,7 +372,12 @@ function parseScalar(data: unknown): number {
  */
 export async function deductGenerationCredit(userId: string): Promise<CreditDeduction> {
   const admin = getSupabaseAdminClient();
-  if (!admin) return { ok: true, remaining: DAILY_CREDITS };
+  // No service-role client → the deduction cannot happen, so the generation
+  // must not happen either. Never report a successful charge we didn't make.
+  if (!admin) {
+    console.log("[CREDIT_DEDUCT_UNAVAILABLE] service-role client missing");
+    return { ok: false, reason: "unavailable" };
+  }
   return deductGenerationCreditWithAdmin(admin, userId);
 }
 
@@ -393,7 +416,10 @@ export async function deductGenerationCreditWithAdmin(
  */
 export async function refundGenerationCredit(userId: string): Promise<CreditDeduction> {
   const admin = getSupabaseAdminClient();
-  if (!admin) return { ok: true, remaining: DAILY_CREDITS };
+  if (!admin) {
+    console.log("[CREDIT_REFUND_UNAVAILABLE] service-role client missing");
+    return { ok: false, reason: "unavailable" };
+  }
   return refundGenerationCreditWithAdmin(admin, userId);
 }
 
