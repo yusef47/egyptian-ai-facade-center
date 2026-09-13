@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type DragEvent, type TouchEvent } from "re
 import { createPortal } from "react-dom";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
+import { analyzeEngineeringDrawing } from "@/lib/engineering";
+import { isRenderableGeometry, type EngineeringGeometry } from "../../lib/engineering-geometry";
 import { getSupabaseSessionGate, QATTAN_AUTH_REQUIRED_EVENT } from "../../lib/supabase";
 import {
   GALLERY_VARIATION_DIRECTIVE,
@@ -18,6 +20,7 @@ import {
   type ToolControlId,
   type ToolControlValues,
 } from "@tools/registry";
+import EngineeringCADViewer from "./EngineeringCADViewer";
 import { useQattan } from "./QattanProviders";
 import RequireAuthModal from "./RequireAuthModal";
 import ToolGuidePanel from "./ToolGuidePanel";
@@ -51,6 +54,7 @@ const resultReveal = {
 export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspaceProps) {
   const { locale } = useQattan();
   const L = locale === "ar";
+  const isEngineering = tool.id === "engineering";
   const t = (value: { en: string; ar: string }) => (L ? value.ar : value.en);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Synchronous in-flight guard: set BEFORE the first await so two rapid
@@ -65,6 +69,9 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<string[]>([]);
+  // Tool #9 renders a real CAD solid instead of a generated image: the API
+  // returns geometry JSON and EngineeringCADViewer draws the 4-panel sheet.
+  const [cadGeometry, setCadGeometry] = useState<EngineeringGeometry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
   const [zoomDragOffset, setZoomDragOffset] = useState(0);
@@ -141,6 +148,7 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       }
       setImageDataUrl(compressed);
       setResults([]);
+      setCadGeometry(null);
       onSessionChange?.({
         prompt,
         status: L ? "تم رفع الصورة" : "Image uploaded",
@@ -214,6 +222,31 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
         });
 
       setError(null);
+
+      // Tool #9: the AI only READS the drawing; the CAD sheet is drawn in the
+      // browser from the returned geometry. Still exactly ONE request and ONE
+      // credit per click.
+      if (isEngineering) {
+        const analysis = await analyzeEngineeringDrawing({ imageDataUrl, prompt: fullPrompt });
+        if (!isRenderableGeometry(analysis.geometry)) {
+          setError(
+            L
+              ? "تعذّر تحليل هذا الرسم الهندسي. يرجى رفع صورة أوضح بأبعاد ظاهرة."
+              : "Could not analyze this drawing. Please upload a clearer image with visible dimensions.",
+          );
+          return;
+        }
+        setCadGeometry(analysis.geometry);
+        setResults([]);
+        onSessionChange?.({
+          prompt: fullPrompt,
+          status: L ? "تم استنتاج الهندسة" : "Geometry deduced",
+          inputImageDataUrl: imageDataUrl,
+          outputImageDataUrl: null,
+        });
+        return;
+      }
+
       // EXACTLY ONE API call (and therefore exactly one credit) for every
       // output presentation: the mode only shapes the PROMPT, never the
       // number of requests. Gallery/triptych variations are composed inside
@@ -333,33 +366,35 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
             </div>
           ))}
 
-          <div className="qattan-tool-control">
-            <span className="qattan-tool-control-label" id={`presentation-label-${tool.id}`}>
-              {L ? "عرض المخرجات" : "Output presentation"}
-            </span>
-            <div
-              className="qattan-output-toggle"
-              role="radiogroup"
-              aria-labelledby={`presentation-label-${tool.id}`}
-            >
-              {OUTPUT_PRESENTATIONS.map((option) => {
-                const label = OUTPUT_PRESENTATION_LABELS[option];
-                const active = presentation === option;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setPresentation(option)}
-                    className={`qattan-output-toggle-option ${active ? "qattan-output-toggle-option-active" : ""}`}
-                  >
-                    {L ? label.ar : label.en}
-                  </button>
-                );
-              })}
+          {!isEngineering && (
+            <div className="qattan-tool-control">
+              <span className="qattan-tool-control-label" id={`presentation-label-${tool.id}`}>
+                {L ? "عرض المخرجات" : "Output presentation"}
+              </span>
+              <div
+                className="qattan-output-toggle"
+                role="radiogroup"
+                aria-labelledby={`presentation-label-${tool.id}`}
+              >
+                {OUTPUT_PRESENTATIONS.map((option) => {
+                  const label = OUTPUT_PRESENTATION_LABELS[option];
+                  const active = presentation === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setPresentation(option)}
+                      className={`qattan-output-toggle-option ${active ? "qattan-output-toggle-option-active" : ""}`}
+                    >
+                      {L ? label.ar : label.en}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="qattan-tool-control">
             <label className="qattan-tool-control-label" htmlFor={`brief-${tool.id}`}>
@@ -416,7 +451,34 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                   aria-label="Generating"
                 >
                   <Compass size={34} className="qattan-compass-spin" aria-hidden="true" />
-                  <p>{L ? "نصوغ دراستك المعمارية…" : "Drafting your architectural study…"}</p>
+                  <p>
+                    {isEngineering
+                      ? L
+                        ? "نقرأ الرسم الهندسي ونبني المجسم…"
+                        : "Reading your drawing and rebuilding the solid…"
+                      : L
+                        ? "نصوغ دراستك المعمارية…"
+                        : "Drafting your architectural study…"}
+                  </p>
+                </motion.div>
+              ) : isEngineering && cadGeometry ? (
+                <motion.div
+                  key="cad"
+                  className="qattan-tool-result qattan-tool-result-cad"
+                  {...resultReveal}
+                >
+                  <EngineeringCADViewer
+                    geometry={cadGeometry}
+                    locale={L ? "ar" : "en"}
+                    onRendered={(dataUrl) =>
+                      onSessionChange?.({
+                        prompt,
+                        status: L ? "تم استنتاج الهندسة" : "Geometry deduced",
+                        inputImageDataUrl: imageDataUrl,
+                        outputImageDataUrl: dataUrl,
+                      })
+                    }
+                  />
                 </motion.div>
               ) : results.length > 0 ? (
                 <motion.div
@@ -468,7 +530,15 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
                   exit={{ opacity: 0 }}
                 >
                   <Sparkles size={26} aria-hidden="true" />
-                  <p>{L ? "ستظهر النتيجة المولّدة هنا." : "Generated output will appear here."}</p>
+                  <p>
+                    {isEngineering
+                      ? L
+                        ? "ستظهر لوحة المساقط والمنظور ثلاثي الأبعاد هنا."
+                        : "The orthographic + isometric CAD board will appear here."
+                      : L
+                        ? "ستظهر النتيجة المولّدة هنا."
+                        : "Generated output will appear here."}
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>

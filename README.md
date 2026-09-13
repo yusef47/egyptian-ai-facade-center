@@ -99,6 +99,27 @@ The OpenRouter key is read only by server-side code. The browser sends an image 
 | `/studio?mode=facade` | Opens Facade Restoration | Live |
 | `/studio?mode=<planned-mode>` | Shows an honest planned-mode notice | Non-submitting showcase state |
 | `/api/restore` | Secure multimodal generation endpoint | `POST` only |
+| `/api/engineering/analyze` | Tool #9 drawing analysis → structured geometry JSON | `POST` only |
+
+## Tool #9 — a real CAD engine, not image generation
+
+**Engineering Multiview & 3D** is the one tool that does not generate an image.
+`POST /api/engineering/analyze` reads the uploaded orthographic drawing with a
+text-output vision call and returns the part as strict geometry JSON (a base
+`block` plus subtractive `operations`: top notches, bottom tunnels, side slots,
+through holes, steps, chamfers, inclines). The browser then rebuilds that
+geometry as a genuine CSG solid with Three.js and `three-csg-ts` and draws the
+engineering sheet in `components/qattan/EngineeringCADViewer.tsx`:
+
+- front elevation, side view and top plan with solid visible edges and dashed
+  hidden edges (depth-buffer driven, the drafter's hidden-line convention),
+- a shaded 30-degree isometric projection that can be dragged to rotate,
+- dimension chips from the extracted annotations, PNG board export and OBJ export.
+
+The pure geometry model and validator live in `lib/engineering-geometry.ts`;
+the analysis prompt and JSON parsing live in `lib/engineering-engine.ts`.
+Credits match `/api/restore` exactly: one credit per analysis, deducted before
+the model call and refunded when the drawing cannot be read.
 
 ## Complete directory map
 
@@ -107,7 +128,7 @@ The primary implementation locations are:
 - Public marketing pages: `/app/page.tsx`, `/app/ar/`, and `/app/en/`
 - Unified Architectural Studio: `/app/studio/page.tsx`
 - Qattan product and studio components: `/components/qattan/*`
-- API and engine routes: `/app/api/` — currently `/app/api/restore/route.ts`
+- API and engine routes: `/app/api/` — `/app/api/restore/route.ts` and `/app/api/engineering/analyze/route.ts`
 
 ```text
 .

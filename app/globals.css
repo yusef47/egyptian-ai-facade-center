@@ -1532,3 +1532,163 @@ html[data-qattan-theme="light"] .qattan-admin-title {
 
 /* Auth gate modal keeps its luxury obsidian card in light mode (already
    themed), but the title/desc need no change — verifying contrast retained. */
+
+/* ============================================================
+   TOOL #9 — ENGINEERING MULTIVIEW & 3D (Three.js CAD BOARD)
+   ============================================================ */
+
+.qattan-tool-result-cad { width: 100%; justify-items: stretch; }
+.qattan-cad { display: grid; width: 100%; gap: 14px; }
+
+/* White drawing sheet: engineering drawings are white paper + black line work,
+   in both themes, so the sheet keeps a fixed light surface. */
+.qattan-cad-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+.qattan-cad-canvas { display: block; width: 100%; height: 100%; }
+
+/* 2x2 caption grid floating over the WebGL sheet */
+.qattan-cad-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  pointer-events: none;
+}
+.qattan-cad-cell { position: relative; padding: 8px; }
+.qattan-cad-cell[data-view="front"] { border-right: 1px solid rgba(212, 175, 55, 0.45); border-bottom: 1px solid rgba(212, 175, 55, 0.45); }
+.qattan-cad-cell[data-view="side"] { border-bottom: 1px solid rgba(212, 175, 55, 0.45); }
+.qattan-cad-cell[data-view="top"] { border-right: 1px solid rgba(212, 175, 55, 0.45); }
+.qattan-cad-cell-iso { pointer-events: auto; cursor: grab; touch-action: none; }
+.qattan-cad-cell-iso:active { cursor: grabbing; }
+
+.qattan-cad-label {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 10px;
+  padding: 2px 9px;
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #7c5f16;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.qattan-cad-dims {
+  position: absolute;
+  bottom: 8px;
+  inset-inline-start: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+}
+.qattan-cad-dim {
+  padding: 1px 7px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #0f172a;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.qattan-cad-hint {
+  position: absolute;
+  bottom: 8px;
+  inset-inline-end: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px dashed rgba(212, 175, 55, 0.7);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #7c5f16;
+  font-size: 10.5px;
+  transition: opacity 0.2s ease;
+}
+.qattan-cad-hint-active { opacity: 0.45; }
+
+.qattan-cad-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #334155;
+  font-size: 13px;
+  text-align: center;
+}
+.qattan-cad-status p { margin: 0; }
+.qattan-cad-fallback { max-width: 420px; line-height: 1.7; }
+
+.qattan-cad-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+.qattan-cad-meta { display: grid; gap: 3px; min-width: 0; }
+.qattan-cad-part { color: #e5c158; font-size: 13px; font-weight: 700; }
+.qattan-cad-count { color: #a5adbd; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.qattan-cad-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.qattan-cad-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8ecf4;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.qattan-cad-action:hover { border-color: rgba(212, 175, 55, 0.65); background: rgba(212, 175, 55, 0.14); transform: translateY(-1px); }
+.qattan-cad-action-primary {
+  border-color: transparent;
+  background: linear-gradient(120deg, #e5c158, #d4af37);
+  color: #1a1206;
+}
+.qattan-cad-action-primary:hover { background: linear-gradient(120deg, #f3e5ab, #e5c158); }
+
+/* Light mode counterparts */
+html[data-qattan-theme="light"] .qattan-cad-stage { border-color: rgba(165, 129, 63, 0.4); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); }
+/* Light mode uses thin neutral dividers instead of the gold ones. */
+html[data-qattan-theme="light"] .qattan-cad-cell[data-view="front"],
+html[data-qattan-theme="light"] .qattan-cad-cell[data-view="top"] { border-right-color: rgba(15, 23, 42, 0.16); }
+html[data-qattan-theme="light"] .qattan-cad-cell[data-view="front"],
+html[data-qattan-theme="light"] .qattan-cad-cell[data-view="side"] { border-bottom-color: rgba(15, 23, 42, 0.16); }
+html[data-qattan-theme="light"] .qattan-cad-label { border-color: rgba(165, 129, 63, 0.5); color: #7c5f16; }
+html[data-qattan-theme="light"] .qattan-cad-part { color: #8a6d1f; }
+html[data-qattan-theme="light"] .qattan-cad-count { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-cad-action { border-color: rgba(165, 129, 63, 0.45); background: #ffffff; color: #1e293b; }
+html[data-qattan-theme="light"] .qattan-cad-action:hover { background: rgba(212, 175, 55, 0.12); }
+html[data-qattan-theme="light"] .qattan-cad-action-primary { color: #1a1206; }
+
+@media (max-width: 820px) {
+  .qattan-cad-stage { aspect-ratio: 4 / 5; }
+  .qattan-cad-label { font-size: 8.5px; letter-spacing: 0.06em; padding: 2px 7px; }
+  .qattan-cad-dim, .qattan-cad-hint { font-size: 9.5px; }
+  .qattan-cad-actions { width: 100%; }
+  .qattan-cad-action { flex: 1 1 auto; }
+}
