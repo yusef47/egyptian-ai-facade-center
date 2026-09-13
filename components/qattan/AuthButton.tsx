@@ -37,24 +37,65 @@ export default function AuthButton() {
     let active = true;
 
     /**
-     * Reads the authoritative balance from the profiles table. A failed or
-     * empty read NEVER clobbers a known-good value — otherwise the badge would
-     * regress to the 10-credit default while the database still says 8.
+     * Authoritative read of the user's balance. The returned number is applied
+     * verbatim — 0 renders as 0. Only a genuinely absent row can lead to the
+     * 10-credit allowance; every other failure stays UNKNOWN, because inventing
+     * 10 is precisely how a 0-balance account appeared to hold 10.
      */
-    const syncCredits = async (userId: string) => {
-      try {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("credits")
-          .eq("id", userId)
-          .maybeSingle();
-        if (active && typeof profile?.credits === "number") {
-          console.log("[CREDITS_SYNCED]", profile.credits);
-          setCredits(profile.credits);
-        }
-      } catch {
-        /* keep the last known balance */
+    const readProfileCredits = async (userId: string) => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", userId)
+        .single();
+
+      if (!error && typeof data?.credits === "number" && Number.isFinite(data.credits)) {
+        console.log("[CREDITS_DB_READ]", { userId, credits: data.credits });
+        return { ok: true as const, credits: data.credits };
       }
+
+      // PostgREST PGRST116 = "JSON object requested, 0 (or many) rows returned".
+      // A missing row means the DB trigger has not created the profile yet.
+      if (error?.code === "PGRST116") {
+        console.log("[CREDITS_PROFILE_MISSING]", { userId });
+        return { ok: false as const, missingRow: true };
+      }
+
+      // Denied / offline / malformed payload: report UNKNOWN. Showing 10 here
+      // is exactly the bug this guards against (a 0-balance user would see 10).
+      console.log("[CREDITS_DB_READ_FAILED]", {
+        userId,
+        code: error?.code ?? null,
+        message: error?.message ?? "no numeric credits in payload",
+      });
+      return { ok: false as const, missingRow: false };
+    };
+
+    /** One cheap retry absorbs a transient blip without hiding the badge. */
+    const syncCredits = async (userId: string) => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        let result: Awaited<ReturnType<typeof readProfileCredits>> | null = null;
+        try {
+          result = await readProfileCredits(userId);
+        } catch (error) {
+          console.log("[CREDITS_DB_READ_THREW]", error);
+        }
+        if (!active) return;
+        if (result?.ok) {
+          setCredits(result.credits);
+          return;
+        }
+        if (result?.missingRow) {
+          // First-time signup with no row yet: show the documented onboarding
+          // allowance, but never overwrite a balance the API response has
+          // already reported as authoritative.
+          setCredits((prev) => (prev === null ? DAILY_CREDITS : prev));
+          return;
+        }
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400));
+        if (!active) return;
+      }
+      // A failed read leaves the badge on its last known value — never 10.
     };
 
     const load = async () => {
@@ -135,9 +176,21 @@ export default function AuthButton() {
 
   return (
     <div className="qattan-auth-user">
-      <span className="qattan-auth-credits" title={L ? `رصيدك اليومي: ${credits ?? DAILY_CREDITS}` : `Daily credits: ${credits ?? DAILY_CREDITS}`}>
+      <span
+        className="qattan-auth-credits"
+        title={
+          credits === null
+            ? L
+              ? "جارٍ تحميل الرصيد…"
+              : "Loading balance…"
+            : L
+              ? `رصيدك اليومي: ${credits}`
+              : `Daily credits: ${credits}`
+        }
+        data-credits-known={credits === null ? "false" : "true"}
+      >
         <span className="qattan-auth-credits-gem" aria-hidden="true">◆</span>
-        {credits ?? DAILY_CREDITS}
+        {credits === null ? "—" : credits}
       </span>
       {user.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element

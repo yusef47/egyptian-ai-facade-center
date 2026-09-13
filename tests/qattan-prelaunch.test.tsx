@@ -126,8 +126,14 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     const authButton = readFileSync("components/qattan/AuthButton.tsx", "utf8");
     expect(authButton).toContain("[CREDITS_EVENT_RECEIVED]");
     expect(authButton).toContain("setCredits(next)");
-    // A failed/empty profiles read never clobbers a known-good balance.
-    expect(authButton).toMatch(/typeof profile\?\.credits === "number"/);
+    // The mount read is authoritative and strict: it uses .single(), applies
+    // the returned number verbatim (0 included), and a failed/empty read never
+    // clobbers a known-good balance.
+    expect(authButton).toMatch(/typeof data\?\.credits === "number"/);
+    expect(authButton).toContain(".single()");
+    // The 10-credit allowance is reserved for a genuinely absent profile row.
+    expect(authButton).toMatch(/PGRST116/);
+    expect(authButton).not.toMatch(/credits \?\? DAILY_CREDITS/);
   });
 
   it("preserves the balance when last_credit_reset is recent and only true 24h+ triggers reset", () => {

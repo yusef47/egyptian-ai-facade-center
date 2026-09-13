@@ -27,6 +27,8 @@ const state = vi.hoisted(() => ({
     | { access_token: string; user: { id: string; email: string | null; user_metadata: Record<string, unknown> } }
     | null,
   profile: null as { credits: number; email: string | null } | null,
+  /** When set, the browser profiles read fails with this error instead. */
+  profileError: null as { code: string; message: string } | null,
   rpcOk: true,
 }));
 
@@ -91,6 +93,17 @@ vi.mock("../lib/supabase", async (importOriginal) => {
         builder.select = vi.fn(() => builder);
         builder.eq = vi.fn(() => builder);
         builder.maybeSingle = vi.fn(() => Promise.resolve({ data: state.profile, error: null }));
+        // AuthButton reads its balance with .single(); PostgREST reports a
+        // missing row as PGRST116, which is what the component keys off.
+        builder.single = vi.fn(() =>
+          Promise.resolve(
+            state.profileError
+              ? { data: null, error: state.profileError }
+              : state.profile
+                ? { data: state.profile, error: null }
+                : { data: null, error: { code: "PGRST116", message: "0 rows returned" } },
+          ),
+        );
         browserSingleton = {
           auth: {
             getSession: () => Promise.resolve({ data: { session: state.browserSession } }),
@@ -362,6 +375,7 @@ describe("Header credit counter updates live after generation", () => {
 
   afterEach(() => {
     state.browserSession = null;
+    state.profileError = null;
   });
 
   it("shows the real database balance on mount, not the 10-credit default", async () => {
@@ -373,6 +387,41 @@ describe("Header credit counter updates live after generation", () => {
 
     await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
     expect(document.querySelector(".qattan-auth-credits")?.textContent).toContain("7");
+  });
+
+  it("renders 0 — not the 10-credit default — for an account with no credits left", async () => {
+    state.profile = { credits: 0, email: OWNER_EMAIL };
+    render(
+      <QattanProviders locale="en">
+        <AuthButton />
+      </QattanProviders>,
+    );
+
+    await waitFor(() => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull());
+    const badge = document.querySelector(".qattan-auth-credits");
+    expect(badge?.getAttribute("data-credits-known")).toBe("true");
+    expect(badge?.textContent).toBe("◆0");
+    expect(badge?.textContent).not.toContain("10");
+  });
+
+  it("shows an unknown placeholder instead of 10 when the profiles read fails", async () => {
+    // An RLS denial (or offline blip) must never be reported as a 10-credit
+    // balance — that is exactly how a spent account appeared to still hold 10.
+    state.profileError = { code: "42501", message: "permission denied for table profiles" };
+    render(
+      <QattanProviders locale="en">
+        <AuthButton />
+      </QattanProviders>,
+    );
+
+    await waitFor(
+      () => expect(document.querySelector(".qattan-auth-credits")).not.toBeNull(),
+      { timeout: 3000 },
+    );
+    const badge = document.querySelector(".qattan-auth-credits");
+    expect(badge?.getAttribute("data-credits-known")).toBe("false");
+    expect(badge?.textContent).toBe("◆—");
+    expect(badge?.textContent).not.toContain("10");
   });
 
   it("applies the broadcast balance immediately after a generation", async () => {
