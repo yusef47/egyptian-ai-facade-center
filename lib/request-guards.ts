@@ -16,7 +16,7 @@ export type GuardResult = { allowed: true } | { allowed: false; retryAfterSecond
 const RATE_WINDOW_MS = 60_000;
 /**
  * 15 generations per rolling minute: comfortable for students exploring all
- * 9 tools during a testing session, while still blunting abusive bursts.
+ * 8 tools during a testing session, while still blunting abusive bursts.
  */
 const RATE_MAX_REQUESTS = 15;
 

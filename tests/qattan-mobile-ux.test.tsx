@@ -17,8 +17,8 @@ describe("Mobile UX — studio tool rail", () => {
     render(<QattanStudio locale="en" initialMode="exterior" />);
     const rail = document.querySelector(".qattan-studio-mode-rail");
     expect(rail).not.toBeNull();
-    // 9 registry tools + the legacy facade triptych pill.
-    expect(rail!.querySelectorAll(".qattan-studio-mode-pill").length).toBe(10);
+    // 8 registry tools + the legacy facade triptych pill.
+    expect(rail!.querySelectorAll(".qattan-studio-mode-pill").length).toBe(9);
     const selected = rail!.querySelectorAll('[aria-pressed="true"]');
     expect(selected.length).toBe(1);
     expect(selected[0].textContent).toContain("Exterior AI");

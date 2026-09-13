@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Qattan AI | منصة قطان المعمارية",
   description:
-    "Transform architectural sketches into photorealistic renders with AI. 10 free daily credits for engineering students.",
+    "Transform architectural sketches into photorealistic renders with AI. 10 free daily credits.",
   openGraph: {
     title: "Qattan AI – AI Architectural Visualization",
     description: "Transform sketches into photorealistic architectural renders. Free daily credits.",

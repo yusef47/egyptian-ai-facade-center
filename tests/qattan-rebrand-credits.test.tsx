@@ -71,7 +71,7 @@ describe("Rebrand — bilingual copy uses proprietary branding", () => {
 
 describe("Zero-watermark guarantee", () => {
   it("appends the no-watermark clause to every system-prompt mode", () => {
-    for (const mode of ["facade", "general", "cad", "engineering"] as const) {
+    for (const mode of ["facade", "general", "cad"] as const) {
       const request = buildOpenRouterRequest(
         "data:image/png;base64,AAAA",
         "Design brief text",

@@ -111,7 +111,7 @@ export default function RequireAuthModal({ open, onClose, returnTo }: RequireAut
           </li>
           <li>
             <Sparkles size={14} aria-hidden="true" />
-            {L ? "وصول فوري لكل الأدوات المعمارية التسع" : "Instant access to all nine AI tools"}
+            {L ? "وصول فوري لكل الأدوات المعمارية الثماني" : "Instant access to all eight AI tools"}
           </li>
           <li>
             <Sparkles size={14} aria-hidden="true" />
