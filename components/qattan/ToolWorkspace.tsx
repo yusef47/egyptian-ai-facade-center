@@ -6,7 +6,10 @@ import { useEffect, useRef, useState, type DragEvent, type TouchEvent } from "re
 import { createPortal } from "react-dom";
 import { compressImageFile, MAX_DATA_URL_BYTES } from "@/lib/image";
 import { restoreFacade } from "@/lib/restore";
-import { analyzeEngineeringDrawing } from "@/lib/engineering";
+import {
+  ENGINEERING_UNREADABLE_RESPONSE_BILINGUAL,
+  analyzeEngineeringDrawing,
+} from "@/lib/engineering";
 import { isRenderableGeometry, type EngineeringGeometry } from "../../lib/engineering-geometry";
 import { getSupabaseSessionGate, QATTAN_AUTH_REQUIRED_EVENT } from "../../lib/supabase";
 import {
@@ -229,11 +232,9 @@ export default function ToolWorkspace({ tool, onSessionChange }: ToolWorkspacePr
       if (isEngineering) {
         const analysis = await analyzeEngineeringDrawing({ imageDataUrl, prompt: fullPrompt });
         if (!isRenderableGeometry(analysis.geometry)) {
-          setError(
-            L
-              ? "تعذّر تحليل هذا الرسم الهندسي. يرجى رفع صورة أوضح بأبعاد ظاهرة."
-              : "Could not analyze this drawing. Please upload a clearer image with visible dimensions.",
-          );
+          // The server refunds failed readings itself; this is the last line of
+          // defence for a body that slipped through without usable geometry.
+          setError(ENGINEERING_UNREADABLE_RESPONSE_BILINGUAL);
           return;
         }
         setCadGeometry(analysis.geometry);

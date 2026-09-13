@@ -11,7 +11,11 @@ import {
 import { ENGINE_BUSY_BILINGUAL } from "../../../../lib/openrouter-engine.js";
 import { RATE_LIMIT_MESSAGE_BILINGUAL, rateLimit } from "../../../../lib/request-guards.js";
 import { validateImageDataUrl } from "../../../../lib/image-validation.js";
-import { analyzeEngineeringGeometry } from "../../../../lib/engineering-engine.js";
+import {
+  ENGINEERING_EXTRACTION_FAILURE_BILINGUAL,
+  analyzeEngineeringGeometry,
+} from "../../../../lib/engineering-engine.js";
+import { isRenderableGeometry } from "../../../../lib/engineering-geometry.js";
 
 /**
  * Tool #9 — Engineering Multiview & 3D.
@@ -138,21 +142,27 @@ export async function POST(request: Request): Promise<NextResponse> {
     process.env.OPENROUTER_API_KEY,
   );
 
-  if (!result.ok) {
-    // Compensating transaction: a failed analysis must not consume a credit.
+  // One failure contract for both a failed reading and a geometry the viewer
+  // could not render: the credit is always refunded and the user always gets an
+  // actionable bilingual message — never a bare 200 with an unusable body.
+  const failWithRefund = async (status: number, message: string): Promise<NextResponse> => {
     const refund = await refundGenerationCredit(userId);
     creditsRemaining = typeof refund.remaining === "number" ? refund.remaining : creditsRemaining;
     if (creditsRemaining === null) creditsRemaining = await readProfileCredits(admin, userId);
+    console.log("[ENGINEERING_REFUNDED]", {
+      userId,
+      ok: refund.ok,
+      remaining: refund.remaining ?? null,
+    });
     console.log(
-      `[ENGINEERING_REFUNDED] ${JSON.stringify({ userId, ok: refund.ok, remaining: refund.remaining ?? null })}`,
+      `[ENGINEERING_RESPONSE] ${JSON.stringify({ ok: false, status, creditsRemaining })}`,
     );
-    console.log(
-      `[ENGINEERING_RESPONSE] ${JSON.stringify({ ok: false, status: result.status, creditsRemaining })}`,
-    );
-    return NextResponse.json(
-      { error: result.message, creditsRemaining },
-      { status: result.status },
-    );
+    return NextResponse.json({ error: message, creditsRemaining }, { status });
+  };
+
+  if (!result.ok) return failWithRefund(result.status, result.message);
+  if (!isRenderableGeometry(result.geometry)) {
+    return failWithRefund(422, ENGINEERING_EXTRACTION_FAILURE_BILINGUAL);
   }
 
   console.log(

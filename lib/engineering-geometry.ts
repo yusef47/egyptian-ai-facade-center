@@ -72,6 +72,12 @@ export type EngineeringGeometry = {
   dimensions: EngineeringDimension[];
   /** Short human label for the deduced part, when the analyzer provides one. */
   label?: string;
+  /**
+   * True when the drawing did not yield real block dimensions and the default
+   * extents were substituted — the UI must say so rather than passing them off
+   * as measured.
+   */
+  estimated?: boolean;
 };
 
 /** A single subtractive solid in the compiled plan (Three.js space). */
@@ -105,6 +111,14 @@ export const MAX_OPERATIONS = 24;
 export const MAX_DIMENSIONS = 12;
 const MAX_BLOCK_EXTENT = 5_000;
 const MIN_BLOCK_EXTENT = 0.01;
+
+/**
+ * Safe fallback extents. When the analyzer returns a geometry object whose
+ * block dimensions are missing or null we still render the part with these
+ * extents (and flag the geometry as `estimated`) so a partially-readable
+ * drawing degrades into "check the numbers" instead of a hard failure.
+ */
+export const DEFAULT_ENGINEERING_BLOCK: EngineeringBlock = { width: 64, height: 50, depth: 40 };
 
 /** The four panels of the CAD board, in reading order. */
 export const ENGINEERING_VIEWS = ["front", "side", "top", "isometric"] as const;
@@ -281,14 +295,29 @@ function normalizeOperation(raw: unknown): EngineeringOperation | null {
 export function normalizeEngineeringGeometry(raw: unknown): EngineeringGeometry | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
-  const block = normalizeBlock(record.block ?? record.base ?? record.primitive);
-  if (!block) return null;
-
   const rawOperations = Array.isArray(record.operations)
     ? record.operations
     : Array.isArray(record.cuts)
       ? record.cuts
       : [];
+  const rawDimensions = Array.isArray(record.dimensions) ? record.dimensions : [];
+
+  // Block dimensions missing/null is recoverable: fall back to the default
+  // extents and mark the result as estimated. A payload carrying NO geometry
+  // signal at all is not recoverable — that is a failed reading, not a part.
+  let estimated = false;
+  let block = normalizeBlock(record.block ?? record.base ?? record.primitive);
+  if (!block) {
+    const hasSignal =
+      [record.block, record.base, record.primitive].some(
+        (candidate) => candidate !== undefined && candidate !== null,
+      ) ||
+      rawOperations.length > 0 ||
+      rawDimensions.length > 0;
+    if (!hasSignal) return null;
+    block = { ...DEFAULT_ENGINEERING_BLOCK };
+    estimated = true;
+  }
   const operations: EngineeringOperation[] = [];
   for (const candidate of rawOperations) {
     if (operations.length >= MAX_OPERATIONS) break;
@@ -296,7 +325,6 @@ export function normalizeEngineeringGeometry(raw: unknown): EngineeringGeometry 
     if (operation) operations.push(operation);
   }
 
-  const rawDimensions = Array.isArray(record.dimensions) ? record.dimensions : [];
   const dimensions: EngineeringDimension[] = [];
   for (const candidate of rawDimensions) {
     if (dimensions.length >= MAX_DIMENSIONS) break;
@@ -313,6 +341,7 @@ export function normalizeEngineeringGeometry(raw: unknown): EngineeringGeometry 
   }
 
   const geometry: EngineeringGeometry = { block, operations, dimensions };
+  if (estimated) geometry.estimated = true;
   const rawLabel = record.label ?? record.name ?? record.part;
   if (typeof rawLabel === "string" && rawLabel.trim()) {
     geometry.label = rawLabel.trim().slice(0, 120);

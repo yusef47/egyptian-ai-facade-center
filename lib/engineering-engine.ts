@@ -31,11 +31,15 @@ import {
 export const ENGINEERING_ANALYSIS_MODEL = "google/gemini-3.1-flash-lite";
 
 /**
- * Friendly, provider-free failure notice. Per the tool spec this is shown when
- * the drawing cannot be read — the credit is refunded server-side.
+ * Friendly, provider-free failure notice for the 422 path. The route refunds the
+ * deducted credit BEFORE returning this message, so the parenthetical claim is
+ * always true on this path.
  */
-export const ENGINEERING_ANALYSIS_FAILURE_BILINGUAL =
-  "تعذّر تحليل هذا الرسم الهندسي. يرجى رفع صورة أوضح بأبعاد ظاهرة. | Could not analyze this drawing. Please upload a clearer image with visible dimensions.";
+export const ENGINEERING_EXTRACTION_FAILURE_BILINGUAL =
+  "لم نتمكن من قراءة تفاصيل الرسم الهندسي. يرجى رفع صورة أوضح للمساقط (تم استرجاع رصيدك). | Could not extract geometry from this drawing. Please upload a clearer image (credit refunded).";
+
+/** @deprecated Use ENGINEERING_EXTRACTION_FAILURE_BILINGUAL. */
+export const ENGINEERING_ANALYSIS_FAILURE_BILINGUAL = ENGINEERING_EXTRACTION_FAILURE_BILINGUAL;
 
 export type EngineeringAnalysisResult =
   | { ok: true; geometry: EngineeringGeometry }
@@ -176,10 +180,9 @@ export function buildEngineeringAnalysisRequest(
   };
 }
 
-/** Extracts the first balanced JSON object from a model response. */
-function extractBalancedJson(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start < 0) return null;
+/** Extracts the balanced JSON object that starts at `start`, if any. */
+function balancedSpanAt(text: string, start: number): string | null {
+  if (text[start] !== "{") return null;
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -201,6 +204,21 @@ function extractBalancedJson(text: string): string | null {
   return null;
 }
 
+/**
+ * Balanced `{...}` spans, tried from EVERY opening brace (bounded). Starting
+ * only at the first brace is what breaks on a preamble that itself contains one
+ * — e.g. `Answer: {" then {"block":{…}}` — so each brace gets a chance.
+ */
+export function balancedJsonCandidates(text: string, limit = 16): string[] {
+  const candidates: string[] = [];
+  for (let index = 0; index < text.length && candidates.length < limit; index += 1) {
+    if (text[index] !== "{") continue;
+    const span = balancedSpanAt(text, index);
+    if (span) candidates.push(span);
+  }
+  return candidates;
+}
+
 function tryParse(candidate: string): unknown {
   try {
     return JSON.parse(candidate) as unknown;
@@ -217,10 +235,16 @@ export function extractEngineeringGeometryPayload(text: unknown): unknown {
   if (typeof text !== "string" || text.trim().length === 0) return null;
   const trimmed = text.trim();
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed);
+  // Greedy `{...}` sweep as a last resort: catches an object glued to prose or
+  // spread across lines that the balanced scanner rejected (e.g. an unbalanced
+  // brace inside a string). Tried last so it can never win over a precise match.
+  const greedy = /\{[\s\S]*\}/.exec(trimmed);
   const candidates = [
     fenced?.[1]?.trim() ?? "",
+    ...balancedJsonCandidates(fenced?.[1] ?? trimmed),
+    ...balancedJsonCandidates(trimmed),
     trimmed,
-    extractBalancedJson(trimmed) ?? "",
+    greedy?.[0] ?? "",
   ].filter((candidate) => candidate.length > 0);
 
   for (const candidate of candidates) {
@@ -291,6 +315,11 @@ export async function analyzeEngineeringGeometry(
     { model: OPENROUTER_MODEL, jsonMode: false },
   ];
 
+  // Distinguishes "the engine never answered" from "the engine answered but the
+  // drawing could not be read": only the second is the user's problem to fix.
+  let sawUpstreamFailure = false;
+  let sawSuccessfulResponse = false;
+
   try {
     for (const attempt of attempts) {
       const request = buildEngineeringAnalysisRequest(imageDataUrl, brief, key, attempt);
@@ -299,6 +328,7 @@ export async function analyzeEngineeringGeometry(
 
       if (!upstream.ok) {
         // Server-side diagnostic only: never surfaced to the client.
+        sawUpstreamFailure = true;
         console.log(
           `[ENGINEERING_UPSTREAM] status=${upstream.status} attempt=${attempt.model} detail=${JSON.stringify(
             extractUpstreamMessage(data).slice(0, 200),
@@ -306,6 +336,7 @@ export async function analyzeEngineeringGeometry(
         );
         continue;
       }
+      sawSuccessfulResponse = true;
 
       const payload = extractEngineeringGeometryPayload(extractMessageText(data));
       const geometry = normalizeEngineeringGeometry(payload);
@@ -325,5 +356,10 @@ export async function analyzeEngineeringGeometry(
     return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
   }
 
-  return { ok: false, status: 422, message: ENGINEERING_ANALYSIS_FAILURE_BILINGUAL };
+  // Nothing but upstream errors: that is an engine problem, never "your drawing
+  // is unclear". Both paths refund the credit in the route.
+  if (sawUpstreamFailure && !sawSuccessfulResponse) {
+    return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
+  }
+  return { ok: false, status: 422, message: ENGINEERING_EXTRACTION_FAILURE_BILINGUAL };
 }

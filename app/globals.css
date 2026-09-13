@@ -1646,6 +1646,16 @@ html[data-qattan-theme="light"] .qattan-admin-title {
 .qattan-cad-meta { display: grid; gap: 3px; min-width: 0; }
 .qattan-cad-part { color: #e5c158; font-size: 13px; font-weight: 700; }
 .qattan-cad-count { color: #a5adbd; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.qattan-cad-estimated {
+  margin-top: 2px;
+  padding: 3px 8px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f0b64a;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
 .qattan-cad-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .qattan-cad-action {
   display: inline-flex;
@@ -1681,6 +1691,11 @@ html[data-qattan-theme="light"] .qattan-cad-cell[data-view="side"] { border-bott
 html[data-qattan-theme="light"] .qattan-cad-label { border-color: rgba(165, 129, 63, 0.5); color: #7c5f16; }
 html[data-qattan-theme="light"] .qattan-cad-part { color: #8a6d1f; }
 html[data-qattan-theme="light"] .qattan-cad-count { color: #64748b; }
+html[data-qattan-theme="light"] .qattan-cad-estimated {
+  border-color: rgba(180, 83, 9, 0.4);
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+}
 html[data-qattan-theme="light"] .qattan-cad-action { border-color: rgba(165, 129, 63, 0.45); background: #ffffff; color: #1e293b; }
 html[data-qattan-theme="light"] .qattan-cad-action:hover { background: rgba(212, 175, 55, 0.12); }
 html[data-qattan-theme="light"] .qattan-cad-action-primary { color: #1a1206; }

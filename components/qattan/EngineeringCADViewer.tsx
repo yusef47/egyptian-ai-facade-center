@@ -648,6 +648,13 @@ export default function EngineeringCADViewer({
             {" · "}
             {L ? `${plan.cuts.length} عملية قطع` : `${plan.cuts.length} cut operations`}
           </span>
+          {geometry.estimated && (
+            <span className="qattan-cad-estimated">
+              {L
+                ? "⚠ الأبعاد تقديرية (لم تُقرأ من الرسم) — راجع المقاسات قبل الاستخدام"
+                : "⚠ Dimensions estimated (not read from the drawing) — verify before use"}
+            </span>
+          )}
         </div>
         <div className="qattan-cad-actions">
           <button type="button" className="qattan-cad-action" onClick={resetView}>

@@ -17,6 +17,15 @@ export interface AnalyzeEngineeringResult {
 }
 
 /**
+ * Shown when a 2xx response carries no usable geometry (truncated body, or a
+ * crash between header and payload). Deliberately does NOT claim a refund — a
+ * 2xx means the server completed and the credit stands; only the server's own
+ * 422 message may promise the refund, because only it knows a refund ran.
+ */
+export const ENGINEERING_UNREADABLE_RESPONSE_BILINGUAL =
+  "لم نتمكن من قراءة تفاصيل الرسم الهندسي. يرجى إعادة المحاولة بصورة أوضح. | Could not extract geometry from this drawing. Please retry with a clearer image.";
+
+/**
  * Calls the Next.js route /api/engineering/analyze with the uploaded drawing and
  * the engineering brief. The server reads the drawing with the vision model and
  * returns structured 3D geometry (NOT an image); the Three.js CAD engine in the
@@ -79,7 +88,9 @@ export async function analyzeEngineeringDrawing(
 
   const geometry = (data as { geometry?: unknown } | null)?.geometry;
   if (!geometry || typeof geometry !== "object") {
-    throw new Error("No geometry returned");
+    // Covers a non-JSON body too: a proxy interstitial or a truncated response
+    // used to surface as a bare "No geometry returned" with no way forward.
+    throw new Error(ENGINEERING_UNREADABLE_RESPONSE_BILINGUAL);
   }
   return { geometry: geometry as EngineeringGeometry, creditsRemaining };
 }

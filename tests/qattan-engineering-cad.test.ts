@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_ENGINEERING_BLOCK,
   ENGINEERING_VIEW_LABELS,
   MAX_OPERATIONS,
   buildEngineeringSolidPlan,
@@ -13,7 +14,9 @@ import {
   ENGINEERING_ANALYSIS_FAILURE_BILINGUAL,
   ENGINEERING_ANALYSIS_MODEL,
   ENGINEERING_ANALYSIS_SYSTEM_PROMPT,
+  ENGINEERING_EXTRACTION_FAILURE_BILINGUAL,
   analyzeEngineeringGeometry,
+  balancedJsonCandidates,
   buildEngineeringAnalysisRequest,
   extractEngineeringGeometryPayload,
   extractMessageText,
@@ -109,6 +112,36 @@ describe("Tool #9 — geometry normalisation (the AI's JSON contract)", () => {
     expect(geometry?.operations.map((op) => op.type)).toEqual(["notch_top", "tunnel_bottom"]);
     expect(geometry?.operations[0].x).toBe(10);
     expect(geometry?.operations[0].width).toBe(20);
+  });
+
+  it("substitutes the safe fallback extents when block dimensions are missing or null", () => {
+    const geometry = normalizeEngineeringGeometry({
+      block: { width: null, height: null, depth: null },
+      operations: [{ type: "notch_top", x: 10, width: 8, height: 6 }],
+    });
+    expect(geometry?.block).toEqual(DEFAULT_ENGINEERING_BLOCK);
+    // ...and it says so, instead of passing defaults off as measured values.
+    expect(geometry?.estimated).toBe(true);
+    expect(geometry?.operations).toHaveLength(1);
+  });
+
+  it("falls back to the default extents when only operations were returned", () => {
+    const geometry = normalizeEngineeringGeometry({
+      operations: [{ type: "tunnel_bottom", x: 0, width: 10, height: 8 }],
+    });
+    expect(geometry?.block).toEqual(DEFAULT_ENGINEERING_BLOCK);
+    expect(geometry?.estimated).toBe(true);
+  });
+
+  it("still refuses a payload with no geometry signal at all", () => {
+    expect(normalizeEngineeringGeometry({})).toBeNull();
+    expect(normalizeEngineeringGeometry({ notes: "could not read" })).toBeNull();
+    expect(normalizeEngineeringGeometry({ operations: [] })).toBeNull();
+  });
+
+  it("does not mark a drawing with real dimensions as estimated", () => {
+    const geometry = normalizeEngineeringGeometry(BRIEF_EXAMPLE);
+    expect(geometry?.estimated).toBeUndefined();
   });
 
   it("caps the operation list so CSG stays bounded", () => {
@@ -375,6 +408,16 @@ describe("Tool #9 — analysis engine", () => {
     expect(extractEngineeringGeometryPayload(undefined)).toBeNull();
   });
 
+  it("recovers geometry past a preamble that itself contains a brace", () => {
+    const text = 'Answer: {" then {"block":{"width":64,"height":50,"depth":40}, "operations": []}';
+    // The first balanced span is unusable; the extractor must try every brace.
+    expect(balancedJsonCandidates(text).length).toBeGreaterThanOrEqual(2);
+    expect(extractEngineeringGeometryPayload(text)).toEqual({
+      block: { width: 64, height: 50, depth: 40 },
+      operations: [],
+    });
+  });
+
   it("reads both string and part-array message contents", () => {
     expect(
       extractMessageText({ choices: [{ message: { content: "plain" } }] }),
@@ -454,7 +497,7 @@ describe("Tool #9 — analysis engine", () => {
     expect(secondBody.model).toBe(OPENROUTER_MODEL);
   });
 
-  it("asks for a clearer drawing (and a refund) when the answer is unusable", async () => {
+  it("returns the 422 extraction notice — including the refund claim — when the answer is unusable", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ choices: [{ message: { content: "sorry!" } }] }), {
         status: 200,
@@ -470,9 +513,11 @@ describe("Tool #9 — analysis engine", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(422);
-      expect(result.message).toBe(ENGINEERING_ANALYSIS_FAILURE_BILINGUAL);
-      expect(result.message).toMatch(/Could not analyze this drawing/);
-      expect(result.message).toMatch(/تعذّر تحليل هذا الرسم الهندسي/);
+      expect(result.message).toBe(ENGINEERING_EXTRACTION_FAILURE_BILINGUAL);
+      expect(result.message).toMatch(/Could not extract geometry from this drawing/);
+      expect(result.message).toMatch(/upload a clearer image \(credit refunded\)/);
+      expect(result.message).toMatch(/لم نتمكن من قراءة تفاصيل الرسم الهندسي/);
+      expect(result.message).toMatch(/تم استرجاع رصيدك/);
     }
   });
 
@@ -488,13 +533,20 @@ describe("Tool #9 — analysis engine", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.status).toBe(422);
-      expect(result.message).toBe(ENGINEERING_ANALYSIS_FAILURE_BILINGUAL);
+      // An engine that never answered must not tell the student their drawing
+      // was unclear (and must not claim a drawing-specific failure).
+      expect(result.status).toBe(502);
+      expect(result.message).toBe(ENGINE_BUSY_BILINGUAL);
+      expect(result.message).not.toMatch(/clearer image/);
     }
   });
 
   it("never names the underlying provider in any failure copy", () => {
-    for (const message of [ENGINEERING_ANALYSIS_FAILURE_BILINGUAL, ENGINE_BUSY_BILINGUAL]) {
+    for (const message of [
+      ENGINEERING_EXTRACTION_FAILURE_BILINGUAL,
+      ENGINEERING_ANALYSIS_FAILURE_BILINGUAL,
+      ENGINE_BUSY_BILINGUAL,
+    ]) {
       expect(message).not.toMatch(/openrouter|gemini/i);
     }
     expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).not.toMatch(/openrouter|gemini/i);
@@ -543,7 +595,7 @@ describe("Tool #9 — analyze route wiring", () => {
     expect(route).toContain("creditsRemaining");
     // The refund path returns the post-refund balance too, so the header badge
     // can never drift after a failed analysis.
-    expect(route).toContain("error: result.message, creditsRemaining");
+    expect(route).toContain("return NextResponse.json({ error: message, creditsRemaining }, { status })");
   });
 
   it("ships the decision-point diagnostics", () => {
@@ -557,6 +609,17 @@ describe("Tool #9 — analyze route wiring", () => {
     ]) {
       expect(route).toContain(tag);
     }
+  });
+
+  it("refunds and reports 422 when the geometry is not renderable", () => {
+    // The 200 path is guarded: an unusable block must never be returned as a
+    // success, because the client cannot render it and the credit was charged.
+    expect(route).toContain("isRenderableGeometry(result.geometry)");
+    expect(route).toContain("failWithRefund(422, ENGINEERING_EXTRACTION_FAILURE_BILINGUAL)");
+    // Every failure path goes through the one refund helper.
+    expect(route).toContain("const failWithRefund");
+    expect(route.match(/refundGenerationCredit\(/g)?.length).toBe(1);
+    expect(route).toContain('console.log("[ENGINEERING_REFUNDED]", {');
   });
 
   it("is POST-only and marks itself as a node runtime", () => {

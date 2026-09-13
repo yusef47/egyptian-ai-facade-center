@@ -131,6 +131,19 @@ describe("Engineering CAD viewer", () => {
     errorSpy.mockRestore();
   });
 
+  it("flags estimated block dimensions instead of passing them off as measured", async () => {
+    const errorSpy = silenceCanvasConsole();
+    const { rerender } = render(<EngineeringCADViewer geometry={H_PROFILE} locale="en" />);
+    expect(screen.queryByText(/Dimensions estimated/)).not.toBeInTheDocument();
+
+    rerender(<EngineeringCADViewer geometry={{ ...H_PROFILE, estimated: true }} locale="en" />);
+    expect(screen.getByText(/Dimensions estimated \(not read from the drawing\)/)).toBeInTheDocument();
+
+    rerender(<EngineeringCADViewer geometry={{ ...H_PROFILE, estimated: true }} locale="ar" />);
+    expect(screen.getByText(/الأبعاد تقديرية/)).toBeInTheDocument();
+    errorSpy.mockRestore();
+  });
+
   it("shows Arabic captions in the Arabic locale", () => {
     const errorSpy = silenceCanvasConsole();
     render(<EngineeringCADViewer geometry={H_PROFILE} locale="ar" />);
@@ -195,7 +208,7 @@ describe("Engineering workspace wiring", () => {
   it("surfaces the server's friendly message when the drawing cannot be read", async () => {
     const errorSpy = silenceCanvasConsole();
     const message =
-      "تعذّر تحليل هذا الرسم الهندسي. يرجى رفع صورة أوضح بأبعاد ظاهرة. | Could not analyze this drawing. Please upload a clearer image with visible dimensions.";
+      "لم نتمكن من قراءة تفاصيل الرسم الهندسي. يرجى رفع صورة أوضح للمساقط (تم استرجاع رصيدك). | Could not extract geometry from this drawing. Please upload a clearer image (credit refunded).";
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -211,7 +224,8 @@ describe("Engineering workspace wiring", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Generate/i })[0]);
 
     const alert = await waitFor(() => screen.getByRole("alert"));
-    expect(alert.textContent).toContain("Could not analyze this drawing");
+    expect(alert.textContent).toContain("Could not extract geometry from this drawing");
+    expect(alert.textContent).toContain("credit refunded");
     expect(document.querySelector("canvas.qattan-cad-canvas")).toBeNull();
     errorSpy.mockRestore();
   });
