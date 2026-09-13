@@ -40,6 +40,27 @@ const H_PROFILE: EngineeringGeometry = {
   dimensions: [],
 };
 
+/** Pulls standalone `{ … }` JSON blocks out of the prompt text. */
+function promptJsonBlocks(text: string): unknown[] {
+  const blocks: unknown[] = [];
+  let start = -1;
+  const lines = text.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (start < 0 && line === "{") start = index;
+    else if (start >= 0 && line === "}") {
+      const candidate = text.split("\n").slice(start, index + 1).join("\n");
+      start = -1;
+      try {
+        blocks.push(JSON.parse(candidate) as unknown);
+      } catch {
+        /* Not a standalone JSON block (the annotated schema, for instance). */
+      }
+    }
+  }
+  return blocks;
+}
+
 function cutFor(geometry: EngineeringGeometry, index: number): EngineeringCut {
   const cut = buildEngineeringSolidPlan(geometry).cuts[index];
   expect(cut).toBeDefined();
@@ -194,6 +215,34 @@ describe("Tool #9 — CSG solid compilation", () => {
     expect(cut.size[2]).toBeGreaterThan(40);
   });
 
+  it("accepts an explicit endX for the incline's far edge", () => {
+    const cut = cutFor(
+      {
+        block: { width: 64, height: 50, depth: 40 },
+        operations: [{ type: "incline", axis: "x", fromY: 50, toY: 0, atX: 34, endX: 0 }],
+        dimensions: [],
+      },
+      0,
+    );
+    if (cut.kind !== "box") return;
+    // Plane from (34, 50) to (0, 0) — the worked example in the analyzer prompt.
+    expect(cut.rotationZ).toBeCloseTo(Math.atan2(0 - 50, 0 - 34), 5);
+  });
+
+  it("defaults the incline's far edge to the block edge it faces", () => {
+    const cut = cutFor(
+      {
+        block: { width: 64, height: 50, depth: 40 },
+        operations: [{ type: "incline", axis: "left", atX: 34, fromY: 50, toY: 20 }],
+        dimensions: [],
+      },
+      0,
+    );
+    if (cut.kind !== "box") return;
+    // (34, 50) -> (64, 20): a 45-degree descending roof.
+    expect(cut.rotationZ).toBeCloseTo(-Math.PI / 4, 5);
+  });
+
   it("models a chamfer as a 45-degree corner cut", () => {
     const cut = cutFor(
       {
@@ -257,7 +306,36 @@ describe("Tool #9 — analysis engine", () => {
       expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toContain(`"type": "${type}"`);
     }
     expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toMatch(/LEFT-BOTTOM-BACK corner/);
-    expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toMatch(/hidden lines as REAL internal geometry/i);
+    expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toMatch(/DASHED hidden lines[\s\S]{0,40}as REAL internal geometry/i);
+  });
+
+  it("carries few-shot worked examples that pin the drawing-to-operations mapping", () => {
+    const system = ENGINEERING_ANALYSIS_SYSTEM_PROMPT;
+    expect(system).toContain("WORKED EXAMPLES");
+    // Example 1: incline + top notch + bottom tunnel, verbatim schema shape.
+    expect(system).toContain('"type": "incline", "axis": "x", "fromY": 50, "toY": 0, "atX": 34, "endX": 0');
+    expect(system).toContain('"block": { "width": 64, "height": 50, "depth": 40 }');
+    // Example 2: the H-profile pairing of notch_top with tunnel_bottom.
+    expect(system).toContain('"block": { "width": 50, "height": 50, "depth": 40 }');
+    expect(system).toMatch(/BOTH halves are separate operations/i);
+    // Example 3: step + chamfer + through_hole.
+    expect(system).toContain('"type": "step", "x": 30, "y": 25, "width": 30, "height": 15');
+    expect(system).toContain('"type": "through_hole", "axis": "z"');
+    // And every worked example is valid JSON that the real normaliser accepts.
+    const examples = promptJsonBlocks(system).filter((block) =>
+      Array.isArray((block as { operations?: unknown }).operations),
+    ) as { block: unknown; operations: unknown[] }[];
+    expect(examples.length).toBeGreaterThanOrEqual(3);
+    for (const example of examples) {
+      const geometry = normalizeEngineeringGeometry(example);
+      expect(geometry?.operations.length).toBe(example.operations.length);
+    }
+  });
+
+  it("tells the analyzer to read dashed hidden lines as through cuts", () => {
+    expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toContain('"- - -" stroke convention');
+    expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toMatch(/DASHED hidden lines/i);
+    expect(ENGINEERING_ANALYSIS_SYSTEM_PROMPT).toMatch(/through cut/i);
   });
 
   it("builds a text-output vision request with the JSON response format", () => {

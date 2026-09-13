@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import QattanStudio from "../components/qattan/QattanStudio";
 import EngineeringCADViewer, {
+  CAD_EDGE_THRESHOLD,
   engineeringPanelDimensions,
   engineeringViewportRects,
   solidToObjText,
@@ -84,6 +86,17 @@ describe("Engineering CAD board — dimension chips", () => {
     expect(engineeringPanelDimensions(plan, "side")).toEqual(["40 × 50"]);
     expect(engineeringPanelDimensions(plan, "top")).toEqual(["64 × 40"]);
     expect(engineeringPanelDimensions(plan, "isometric")).toEqual(["64 × 50 × 40"]);
+  });
+});
+
+describe("Engineering CAD board — wireframe cleanliness", () => {
+  it("extracts edges with a threshold that removes triangulation diagonals", () => {
+    expect(CAD_EDGE_THRESHOLD).toBeGreaterThanOrEqual(15);
+    expect(CAD_EDGE_THRESHOLD).toBeLessThanOrEqual(30);
+    // The threshold is the one actually handed to EdgesGeometry.
+    const source = readFileSync("components/qattan/EngineeringCADViewer.tsx", "utf8");
+    expect(source).toContain("new THREE.EdgesGeometry(solid.geometry, CAD_EDGE_THRESHOLD)");
+    expect(source).not.toMatch(/EdgesGeometry\([^)]*,\s*1[0-4]\)/);
   });
 });
 

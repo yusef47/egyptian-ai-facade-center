@@ -119,6 +119,14 @@ type CadWorld = {
   radius: number;
 };
 
+/**
+ * Edge extraction tolerance in degrees. CSG output is triangulated, so a low
+ * threshold draws every triangulation diagonal as a stray internal line in the
+ * flat orthographic views. 25° collapses coplanar triangles while still keeping
+ * real chamfers, inclines and notch corners.
+ */
+export const CAD_EDGE_THRESHOLD = 25;
+
 const DEFAULT_ROTATION = {
   azimuth: Math.PI / 4,
   // True isometric elevation: atan(1/√2) ≈ 35.264°.
@@ -344,7 +352,7 @@ export default function EngineeringCADViewer({
         mesh.userData.extent = { width, height, depth };
         scene.add(mesh);
 
-        const edgeGeometry = new THREE.EdgesGeometry(solid.geometry, 12);
+        const edgeGeometry = new THREE.EdgesGeometry(solid.geometry, CAD_EDGE_THRESHOLD);
         const visibleEdges = new THREE.LineSegments(
           edgeGeometry,
           new THREE.LineBasicMaterial({ color: 0x0f172a, linewidth: 1 }),

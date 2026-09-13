@@ -60,7 +60,7 @@ RULES
 - Identify the part's base rectangular BLOCK (its bounding box): width (X), height (Y), depth (Z). Use the drawing's own units and proportions; when only a scale drawing is given, keep the true proportions.
 - The block ALWAYS starts as a solid rectangular box. Every other feature is an OPERATION that removes material from it.
 - Model EVERY cut you can see or deduce: top notches, slots and U-cuts (notch_top), bottom tunnels and clearance channels (tunnel_bottom), slots open on a side face (slot_side), through holes (through_hole), stepped shoulders (step), chamfered corners (chamfer), inclined or sloped faces (incline).
-- Read hidden lines as REAL internal geometry. A horizontal dashed line is an internal ceiling or a front-to-back through-tunnel; a dashed rectangle is a void buried inside the body. Never ignore a dashed line and never invent a feature that is not visible or geometrically implied.
+- Read the DASHED hidden lines (the "- - -" stroke convention) as REAL internal geometry cutting through the object: a horizontal dashed line is an internal ceiling or a front-to-back through-tunnel, a dashed vertical/horizontal pair is an open notch, and a dashed rectangle is a void buried inside the body. Anything drawn dashed on the given views must appear as a through cut in your operations. Never ignore a dashed line and never invent a feature that is not visible or geometrically implied.
 - A tunnel, channel or slot drawn through the part must be modelled as a THROUGH cut: omit "depth" (or set it equal to the block depth).
 - Feature parity is mandatory: a void visible in one view must appear in the corresponding operations, so the flat projections and the isometric agree.
 - COORDINATES are measured inside the block from its LEFT-BOTTOM-BACK corner: x in [0, width] left to right, y in [0, height] bottom to top, z in [0, depth] back to front. Give the LEFT/BOTTOM/BACK corner of the material each operation removes (for through_hole give the hole CENTRE).
@@ -77,7 +77,7 @@ OUTPUT JSON SCHEMA
     { "type": "through_hole",   "axis": "x"|"y"|"z", "x": number, "y": number, "z": number, "diameter": number },
     { "type": "step",           "x": number, "y": number, "width": number, "height": number },
     { "type": "chamfer",        "axis": "left"|"right", "width": number },
-    { "type": "incline",        "axis": "left"|"right", "atX": number, "fromY": number, "toY": number }
+    { "type": "incline",        "axis": "left"|"right"|"x", "atX": number, "fromY": number, "toY": number, "endX": number|null }
   ],
   "dimensions": [
     { "label": "64", "position": "bottom", "view": "front" }
@@ -91,7 +91,44 @@ OPERATION SEMANTICS
 - through_hole: a drilled hole passing right through the part along the given axis (default "z" front-to-back). x, y, z are the hole CENTRE coordinates and diameter is its diameter.
 - step: a rectangular shoulder removed from the TOP face — x = left edge of the step, width = its span, y = the level the step drops to. Everything above y in that span is removed.
 - chamfer: a 45-degree corner cut. axis "left" removes the top-left corner, "right" the top-right corner; width = the size of the chamfer along both axes.
-- incline: an inclined/sloped face. The plane passes through the point (atX, fromY) and reaches height toY at the far side: axis "left" descends towards the right edge (x = width), axis "right" descends towards the left edge (x = 0). Everything ABOVE that plane is removed. fromY is the high side, toY the low side.
+- incline: an inclined/sloped face. The plane runs from the point (atX, fromY) to the point (endX, toY); endX defaults to the far block edge (x = width for axis "left", x = 0 for axis "right"). Everything ABOVE that plane is removed. fromY is the high side, toY the low side.
+
+WORKED EXAMPLES (study the mapping from drawing to operations)
+Example 1 — inclined face + top notch + bottom tunnel (the classic exercise). A block whose front elevation shows a sloping roof on the right, a rectangular notch cut down into the top face and a rectangular tunnel through the bottom, with the hidden lines confirming both cut through front-to-back:
+{
+  "label": "wedge with top notch and bottom tunnel",
+  "block": { "width": 64, "height": 50, "depth": 40 },
+  "operations": [
+    { "type": "incline", "axis": "x", "fromY": 50, "toY": 0, "atX": 34, "endX": 0 },
+    { "type": "notch_top", "x": 34, "width": 10, "height": 20, "depth": 40 },
+    { "type": "tunnel_bottom", "x": 0, "width": 16, "height": 20, "depth": 40 }
+  ]
+}
+Note how each dashed feature in the side view became its own through cut, and how the sloping roof became an incline from (34, 50) to (0, 0).
+
+Example 2 — H-profile / dual U-slot: the same span cut down from the top AND up from the bottom, so the side view reads like the letter H:
+{
+  "label": "H-profile bracket",
+  "block": { "width": 50, "height": 50, "depth": 40 },
+  "operations": [
+    { "type": "notch_top", "x": 15, "width": 20, "height": 20, "depth": 40 },
+    { "type": "tunnel_bottom", "x": 15, "width": 20, "height": 20, "depth": 40 }
+  ]
+}
+Never collapse an H-profile into a single notch: BOTH halves are separate operations.
+
+Example 3 — stepped shoulder + chamfered corner + drilled hole:
+{
+  "label": "stepped block with chamfer and drilled hole",
+  "block": { "width": 60, "height": 40, "depth": 30 },
+  "operations": [
+    { "type": "step", "x": 30, "y": 25, "width": 30, "height": 15 },
+    { "type": "chamfer", "axis": "left", "width": 6 },
+    { "type": "through_hole", "axis": "z", "x": 15, "y": 20, "z": 15, "diameter": 8 }
+  ]
+}
+
+These examples fix the SHAPE of the answer and the coordinate convention. Never copy their numbers: always measure the drawing in front of you.
 
 DIMENSIONS
 Extract every dimension annotation you can genuinely read: label is the text/number on the drawing, position is a rough placement ("bottom", "left", "right-top", "top"), view is one of "front", "side", "top", "isometric".

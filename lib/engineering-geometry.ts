@@ -58,6 +58,8 @@ export type EngineeringOperation = {
   angle?: number;
   axis?: EngineeringAxis;
   atX?: number;
+  /** Far end of an inclined face along X; defaults to the facing block edge. */
+  endX?: number;
   fromY?: number;
   toY?: number;
 };
@@ -251,6 +253,7 @@ function normalizeOperation(raw: unknown): EngineeringOperation | null {
   const diameter = firstNumber(record, ["diameter", "dia"]);
   const angle = firstNumber(record, ["angle", "degrees", "deg"]);
   const atX = firstNumber(record, ["atx", "startx", "planex"]);
+  const endX = firstNumber(record, ["endx", "stopx", "planendx"]);
   const fromY = firstNumber(record, ["fromy", "starty", "highy"]);
   const toY = firstNumber(record, ["toy", "endy", "lowy"]);
 
@@ -264,6 +267,7 @@ function normalizeOperation(raw: unknown): EngineeringOperation | null {
   if (angle !== undefined) operation.angle = angle;
   if (axis !== undefined) operation.axis = axis;
   if (atX !== undefined) operation.atX = atX;
+  if (endX !== undefined) operation.endX = endX;
   if (fromY !== undefined) operation.fromY = fromY;
   if (toY !== undefined) operation.toY = toY;
   return operation;
@@ -492,7 +496,9 @@ function buildCut(op: EngineeringOperation, dims: BlockDims): EngineeringCut | n
       const atX = clampValue(op.atX ?? (axis === "right" ? W : 0), 0, W);
       const fromY = clampValue(op.fromY ?? H, 0, H);
       const toY = clampValue(op.toY ?? 0, 0, H);
-      const endX = axis === "right" ? 0 : W;
+      // The slope runs from (atX, fromY) to (endX, toY); `endX` may be given
+      // explicitly, otherwise it falls to the edge the slope faces.
+      const endX = clampValue(op.endX ?? (axis === "right" ? 0 : W), 0, W);
       return planeCut(op.type, { x: atX, y: fromY }, { x: endX, y: toY }, dims);
     }
     case "chamfer": {
