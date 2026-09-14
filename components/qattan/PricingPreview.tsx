@@ -1,17 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Check } from "lucide-react";
-import Link from "next/link";
 import { useQattan } from "./QattanProviders";
+import TopUpModal from "./TopUpModal";
 
 /**
  * mnml.ai-style pricing tier card with a prominent "SOON / قريباً" overlay —
- * the layout ships today while subscriptions remain closed.
+ * the layout ships today while subscriptions remain closed. The credit packs
+ * open the top-up modal (Egypt: InstaPay / Vodafone Cash).
  */
 export function PricingPreview() {
   const { copy, locale } = useQattan();
+  const L = locale === "ar";
   const tier = copy.pricing.tier;
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   return (
     <section id="pricing" className="qattan-section qattan-pricing-section">
@@ -53,9 +57,15 @@ export function PricingPreview() {
                 </li>
               ))}
             </ul>
-            <Link className="qattan-button qattan-button-primary qattan-cta-pulse" href={locale === "ar" ? "/ar/studio" : "/studio"}>
-              {tier.action}<ArrowUpRight size={16} aria-hidden="true" />
-            </Link>
+            <button
+              type="button"
+              className="qattan-button qattan-button-primary qattan-cta-pulse"
+              data-testid="pricing-topup-trigger"
+              onClick={() => setTopUpOpen(true)}
+            >
+              {L ? "اشحن رصيدك" : "Top Up Credits"}<ArrowUpRight size={16} aria-hidden="true" />
+            </button>
+            <TopUpModal open={topUpOpen} onClose={() => setTopUpOpen(false)} />
             <a className="qattan-pricing-allplans" href="#pricing">{copy.pricing.action}</a>
           </div>
         </motion.div>

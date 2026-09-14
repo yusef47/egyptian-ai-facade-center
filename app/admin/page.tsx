@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Coins, RefreshCw, ShieldCheck, Users, Wand2 } from "lucide-react";
+import { Activity, BadgeCheck, Coins, RefreshCw, ShieldCheck, Users, Wand2, X } from "lucide-react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 
 type AdminStatsPayload = {
@@ -22,6 +22,18 @@ type AdminStatsPayload = {
     lastCreditReset: string | null;
     createdAt: string | null;
   }[];
+  topups?: {
+    id: string;
+    userId: string;
+    email: string | null;
+    fullName: string | null;
+    credits: number;
+    amountEgp: number;
+    paymentMethod: string;
+    receiptUrl: string | null;
+    refCode: string;
+    createdAt: string | null;
+  }[];
   error?: string;
 };
 
@@ -32,6 +44,8 @@ type LoadState =
   | { kind: "forbidden" }
   | { kind: "error"; message: string }
   | { kind: "ready"; data: AdminStatsPayload };
+
+type TopupRow = NonNullable<AdminStatsPayload["topups"]>[number];
 
 /**
  * Secure Qattan admin stats dashboard (obsidian & gold). Authorization is
@@ -48,6 +62,9 @@ export default function AdminPage() {
     configured ? { kind: "loading" } : { kind: "unconfigured" },
   );
   const [refreshing, setRefreshing] = useState(false);
+  const [topupBusyId, setTopupBusyId] = useState<string | null>(null);
+  const [topupNotice, setTopupNotice] = useState<string | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<string | null>(null);
 
   const loadStats = useCallback(async () => {
     if (!supabase) return;
@@ -92,6 +109,46 @@ export default function AdminPage() {
     const { data: subscription } = supabase.auth.onAuthStateChange(() => void loadStats());
     return () => subscription?.subscription.unsubscribe();
   }, [supabase, loadStats]);
+
+  /** One-tap approve (atomic RPC) / reject on a pending top-up request. */
+  const decideTopup = useCallback(
+    async (row: TopupRow, action: "approve" | "reject") => {
+      if (!supabase || topupBusyId) return;
+      setTopupBusyId(row.id);
+      setTopupNotice(null);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          setTopupNotice("Session expired — sign in again.");
+          return;
+        }
+        const response = await fetch("/api/admin/topup/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ requestId: row.id, action }),
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { ok?: boolean; error?: string; creditsRemaining?: number }
+          | null;
+        if (!response.ok) {
+          setTopupNotice(payload?.error ?? "The action failed. Try again.");
+          return;
+        }
+        setTopupNotice(
+          action === "approve"
+            ? `Approved ${row.refCode} — +${row.credits} credits${typeof payload?.creditsRemaining === "number" ? ` (new balance ${payload.creditsRemaining})` : ""}.`
+            : `Rejected ${row.refCode}.`,
+        );
+        await loadStats();
+      } catch {
+        setTopupNotice("Network error while updating the request.");
+      } finally {
+        setTopupBusyId(null);
+      }
+    },
+    [supabase, topupBusyId, loadStats],
+  );
 
   const statsCards = [
     {
@@ -218,6 +275,95 @@ export default function AdminPage() {
               </p>
             )}
 
+            <section className="qattan-admin-table-wrap" data-testid="admin-topup-queue">
+              <div className="qattan-admin-table-head">
+                <h2>Pending top-up requests</h2>
+                <span className="qattan-admin-topup-count">
+                  {state.data.topups?.length ?? 0}
+                </span>
+              </div>
+              {topupNotice && (
+                <p className="qattan-admin-note" role="status">{topupNotice}</p>
+              )}
+              <div className="qattan-admin-table-scroll">
+                <table className="qattan-admin-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Credits</th>
+                      <th>EGP</th>
+                      <th>Method</th>
+                      <th>Receipt</th>
+                      <th>Ref code</th>
+                      <th>Date</th>
+                      <th aria-label="Actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.data.topups?.length ? (
+                      state.data.topups.map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <div>{row.fullName ?? "—"}</div>
+                            <div className="qattan-admin-topup-email">{row.email ?? "—"}</div>
+                          </td>
+                          <td className="qattan-admin-credits-cell">+{row.credits}</td>
+                          <td>{row.amountEgp.toLocaleString("en-EG")}</td>
+                          <td>{row.paymentMethod === "vodafone_cash" ? "Vodafone Cash" : row.paymentMethod === "instapay" ? "InstaPay" : "Other"}</td>
+                          <td>
+                            {row.receiptUrl ? (
+                              <button
+                                type="button"
+                                className="qattan-admin-topup-receipt"
+                                onClick={() => setPreviewReceipt(row.receiptUrl)}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={row.receiptUrl} alt="Receipt screenshot" />
+                              </button>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td dir="ltr" className="qattan-admin-topup-ref">{row.refCode}</td>
+                          <td>
+                            {row.createdAt
+                              ? new Date(row.createdAt).toLocaleString("en-GB")
+                              : "—"}
+                          </td>
+                          <td>
+                            <div className="qattan-admin-topup-actions">
+                              <button
+                                type="button"
+                                className="qattan-admin-topup-approve"
+                                disabled={topupBusyId === row.id}
+                                aria-label={`Approve ${row.refCode}`}
+                                onClick={() => void decideTopup(row, "approve")}
+                              >
+                                <BadgeCheck size={14} aria-hidden="true" /> Approve
+                              </button>
+                              <button
+                                type="button"
+                                className="qattan-admin-topup-reject"
+                                disabled={topupBusyId === row.id}
+                                aria-label={`Reject ${row.refCode}`}
+                                onClick={() => void decideTopup(row, "reject")}
+                              >
+                                <X size={14} aria-hidden="true" /> Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8}>No pending top-up requests.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <section className="qattan-admin-table-wrap">
               <div className="qattan-admin-table-head">
                 <h2>Recent users &amp; credit balances</h2>
@@ -268,6 +414,27 @@ export default function AdminPage() {
           </>
         )}
       </div>
+
+      {previewReceipt && (
+        <div
+          className="qattan-admin-receipt-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Receipt screenshot"
+          onClick={() => setPreviewReceipt(null)}
+        >
+          <button
+            type="button"
+            className="qattan-authgate-close"
+            aria-label="Close"
+            onClick={() => setPreviewReceipt(null)}
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={previewReceipt} alt="Receipt screenshot" onClick={(event) => event.stopPropagation()} />
+        </div>
+      )}
     </main>
   );
 }

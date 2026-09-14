@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdminClient } from "../../../../lib/credits.js";
 import { authorizeAdmin } from "../../../../lib/admin.js";
 
@@ -28,10 +29,68 @@ export type AdminStatsPayload = {
     lastCreditReset: string | null;
     createdAt: string | null;
   }[];
+  /** Pending credit top-up requests awaiting admin approval. */
+  topups: AdminTopupRow[];
+};
+
+export type AdminTopupRow = {
+  id: string;
+  userId: string;
+  email: string | null;
+  fullName: string | null;
+  credits: number;
+  amountEgp: number;
+  paymentMethod: string;
+  receiptUrl: string | null;
+  refCode: string;
+  createdAt: string | null;
 };
 
 function emptyStats(): AdminStatsPayload["stats"] {
   return { totalUsers: 0, totalGenerations: 0, totalCreditsRemaining: 0, activeUsers: 0 };
+}
+
+/** Shared numeric coercion for RPC/row values. */
+function num(value: unknown): number {
+  return typeof value === "number" ? value : Number(value) || 0;
+}
+
+/**
+ * Pending top-up requests for the approval queue. Reads through the
+ * service-role client (RLS only exposes a user's own rows), joining the
+ * profile for the buyer's email/name. A missing table (migration not yet
+ * applied) degrades to an empty queue instead of failing the dashboard.
+ */
+async function loadPendingTopups(admin: SupabaseClient): Promise<AdminTopupRow[]> {
+  const { data, error } = await admin
+    .from("topup_requests")
+    .select(
+      "id, user_id, credits, amount_egp, payment_method, receipt_url, ref_code, created_at, profiles(email, full_name)",
+    )
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) {
+    console.log(
+      `[ADMIN_TOPUPS_UNAVAILABLE] code=${error.code ?? "unknown"} message=${(error.message ?? "").slice(0, 160)}`,
+    );
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
+    const profile = (row.profiles ?? {}) as { email?: unknown; full_name?: unknown };
+    return {
+      id: String(row.id ?? ""),
+      userId: String(row.user_id ?? ""),
+      email: typeof profile.email === "string" ? profile.email : null,
+      fullName: typeof profile.full_name === "string" ? profile.full_name : null,
+      credits: num(row.credits),
+      amountEgp: num(row.amount_egp),
+      paymentMethod: typeof row.payment_method === "string" ? row.payment_method : "other",
+      receiptUrl: typeof row.receipt_url === "string" ? row.receipt_url : null,
+      refCode: typeof row.ref_code === "string" ? row.ref_code : "",
+      createdAt: typeof row.created_at === "string" ? row.created_at : null,
+    };
+  });
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -44,6 +103,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       configured: false,
       stats: emptyStats(),
       recent: [],
+      topups: [],
     };
     return NextResponse.json(payload);
   }
@@ -69,8 +129,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     admin.rpc("admin_platform_stats"),
     admin.rpc("admin_recent_profiles", { p_limit: 200 }),
   ]);
-
-  const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
 
   let stats: AdminStatsPayload["stats"] | null = null;
   if (!statsResult.error) {
@@ -148,6 +206,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
   }
 
-  const payload: AdminStatsPayload = { configured: true, stats, recent };
+  const topups = await loadPendingTopups(admin);
+  const payload: AdminStatsPayload = { configured: true, stats, recent, topups };
   return NextResponse.json(payload);
 }

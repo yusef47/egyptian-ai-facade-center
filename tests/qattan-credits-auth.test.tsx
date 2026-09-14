@@ -38,6 +38,9 @@ const state = vi.hoisted(() => ({
 vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => {
     const builder: Record<string, unknown> = {};
+    // order/limit are needed by the admin stats topup-queue loader.
+    builder.order = vi.fn(() => builder);
+    builder.limit = vi.fn(() => builder);
     const chain = () => {
       builder.select = vi.fn(() => builder);
       builder.eq = vi.fn(() => builder);

@@ -1552,3 +1552,543 @@ html[data-qattan-theme="light"] .qattan-admin-title {
 
 /* Auth gate modal keeps its luxury obsidian card in light mode (already
    themed), but the title/desc need no change — verifying contrast retained. */
+
+/* ============================================================
+   TOP-UP MODAL — obsidian & gold Egyptian payment flow
+   ============================================================ */
+.qattan-topup {
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+}
+
+.qattan-topup-card {
+  position: relative;
+  width: min(520px, 94vw);
+  max-height: 90vh;
+  max-height: 90dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 32px 28px 26px;
+  border-radius: 22px;
+  background: rgba(15, 16, 22, 0.9);
+  border: 1px solid rgba(212, 175, 55, 0.32);
+  box-shadow:
+    0 0 0 1px rgba(212, 175, 55, 0.08),
+    0 30px 90px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(212, 175, 55, 0.14);
+  backdrop-filter: blur(18px);
+}
+
+.qattan-topup-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  border-radius: 22px 22px 0 0;
+  background: linear-gradient(90deg, transparent, #d4af37 30%, #f3e5ab 50%, #d4af37 70%, transparent);
+  opacity: 0.85;
+}
+
+.qattan-topup-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  color: #0b0c10;
+  background: linear-gradient(135deg, #f3e5ab, #d4af37 55%, #b8892f);
+  box-shadow: 0 12px 34px rgba(212, 175, 55, 0.35);
+}
+
+.qattan-topup-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f4f1e8;
+}
+
+.qattan-topup-desc {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #b9bfd0;
+}
+
+.qattan-topup-packs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.qattan-topup-pack {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding: 13px 10px;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 13px;
+  background: rgba(9, 10, 15, 0.6);
+  color: #ddd6bd;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+.qattan-topup-pack:hover {
+  border-color: rgba(212, 175, 55, 0.6);
+  transform: translateY(-2px);
+}
+
+.qattan-topup-pack-selected {
+  border-color: #d4af37;
+  background: rgba(212, 175, 55, 0.14);
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.4), 0 10px 26px rgba(212, 175, 55, 0.16);
+}
+
+.qattan-topup-pack-credits {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #f3e5ab;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.qattan-topup-pack-credits svg { color: #d4af37; }
+
+.qattan-topup-pack-egp {
+  color: #f4f1e8;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.qattan-topup-pack-rate {
+  color: #8f9aad;
+  font-size: 10px;
+}
+
+.qattan-topup-pack-check {
+  position: absolute;
+  top: 7px;
+  inset-inline-end: 8px;
+  color: #d4af37;
+}
+
+.qattan-topup-custom-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 8px 14px;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 999px;
+  background: rgba(9, 10, 15, 0.6);
+  color: #ddd6bd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.qattan-topup-custom-toggle svg { color: #d4af37; }
+
+.qattan-topup-custom-toggle:hover,
+.qattan-topup-custom-toggle.qattan-topup-pack-selected {
+  border-color: #d4af37;
+  background: rgba(212, 175, 55, 0.12);
+  color: #f3e5ab;
+}
+
+.qattan-topup-slider {
+  display: grid;
+  gap: 7px;
+  padding: 14px 16px 12px;
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  border-radius: 13px;
+  background: rgba(9, 10, 15, 0.5);
+}
+
+.qattan-topup-slider-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.qattan-topup-slider-value strong {
+  color: #f3e5ab;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+
+.qattan-topup-slider-value span {
+  color: #b9bfd0;
+  font-size: 12px;
+}
+
+.qattan-topup-slider input[type="range"] {
+  width: 100%;
+  height: 22px;
+  accent-color: #d4af37;
+  cursor: pointer;
+}
+
+.qattan-topup-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  color: #6f7a8e;
+  font-size: 10px;
+}
+
+.qattan-topup-slider-rate {
+  margin: 0;
+  color: #8f9aad;
+  font-size: 10px;
+  text-align: end;
+}
+
+.qattan-topup-pay {
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px;
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  border-radius: 13px;
+  background: rgba(212, 175, 55, 0.05);
+}
+
+.qattan-topup-pay h3 {
+  margin: 0;
+  color: #f3e5ab;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.qattan-topup-pay ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.qattan-topup-pay li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qattan-topup-pay li > span {
+  color: #b9bfd0;
+  font-size: 12px;
+}
+
+.qattan-topup-pay code {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(212, 175, 55, 0.32);
+  border-radius: 8px;
+  background: rgba(5, 5, 7, 0.7);
+  color: #f3e5ab;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.qattan-topup-ref {
+  color: #ffe9a8;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.qattan-topup-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(212, 175, 55, 0.16);
+  color: #f3e5ab;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.qattan-topup-copy:hover { background: rgba(212, 175, 55, 0.3); }
+
+.qattan-topup-upload {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.qattan-topup-upload-zone {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 110px;
+  padding: 16px;
+  border: 1.5px dashed rgba(212, 175, 55, 0.45);
+  border-radius: 13px;
+  color: #a5adbd;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  animation: qattan-upload-pulse 2.6s ease-in-out infinite;
+}
+
+.qattan-topup-upload-zone:hover {
+  border-color: rgba(212, 175, 55, 0.8);
+  background: rgba(212, 175, 55, 0.06);
+}
+
+.qattan-topup-upload-zone strong {
+  color: #f3ead8;
+  font-size: 13px;
+}
+
+.qattan-topup-upload-zone span {
+  font-size: 11px;
+}
+
+.qattan-topup-upload-zone input[type="file"] {
+  display: none;
+}
+
+.qattan-topup-receipt {
+  max-height: 150px;
+  max-width: 100%;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.qattan-topup-receipt-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 8px;
+  background: transparent;
+  color: #f3e5ab;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.qattan-topup-receipt-remove:hover { background: rgba(212, 175, 55, 0.12); }
+
+.qattan-topup-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #f3e5ab, #d4af37 55%, #b8892f);
+  color: #14120a;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: filter 0.2s ease, transform 0.15s ease;
+  box-shadow: 0 14px 38px rgba(212, 175, 55, 0.3);
+}
+
+.qattan-topup-submit:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.qattan-topup-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qattan-topup-promo {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(212, 175, 55, 0.16);
+}
+
+.qattan-topup-promo-row {
+  display: flex;
+  gap: 8px;
+}
+
+.qattan-topup-promo-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 10px;
+  background: rgba(5, 5, 7, 0.7);
+  color: #f4f1e8;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.qattan-topup-promo-row input:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.6);
+  outline-offset: 1px;
+}
+
+.qattan-topup-promo-row button {
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #e5c158, #d4af37);
+  color: #14120a;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qattan-topup-promo-row button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qattan-topup-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.qattan-topup-status-ok { color: #6fe3a5; }
+.qattan-topup-status-error { color: #ff9d9d; }
+
+/* Light theme: keep the obsidian card, strengthen the gold ring. */
+html[data-qattan-theme="light"] .qattan-topup-card {
+  background: rgba(15, 16, 22, 0.94);
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+/* ============================================================
+   ADMIN — pending top-up queue & receipt preview
+   ============================================================ */
+.qattan-admin-topup-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.16);
+  color: #f3e5ab;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.qattan-admin-topup-email {
+  color: #8f99aa;
+  font-size: 11px;
+}
+
+.qattan-admin-topup-ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.qattan-admin-topup-receipt {
+  display: block;
+  padding: 0;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 6px;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.qattan-admin-topup-receipt img {
+  display: block;
+  width: 62px;
+  height: 48px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.qattan-admin-topup-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qattan-admin-topup-approve,
+.qattan-admin-topup-reject {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.2s ease, background 0.2s ease;
+}
+
+.qattan-admin-topup-approve {
+  border: 0;
+  background: linear-gradient(135deg, #f3e5ab, #d4af37 60%, #b8892f);
+  color: #14120a;
+}
+
+.qattan-admin-topup-approve:hover:not(:disabled) { filter: brightness(1.07); }
+
+.qattan-admin-topup-reject {
+  border: 1px solid rgba(255, 120, 120, 0.4);
+  background: rgba(255, 120, 120, 0.08);
+  color: #ff9d9d;
+}
+
+.qattan-admin-topup-reject:hover:not(:disabled) { background: rgba(255, 120, 120, 0.16); }
+
+.qattan-admin-topup-approve:disabled,
+.qattan-admin-topup-reject:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.qattan-admin-receipt-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(8px);
+  cursor: zoom-out;
+}
+
+.qattan-admin-receipt-lightbox img {
+  max-width: min(92vw, 760px);
+  max-height: 84vh;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 14px;
+  object-fit: contain;
+}
+
+.qattan-admin-receipt-lightbox .qattan-authgate-close {
+  position: absolute;
+  top: 18px;
+  inset-inline-end: 18px;
+}
+
+@media (max-width: 640px) {
+  .qattan-topup-packs { grid-template-columns: 1fr; }
+  .qattan-topup-card { padding: 26px 18px 22px; }
+}

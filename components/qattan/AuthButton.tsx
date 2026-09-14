@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
+import TopUpModal from "./TopUpModal";
 import { getSupabaseBrowserClient, supabaseEnvConfigured } from "../../lib/supabase";
 import { QATTAN_CREDITS_EVENT } from "../../client/src/lib/restore";
 import { useQattan } from "./QattanProviders";
@@ -23,6 +24,7 @@ export default function AuthButton() {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [topUpOpen, setTopUpOpen] = useState(false);
   const userIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -163,17 +165,20 @@ export default function AuthButton() {
 
   return (
     <div className="qattan-auth-user">
-      <span
+      <button
+        type="button"
         className="qattan-auth-credits"
+        data-testid="topup-trigger"
         title={
           credits === null
             ? L
               ? "جارٍ تحميل الرصيد…"
               : "Loading balance…"
             : L
-              ? `رصيدك اليومي: ${credits}`
-              : `Daily credits: ${credits}`
+              ? `رصيدك اليومي: ${credits} — اضغط للشحن`
+              : `Daily credits: ${credits} — click to top up`
         }
+        onClick={() => setTopUpOpen(true)}
         data-credits-known={credits === null ? "false" : "true"}
         aria-label={
           credits === null
@@ -191,7 +196,7 @@ export default function AuthButton() {
         ) : (
           credits
         )}
-      </span>
+      </button>
       {user.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img className="qattan-auth-avatar" src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />
@@ -209,6 +214,7 @@ export default function AuthButton() {
       >
         <LogOut size={15} aria-hidden="true" />
       </button>
+      <TopUpModal open={topUpOpen} onClose={() => setTopUpOpen(false)} />
     </div>
   );
 }
