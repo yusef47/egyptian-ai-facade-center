@@ -100,6 +100,10 @@ The OpenRouter key is read only by server-side code. The browser sends an image 
 | `/studio?mode=<planned-mode>` | Shows an honest planned-mode notice | Non-submitting showcase state |
 | `/api/restore` | Secure multimodal generation endpoint | `POST` only |
 | `/api/user/credits` | Authoritative daily balance for the header badge (service-role read) | `GET` only, 401 when signed out |
+| `/robots.txt` | Crawler policy; disallows `/admin`, `/auth/`, `/api/` | Public |
+| `/sitemap.xml` | Public marketing and legal URLs with `en`/`ar` alternates | Public |
+
+All absolute URLs — `metadataBase`, canonical tags, `hreflang` alternates, OpenGraph and Twitter card images, `robots.txt`, and `sitemap.xml` — resolve through `lib/site.ts`, whose canonical origin is **`https://www.qattan-ai.com`** (`NEXT_PUBLIC_SITE_URL` overrides it for preview deployments).
 
 ## Complete directory map
 
@@ -108,7 +112,8 @@ The primary implementation locations are:
 - Public marketing pages: `/app/page.tsx`, `/app/ar/`, and `/app/en/`
 - Unified Architectural Studio: `/app/studio/page.tsx`
 - Qattan product and studio components: `/components/qattan/*`
-- API and engine routes: `/app/api/` — `/api/restore/route.ts`, `/api/user/credits/route.ts`, `/api/admin/stats/route.ts`
+- API and engine routes: `/app/api/` — `/api/restore/route.ts`, `/api/user/credits/route.ts`, `/api/admin/stats/route.ts`, `/api/topup/request/route.ts`, `/api/topup/promo/route.ts`, `/api/admin/topup/approve/route.ts`
+- Canonical origin and crawler configuration: `/lib/site.ts`, `/app/sitemap.ts`, `/app/robots.ts`
 
 ```text
 .
@@ -121,7 +126,9 @@ The primary implementation locations are:
 │   │   ├── restore/route.ts            # Generation endpoint (credit-gated)
 │   │   ├── user/credits/route.ts       # Authoritative balance for the badge
 │   │   └── admin/stats/route.ts        # Admin-only platform statistics
-│   ├── layout.tsx                     # Root metadata, document shell, providers
+│   ├── layout.tsx                     # Root metadata (canonical origin), document shell, providers
+│   ├── sitemap.ts                      # Canonical sitemap.xml with language alternates
+│   ├── robots.ts                       # Crawler policy + sitemap reference
 │   ├── globals.css                    # Qattan tokens, layout, responsive styles
 │   ├── icon.svg                       # App Router favicon
 │   └── not-found.tsx                  # Branded not-found screen
@@ -162,10 +169,15 @@ The primary implementation locations are:
 │       ├── i18n.tsx                    # Existing engine translation provider
 │       └── rateLimit.ts                # Client/test-compatible rate-limit utility
 │
-├── server/
-│   └── openrouter-engine.ts             # Shared server-only prompts and OpenRouter logic
-├── api/
-│   └── restore.ts                       # Vercel compatibility adapter
+├── lib/
+│   ├── site.ts                          # Canonical site origin for metadata, sitemap, robots
+│   ├── openrouter-engine.ts             # Shared server-only prompts and engine gateway
+│   ├── credits.ts                       # Server-only credit authority and RPC wrappers
+│   ├── topups.ts                        # Top-up requests, promo codes, admin approval
+│   ├── admin.ts                         # Admin authorization
+│   ├── supabase.ts                      # Supabase clients and credit constants
+│   ├── request-guards.ts                # Rate limiting for the generation route
+│   └── image-validation.ts              # MIME + magic-byte upload validation
 ├── public/
 │   └── logos/                           # Static official branding assets, when present
 ├── tests/                               # Vitest and React Testing Library regressions
@@ -303,7 +315,7 @@ The repository's test suite covers the route contract, OpenRouter request constr
 
 ## Deployment on Vercel
 
-The project is deployed as a Next.js App Router application through Vercel. The canonical GitHub repository and deployment branch are:
+The project is deployed as a Next.js App Router application through Vercel, served on the canonical domain `https://www.qattan-ai.com`. The canonical GitHub repository and deployment branch are:
 
 ```text
 https://github.com/yusef47/egyptian-ai-facade-center

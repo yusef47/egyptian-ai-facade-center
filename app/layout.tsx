@@ -1,36 +1,34 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { absoluteSiteUrl, SITE_ORIGIN } from "../lib/site";
 import "./globals.css";
 
 /**
- * Canonical origin for social/meta URLs. Without metadataBase, Next resolves
- * the relative OG/Twitter image paths against localhost, so link previews
- * (WhatsApp, Facebook, X) came out broken. Overridable per environment.
+ * Canonical origin: https://www.qattan-ai.com (see lib/site.ts). Declaring it
+ * via metadataBase *and* absolute OG/Twitter URLs keeps link previews
+ * (WhatsApp, Facebook, X) on the official domain instead of resolving against
+ * localhost.
  */
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : "https://egyptian-ai-facade-center.vercel.app");
+const OG_IMAGE_URL = absoluteSiteUrl("/og-image.jpg");
 
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+  metadataBase: new URL(SITE_ORIGIN),
   title: "Qattan AI | منصة قطان المعمارية",
   description:
     "Transform architectural sketches into photorealistic renders with AI. 10 free daily credits.",
   openGraph: {
     title: "Qattan AI – AI Architectural Visualization",
     description: "Transform sketches into photorealistic architectural renders. Free daily credits.",
-    url: SITE_URL,
+    url: SITE_ORIGIN,
     siteName: "Qattan AI",
     type: "website",
-    images: [{ url: "/og-image.jpg", width: 1200, height: 630 }],
+    images: [{ url: OG_IMAGE_URL, width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Qattan AI – AI Architectural Visualization",
     description: "Transform sketches into photorealistic architectural renders.",
-    images: ["/og-image.jpg"],
+    images: [OG_IMAGE_URL],
   },
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],

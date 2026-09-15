@@ -4,6 +4,10 @@ import LegalPageLayout, { type LegalSection } from "../../components/qattan/Lega
 export const metadata: Metadata = {
   title: "Privacy Policy | Qattan AI",
   description: "How Qattan AI collects, uses, and protects your personal data.",
+  alternates: {
+    canonical: "/privacy",
+    languages: { en: "/privacy", ar: "/ar/privacy", "x-default": "/privacy" },
+  },
 };
 
 const sections: LegalSection[] = [

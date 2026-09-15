@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import LegalPageLayout, { type LegalSection } from "../../../components/qattan/LegalPageLayout";
 
 export const metadata: Metadata = {
+  alternates: {
+    canonical: "/ar/privacy",
+    languages: { en: "/privacy", ar: "/ar/privacy", "x-default": "/privacy" },
+  },
   title: "سياسة الخصوصية | Qattan AI",
   description: "كيف تجمع منصة قطان بياناتك وتستخدمها وتحميها.",
 };

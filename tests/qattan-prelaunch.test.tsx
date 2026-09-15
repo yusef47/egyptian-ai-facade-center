@@ -1,11 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import PrivacyPage from "../app/privacy/page";
-import TermsPage from "../app/terms/page";
-import ArabicPrivacyPage from "../app/ar/privacy/page";
-import ArabicTermsPage from "../app/ar/terms/page";
+import PrivacyPage, { metadata as privacyMetadata } from "../app/privacy/page";
+import TermsPage, { metadata as termsMetadata } from "../app/terms/page";
+import ArabicPrivacyPage, { metadata as arabicPrivacyMetadata } from "../app/ar/privacy/page";
+import ArabicTermsPage, { metadata as arabicTermsMetadata } from "../app/ar/terms/page";
+import { metadata as englishMetadata } from "../app/en/page";
+import { metadata as arabicMetadata } from "../app/ar/page";
 import { metadata as rootMetadata } from "../app/layout";
+import robots from "../app/robots";
+import sitemap from "../app/sitemap";
+import { OFFICIAL_SITE_ORIGIN, SITE_ORIGIN, absoluteSiteUrl } from "../lib/site";
 import { rateLimit, resetRequestGuards } from "../lib/request-guards";
 import { validateImageDataUrl } from "../lib/image-validation";
 
@@ -328,7 +333,11 @@ describe("P5/P6 — OG metadata, favicon, and tab title", () => {
       : rootMetadata.openGraph?.images
         ? [rootMetadata.openGraph.images]
         : [];
-    expect(ogImages[0]).toMatchObject({ url: "/og-image.jpg", width: 1200, height: 630 });
+    expect(ogImages[0]).toMatchObject({
+      url: `${SITE_ORIGIN}/og-image.jpg`,
+      width: 1200,
+      height: 630,
+    });
     expect((rootMetadata.twitter as { card?: string }).card).toBe("summary_large_image");
     expect(rootMetadata.icons).toBeDefined();
   });
@@ -336,7 +345,7 @@ describe("P5/P6 — OG metadata, favicon, and tab title", () => {
   it("declares a metadataBase so link-preview images resolve absolutely", () => {
     // Without this, Next resolves the relative /og-image.jpg against
     // localhost, so shared WhatsApp/Facebook/X cards showed no image.
-    expect(rootMetadata.metadataBase?.toString()).toMatch(/^https:\/\/[^/]+\/?$/);
+    expect(rootMetadata.metadataBase?.toString()).toBe(`${OFFICIAL_SITE_ORIGIN}/`);
   });
 
   it("ships the generated OG image and gold Q favicon", () => {
@@ -346,6 +355,62 @@ describe("P5/P6 — OG metadata, favicon, and tab title", () => {
 
     const ogStats = readFileSync("public/og-image.jpg");
     expect(ogStats.length).toBeGreaterThan(10_000);
+  });
+});
+
+describe("Canonical domain — https://www.qattan-ai.com", () => {
+  it("pins the official origin as the default, with no vercel.app fallback", () => {
+    expect(OFFICIAL_SITE_ORIGIN).toBe("https://www.qattan-ai.com");
+    // No env override in tests, so the resolved default is the official domain.
+    expect(SITE_ORIGIN).toBe(OFFICIAL_SITE_ORIGIN);
+    expect(absoluteSiteUrl("/og-image.jpg")).toBe("https://www.qattan-ai.com/og-image.jpg");
+
+    const site = readFileSync("lib/site.ts", "utf8");
+    // The Vercel-inferred host must not be able to silently become canonical
+    // (it can resolve to the apex domain or the *.vercel.app host).
+    expect(site).not.toContain("VERCEL_PROJECT_PRODUCTION_URL");
+    expect(readFileSync("app/layout.tsx", "utf8")).not.toContain("vercel.app");
+  });
+
+  it("points OG, Twitter, and the canonical tags at the official domain", () => {
+    expect(String(rootMetadata.openGraph?.url)).toBe(OFFICIAL_SITE_ORIGIN);
+
+    const canonicalByPage: Array<[unknown, string]> = [
+      [englishMetadata.alternates?.canonical, "/en"],
+      [arabicMetadata.alternates?.canonical, "/ar"],
+      [privacyMetadata.alternates?.canonical, "/privacy"],
+      [termsMetadata.alternates?.canonical, "/terms"],
+      [arabicPrivacyMetadata.alternates?.canonical, "/ar/privacy"],
+      [arabicTermsMetadata.alternates?.canonical, "/ar/terms"],
+    ];
+    for (const [canonical, expected] of canonicalByPage) {
+      expect(String(canonical)).toBe(expected);
+    }
+
+    // Each bilingual pair cross-links the other language.
+    expect(englishMetadata.alternates?.languages).toMatchObject({ en: "/en", ar: "/ar" });
+    expect(arabicPrivacyMetadata.alternates?.languages).toMatchObject({
+      en: "/privacy",
+      ar: "/ar/privacy",
+    });
+  });
+
+  it("serves robots and sitemap on the official domain", () => {
+    const robotsConfig = robots();
+    expect(robotsConfig.sitemap).toBe("https://www.qattan-ai.com/sitemap.xml");
+    expect(robotsConfig.host).toBe(OFFICIAL_SITE_ORIGIN);
+    const rules = Array.isArray(robotsConfig.rules) ? robotsConfig.rules : [robotsConfig.rules];
+    const disallow = rules.flatMap((rule) => rule?.disallow ?? []);
+    expect(disallow).toContain("/admin");
+    expect(disallow).toContain("/api/");
+
+    const entries = sitemap();
+    expect(entries.map((entry) => entry.url)).toContain("https://www.qattan-ai.com/en");
+    for (const entry of entries) {
+      expect(entry.url.startsWith(`${OFFICIAL_SITE_ORIGIN}/`)).toBe(true);
+    }
+    // A sitemap must not advertise the redirecting root URL.
+    expect(entries.map((entry) => entry.url)).not.toContain(`${OFFICIAL_SITE_ORIGIN}/`);
   });
 });
 

@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import LegalPageLayout, { type LegalSection } from "../../../components/qattan/LegalPageLayout";
 
 export const metadata: Metadata = {
+  alternates: {
+    canonical: "/ar/terms",
+    languages: { en: "/terms", ar: "/ar/terms", "x-default": "/terms" },
+  },
   title: "شروط الاستخدام | Qattan AI",
   description: "الشروط التي تحكم استخدامك لمنصة قطان.",
 };
