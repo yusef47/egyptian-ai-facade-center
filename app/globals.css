@@ -1659,6 +1659,12 @@ html[data-qattan-theme="light"] .qattan-admin-title {
 
 .qattan-topup-pack-credits svg { color: #d4af37; }
 
+.qattan-topup-pack-name {
+  color: #c7cedb;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .qattan-topup-pack-egp {
   color: #f4f1e8;
   font-size: 16px;
@@ -1759,6 +1765,44 @@ html[data-qattan-theme="light"] .qattan-admin-title {
   border-radius: 13px;
   background: rgba(212, 175, 55, 0.05);
 }
+
+/* InstaPay-only instructions: rails on the left, scannable QR on the right. */
+.qattan-topup-pay-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.qattan-topup-qr {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.32);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.qattan-topup-qr img {
+  display: block;
+  width: 116px;
+  height: 116px;
+}
+
+.qattan-topup-qr figcaption {
+  color: #6b5518;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .qattan-topup-pay-grid { grid-template-columns: 1fr; }
+  .qattan-topup-qr { justify-self: center; }
+}
+
 
 .qattan-topup-pay h3 {
   margin: 0;

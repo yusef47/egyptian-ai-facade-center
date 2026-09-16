@@ -107,7 +107,7 @@ export default function RequireAuthModal({ open, onClose, returnTo }: RequireAut
         <ul className="qattan-authgate-perks">
           <li>
             <Sparkles size={14} aria-hidden="true" />
-            {L ? "10 كريديت مجانية تتجدد كل ٢٤ ساعة" : "10 free credits renewing every 24 hours"}
+            {L ? "10 كريديت مجانية تتجدد يومياً عند منتصف الليل بتوقيت القاهرة" : "10 free credits renewing daily at 12:00 AM Cairo time"}
           </li>
           <li>
             <Sparkles size={14} aria-hidden="true" />

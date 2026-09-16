@@ -309,7 +309,7 @@ export default function AdminPage() {
                           </td>
                           <td className="qattan-admin-credits-cell">+{row.credits}</td>
                           <td>{row.amountEgp.toLocaleString("en-EG")}</td>
-                          <td>{row.paymentMethod === "vodafone_cash" ? "Vodafone Cash" : row.paymentMethod === "instapay" ? "InstaPay" : "Other"}</td>
+                          <td>{row.paymentMethod === "instapay" ? "InstaPay" : "Other"}</td>
                           <td>
                             {row.receiptUrl ? (
                               <button

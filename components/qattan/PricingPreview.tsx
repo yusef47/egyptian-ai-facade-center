@@ -9,7 +9,7 @@ import TopUpModal from "./TopUpModal";
 /**
  * mnml.ai-style pricing tier card with a prominent "SOON / قريباً" overlay —
  * the layout ships today while subscriptions remain closed. The credit packs
- * open the top-up modal (Egypt: InstaPay / Vodafone Cash).
+ * open the top-up modal (Egypt: InstaPay exclusively).
  */
 export function PricingPreview() {
   const { copy, locale } = useQattan();

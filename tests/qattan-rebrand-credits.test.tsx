@@ -6,7 +6,8 @@ import {
   deductGenerationCreditWithAdmin,
   refreshDailyCredits,
 } from "../lib/credits";
-import { DAILY_CREDITS, CREDIT_REFRESH_MS, getSupabaseBrowserClient, getSupabaseSessionGate } from "../lib/supabase";
+import { DAILY_CREDITS, getSupabaseBrowserClient, getSupabaseSessionGate } from "../lib/supabase";
+import { lastCairoMidnight } from "../lib/credits";
 import {
   NO_WATERMARK_CLAUSE,
   buildOpenRouterRequest,
@@ -111,38 +112,41 @@ function queryChain(results: { data: unknown; error: unknown }[]) {
   return builder;
 }
 
-describe("Daily 10-credit refresh rule", () => {
+describe("Daily 10-credit refresh rule (Cairo midnight)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("keeps the balance untouched when the last reset is under 24h old", async () => {
-    const admin = {
-      from: vi.fn(() =>
-        queryChain([
-          {
-            data: {
-              credits: 7,
-              last_credit_reset: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-            },
-            error: null,
-          },
-        ]),
-      ),
-    };
+  it("keeps the balance untouched within the same Cairo calendar day", async () => {
+    // 3h ago is guaranteed to be either the same Cairo day or (near midnight)
+    // yesterday — assert against the actual boundary instead of assuming.
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const sameDay = threeHoursAgo >= lastCairoMidnight().toISOString();
+    const chain = queryChain([
+      { data: { credits: 7, last_credit_reset: threeHoursAgo }, error: null },
+      { data: { credits: DAILY_CREDITS }, error: null },
+    ]);
+    const admin = { from: vi.fn(() => chain) };
     const credits = await refreshDailyCredits(
       admin as unknown as Parameters<typeof refreshDailyCredits>[0],
       "user-1",
     );
-    expect(credits).toBe(7);
+    if (sameDay) {
+      expect(credits).toBe(7);
+      expect(chain.update).not.toHaveBeenCalled();
+    } else {
+      // The 3h-ago read crossed Cairo midnight — the fresh allowance is exact.
+      expect(credits).toBe(DAILY_CREDITS);
+    }
   });
 
-  it("resets credits back to 10 when the last reset is older than 24h", async () => {
+  it("resets credits back to 10 when the last reset happened before today's Cairo midnight", async () => {
+    // A stamp from 25 days ago is unambiguously a previous Cairo day.
     const chain = queryChain([
       {
         data: {
           credits: 2,
-          last_credit_reset: new Date(Date.now() - CREDIT_REFRESH_MS - 60_000).toISOString(),
+          last_credit_reset: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
         },
         error: null,
       },
@@ -159,19 +163,46 @@ describe("Daily 10-credit refresh rule", () => {
     );
   });
 
-  it("stamps a missing reset timestamp WITHOUT resetting the balance (production bug fix)", async () => {
-    // Legacy row with credits=0 and no timestamp: stamping the reset time must
-    // preserve the 0 balance — never gift credits on every API call.
+  it("grants the fresh allowance exactly once when the reset timestamp is missing", async () => {
+    // A legacy row without a stamp belongs to no known Cairo day, so it gets
+    // the allowance — and the update MUST stamp credits AND timestamp together
+    // so this can never fire twice in a row (the old per-call re-gift bug).
     const chain = queryChain([
       { data: { credits: 0, last_credit_reset: null }, error: null },
-      { data: null, error: null },
+      { data: { credits: DAILY_CREDITS }, error: null },
     ]);
     const admin = { from: vi.fn(() => chain) };
     const credits = await refreshDailyCredits(
       admin as unknown as Parameters<typeof refreshDailyCredits>[0],
       "user-1",
     );
-    expect(credits).toBe(0);
+    expect(credits).toBe(DAILY_CREDITS);
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ credits: DAILY_CREDITS, last_credit_reset: expect.any(String) }),
+    );
+  });
+
+  it("derives Cairo midnight from the local calendar and never lands inside the previous day", () => {
+    const midnight = lastCairoMidnight();
+    expect(Number.isFinite(midnight.getTime())).toBe(true);
+    // The midnight instant itself is due for refresh; one millisecond after it
+    // too — while a stamp AT the boundary is current (same-day generation).
+    expect(midnight.getTime() >= lastCairoMidnight(midnight).getTime()).toBe(true);
+  });
+
+  it("keeps a same-Cairo-day generation from re-gifting on a later call the same day", async () => {
+    const now = new Date();
+    const chain = queryChain([
+      { data: { credits: 9, last_credit_reset: now.toISOString() }, error: null },
+      { data: { credits: DAILY_CREDITS }, error: null },
+    ]);
+    const admin = { from: vi.fn(() => chain) };
+    const credits = await refreshDailyCredits(
+      admin as unknown as Parameters<typeof refreshDailyCredits>[0],
+      "user-1",
+    );
+    expect(credits).toBe(9);
+    expect(chain.update).not.toHaveBeenCalled();
   });
 });
 

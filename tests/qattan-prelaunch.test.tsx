@@ -147,11 +147,15 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(creditsRoute).toContain("force-dynamic");
   });
 
-  it("preserves the balance when last_credit_reset is recent and only true 24h+ triggers reset", () => {
+  it("resets credits at 12:00 AM Cairo midnight, not on a rolling 24h window", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
-    expect(sql).toMatch(/last_credit_reset < now\(\) - interval '24 hours'/);
-    // Stamping legacy rows must NOT touch credits.
-    expect(sql).toMatch(/set last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*returning credits into stamped;/);
+    // The RPC boundary is Cairo midnight, derived from the IANA zone (DST-safe).
+    expect(sql).toMatch(/last_credit_reset < cairo_midnight/);
+    expect(sql).toMatch(/date\(now\(\) at time zone 'Africa\/Cairo'\)/);
+    // No rolling-24h reset may remain anywhere in the migration.
+    expect(sql).not.toMatch(/interval '24 hours'/);
+    // Stamping legacy rows grants the allowance and stamps in ONE update.
+    expect(sql).toMatch(/set credits = 10, last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*returning credits into stamped;/);
   });
 });
 
@@ -299,7 +303,7 @@ describe("P4 — bilingual legal pages", () => {
     render(<TermsPage />);
     expect(screen.getByText("Terms of Service")).toBeInTheDocument();
     expect(screen.getByText(/NOT certified engineering drawings/i)).toBeInTheDocument();
-    expect(screen.getByText(/10 free credits that renew automatically every 24 hours/i)).toBeInTheDocument();
+    expect(screen.getByText(/10 free credits that replenish automatically at 12:00 AM \(midnight\) Cairo time/i)).toBeInTheDocument();
     expect(screen.getByText(/illegal purpose/i)).toBeInTheDocument();
   });
 

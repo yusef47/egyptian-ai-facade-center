@@ -23,17 +23,22 @@ type TopUpModalProps = {
 
 /** Fixed packs mirror lib/topups.ts (server re-validates pricing). */
 const PACKS = [
-  { id: "pack10", credits: 10, egp: 50, perCredit: "5.00" },
-  { id: "pack50", credits: 50, egp: 250, perCredit: "5.00" },
-  { id: "pack100", credits: 100, egp: 450, perCredit: "4.50" },
+  { id: "pack10", credits: 10, egp: 50, perCredit: "5.00", labelEn: "Starter Pack", labelAr: "باقة البداية" },
+  { id: "pack50", credits: 50, egp: 250, perCredit: "5.00", labelEn: "Student Pack", labelAr: "باقة الطلاب" },
+  { id: "pack100", credits: 100, egp: 450, perCredit: "4.50", labelEn: "Pro Pack", labelAr: "الباقة الاحترافية" },
 ] as const;
 
 const SLIDER_MIN = 10;
 const SLIDER_MAX = 500;
 const CUSTOM_RATE = 5;
 
-const INSTAPAY_ADDRESS = "qattan@instapay";
-const VODAFONE_CASH_NUMBER = "010XXXXXXX";
+/**
+ * InstaPay is the exclusive Egyptian payment rail. The IPA handle is stated
+ * in ONE place and reused by the copy action; the QR encodes the handle so a
+ * phone camera opens the InstaPay transfer directly.
+ */
+const INSTAPAY_ADDRESS = "ahmedelqattan78@instapay";
+const INSTAPAY_QR_HREF = "/instapay-qr.svg";
 
 type SubmissionState =
   | { kind: "idle" }
@@ -43,7 +48,7 @@ type SubmissionState =
 
 /**
  * Luxury obsidian & gold top-up flow for Egypt: fixed packs + a custom
- * credit slider (5 EGP/credit), InstaPay / Vodafone Cash instructions with a
+ * credit slider (5 EGP/credit), exclusive InstaPay instructions with a
  * unique reference code, a receipt screenshot upload, and an instant promo
  * code redemption box.
  */
@@ -64,6 +69,7 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
     { kind: "idle" } | { kind: "sending" } | { kind: "ok"; message: string } | { kind: "error"; message: string }
   >({ kind: "idle" });
   const [copied, setCopied] = useState(false);
+  const [handleCopied, setHandleCopied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -217,13 +223,13 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
     }
   };
 
-  const copyRef = async () => {
+  const copyText = async (value: string, mark: (v: boolean) => void) => {
     try {
-      await navigator.clipboard.writeText(refCode);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
+      await navigator.clipboard.writeText(value);
+      mark(true);
+      window.setTimeout(() => mark(false), 1600);
     } catch {
-      /* Clipboard unavailable — the code stays visible for manual copy. */
+      /* Clipboard unavailable — the value stays visible for manual copy. */
     }
   };
 
@@ -256,8 +262,8 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
         <h2 className="qattan-topup-title">{L ? "شحن الرصيد" : "Top Up Credits"}</h2>
         <p className="qattan-topup-desc" dir={L ? "rtl" : "ltr"}>
           {L
-            ? "اختر باقة أو حدّد رصيدك بنفسك — التحويل عبر InstaPay أو فودافون كاش، والمراجعة خلال ساعات."
-            : "Pick a pack or slide your own amount — pay via InstaPay or Vodafone Cash, reviewed within hours."}
+            ? "اختر باقة أو حدّد رصيدك بنفسك — التحويل عبر InstaPay فقط، والمراجعة خلال ساعات."
+            : "Pick a pack or slide your own amount — pay via InstaPay only, reviewed within hours."}
         </p>
 
         {/* ── Packs ── */}
@@ -274,6 +280,7 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
               <span className="qattan-topup-pack-credits">
                 <Sparkles size={14} aria-hidden="true" /> {pack.credits} {L ? "كريديت" : "credits"}
               </span>
+              <span className="qattan-topup-pack-name">{L ? pack.labelAr : pack.labelEn}</span>
               <span className="qattan-topup-pack-egp">{pack.egp} EGP</span>
               <span className="qattan-topup-pack-rate">{pack.perCredit} EGP/{L ? "كريديت" : "credit"}</span>
               {selected === pack.id && <Check size={15} className="qattan-topup-pack-check" aria-hidden="true" />}
@@ -314,30 +321,53 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
           </div>
         )}
 
-        {/* ── Payment instructions ── */}
+        {/* ── Payment instructions (InstaPay exclusively) ── */}
         <div className="qattan-topup-pay">
-          <h3>{L ? "تعليمات التحويل (مصر)" : "Payment instructions (Egypt)"}</h3>
-          <ul>
-            <li>
-              <span>InstaPay</span>
-              <code dir="ltr">{INSTAPAY_ADDRESS}</code>
-            </li>
-            <li>
-              <span>{L ? "فودافون كاش / المحافظ" : "Vodafone Cash / wallets"}</span>
-              <code dir="ltr">{VODAFONE_CASH_NUMBER}</code>
-            </li>
-            <li>
-              <span>{L ? "كود المرجع (اكتبه في ملاحظة التحويل)" : "Reference code (add to the transfer note)"}</span>
-              <code dir="ltr" className="qattan-topup-ref">
-                {submission.kind === "done" ? submission.refCode : refCode}
-                {submission.kind !== "done" && (
-                  <button type="button" className="qattan-topup-copy" onClick={() => void copyRef()} aria-label={L ? "نسخ الكود" : "Copy code"}>
-                    <Copy size={13} aria-hidden="true" /> {copied ? (L ? "تم النسخ" : "Copied") : ""}
+          <h3>{L ? "تعليمات التحويل (InstaPay فقط)" : "Payment instructions (InstaPay only)"}</h3>
+          <div className="qattan-topup-pay-grid">
+            <ul>
+              <li>
+                <span>{L ? "عنوان InstaPay (IPA)" : "InstaPay address (IPA)"}</span>
+                <code dir="ltr" className="qattan-topup-ref">
+                  {INSTAPAY_ADDRESS}
+                  <button
+                    type="button"
+                    className="qattan-topup-copy"
+                    aria-label={L ? "نسخ عنوان InstaPay" : "Copy InstaPay address"}
+                    onClick={() => void copyText(INSTAPAY_ADDRESS, setHandleCopied)}
+                  >
+                    <Copy size={13} aria-hidden="true" />
+                    {handleCopied ? (L ? "تم النسخ" : "Copied") : ""}
                   </button>
-                )}
-              </code>
-            </li>
-          </ul>
+                </code>
+              </li>
+              <li>
+                <span>{L ? "كود المرجع (اكتبه في ملاحظة التحويل)" : "Reference code (add to the transfer note)"}</span>
+                <code dir="ltr" className="qattan-topup-ref">
+                  {submission.kind === "done" ? submission.refCode : refCode}
+                  {submission.kind !== "done" && (
+                    <button
+                      type="button"
+                      className="qattan-topup-copy"
+                      onClick={() => void copyText(refCode, setCopied)}
+                      aria-label={L ? "نسخ الكود" : "Copy code"}
+                    >
+                      <Copy size={13} aria-hidden="true" /> {copied ? (L ? "تم النسخ" : "Copied") : ""}
+                    </button>
+                  )}
+                </code>
+              </li>
+              <li>
+                <span>{L ? "المبلغ المطلوب تحويله" : "Amount to transfer"}</span>
+                <code dir="ltr">{egp} EGP</code>
+              </li>
+            </ul>
+            <figure className="qattan-topup-qr">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={INSTAPAY_QR_HREF} alt={L ? "رمز QR لتحويل InstaPay" : "InstaPay transfer QR code"} width={132} height={132} />
+              <figcaption>{L ? "امسح الرمز بـ InstaPay" : "Scan with InstaPay"}</figcaption>
+            </figure>
+          </div>
         </div>
 
         {/* ── Receipt upload ── */}

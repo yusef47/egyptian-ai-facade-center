@@ -12,7 +12,7 @@ import {
 export const runtime = "nodejs";
 
 /**
- * Submit a credit top-up request (Egypt: InstaPay / Vodafone Cash).
+ * Submit a credit top-up request (Egypt — InstaPay exclusively).
  *
  * Flow: verify the Supabase session (bearer token, cookie fallback) →
  * validate the requested pack against the FIXED price table server-side
@@ -21,7 +21,8 @@ export const runtime = "nodejs";
  * The user id always comes from the verified session, never the body.
  */
 
-const PAYMENT_METHODS: PaymentMethod[] = ["instapay", "vodafone_cash", "other"];
+/** InstaPay is the only accepted rail; anything else is rejected. */
+const PAYMENT_METHODS: PaymentMethod[] = ["instapay"];
 const MAX_CREDITS_PER_REQUEST = 500;
 
 type TopupRequestBody = {
@@ -34,7 +35,10 @@ type TopupRequestBody = {
 };
 
 export async function GET(): Promise<NextResponse> {
-  return NextResponse.json({ error: "POST only." }, { status: 405, headers: { Allow: "POST" } });
+  return NextResponse.json(
+    { error: "POST only." },
+    { status: 405, headers: { Allow: "POST" } },
+  );
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -71,7 +75,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     typeof paymentMethod !== "string" ||
     !PAYMENT_METHODS.includes(paymentMethod as PaymentMethod)
   ) {
-    return NextResponse.json({ error: "Invalid payment method." }, { status: 400 });
+    return NextResponse.json(
+      { error: "الدفع عبر InstaPay فقط. | InstaPay is the only accepted payment method." },
+      { status: 400 },
+    );
   }
 
   // ── Receipt: must be a genuine image (MIME + magic bytes), max 10MB ──

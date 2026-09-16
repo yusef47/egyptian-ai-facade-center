@@ -121,7 +121,22 @@ begin
 end;
 $$;
 
--- ── Daily refresh helper: resets ONLY after a true 24h elapsed ────────
+-- ── Cairo midnight boundary ────────────────────────────────────────────
+-- The daily allowance replenishes at 12:00 AM (midnight) Africa/Cairo each
+-- calendar day — NOT on a rolling 24h window. `now() at time zone
+-- 'Africa/Cairo'::text` renders the current Cairo wall clock (date() casts it
+-- to that day's date), and `::timestamptz` reads that date back AT MIDNIGHT
+-- Cairo time, resolving the UTC+2 / UTC+3 (EEST) offset automatically from
+-- the IANA database — DST-correct without hardcoding offsets.
+create or replace function public.qattan_cairo_midnight()
+returns timestamptz
+language sql
+immutable
+as $$
+  select date(now() at time zone 'Africa/Cairo')::text::timestamp at time zone 'Africa/Cairo';
+$$;
+
+-- ── Daily refresh helper: resets at 12:00 AM Cairo time every day ─────
 drop function if exists public.refresh_daily_credit(uuid);
 create function public.refresh_daily_credit(user_id uuid)
 returns integer
@@ -133,7 +148,10 @@ declare
   current_row public.profiles;
   remaining integer;
   stamped integer;
+  cairo_midnight timestamptz;
 begin
+  cairo_midnight := public.qattan_cairo_midnight();
+
   select * into current_row from public.profiles where id = user_id;
 
   if not found then
@@ -143,17 +161,19 @@ begin
     return 10;
   end if;
 
-  -- Legacy row without a timestamp: stamp it, PRESERVE the balance.
+  -- Legacy row without a timestamp: stamp it and grant the fresh allowance
+  -- exactly once — there is no prior Cairo day to compare against.
   if current_row.last_credit_reset is null then
     update public.profiles
-    set last_credit_reset = now()
+    set credits = 10, last_credit_reset = now()
     where id = user_id
     returning credits into stamped;
-    return coalesce(stamped, current_row.credits);
+    return coalesce(stamped, 10);
   end if;
 
-  -- Reset ONLY when 24 hours have truly elapsed since the last reset.
-  if current_row.last_credit_reset < now() - interval '24 hours' then
+  -- Reset when the last reset happened on an EARLIER Cairo calendar day,
+  -- i.e. before today's 12:00 AM Cairo midnight.
+  if current_row.last_credit_reset < cairo_midnight then
     update public.profiles
     set credits = 10, last_credit_reset = now()
     where id = user_id
@@ -180,3 +200,4 @@ revoke execute on function public.refresh_daily_credit(uuid) from public, anon, 
 grant execute on function public.deduct_credit(uuid, integer) to service_role;
 grant execute on function public.refund_credit(uuid) to service_role;
 grant execute on function public.refresh_daily_credit(uuid) to service_role;
+grant execute on function public.qattan_cairo_midnight() to service_role;

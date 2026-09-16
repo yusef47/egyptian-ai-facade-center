@@ -235,6 +235,14 @@ Shared server behavior is implemented in:
 
 `app/api/restore/route.ts` is the **only** generation endpoint. The legacy root-level Vercel adapter (`api/restore.ts`) used to call the engine directly with no authentication and no credit deduction; it has been removed rather than left as an unprotected second door into the same provider. Generation requires a verified Supabase bearer token, and exactly one credit is deducted before the engine is called.
 
+### Daily credit refresh — Cairo midnight
+
+The 10 free daily credits replenish at **12:00 AM (midnight) Africa/Cairo** each calendar day — not on a rolling 24-hour window. Every path that evaluates the balance (`lib/credits.ts` `refreshDailyCredits`, and the `refresh_daily_credit` RPC in `supabase/migrations/20260910_qattan_profiles.sql` via `qattan_cairo_midnight()`) compares `last_credit_reset` against today's Cairo midnight, so the reset is DST-correct (UTC+2 EET / UTC+3 EEST) and identical across the SQL and application layers.
+
+### Payments — InstaPay exclusively
+
+Credit top-ups accept **InstaPay only** (`ahmedelqattan78@instapay`). The API rejects any other payment method, the top-up modal shows the IPA handle with a scannable QR (`public/instapay-qr.svg`), and no mobile-wallet rails exist anywhere in the product.
+
 ### Request contract
 
 `POST /api/restore` accepts JSON:

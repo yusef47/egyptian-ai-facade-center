@@ -7,7 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Supabase configuration is an infrastructure error (503), never a success.
  */
 
-export type PaymentMethod = "instapay" | "vodafone_cash" | "other";
+/** InstaPay is the exclusive payment rail for Egyptian top-ups. */
+export type PaymentMethod = "instapay";
 
 export type TopupPack = {
   id: "pack10" | "pack50" | "pack100" | "custom";
@@ -28,9 +29,15 @@ export const CUSTOM_SLIDER_MIN = 10;
 export const CUSTOM_SLIDER_MAX = 500;
 export const CUSTOM_EGP_PER_CREDIT = 5;
 
-/** Egyptian payment rails shown in the modal. */
-export const INSTAPAY_ADDRESS = "qattan@instapay";
-export const VODAFONE_CASH_NUMBER = "010XXXXXXX";
+/** InstaPay IPA handle shown in the modal and re-validated server-side. */
+export const INSTAPAY_ADDRESS = "ahmedelqattan78@instapay";
+
+/** Pack labels shown on the modal cards (bilingual). */
+export const PACK_LABELS: Record<string, { en: string; ar: string }> = {
+  pack10: { en: "Starter Pack", ar: "باقة البداية" },
+  pack50: { en: "Student Pack", ar: "باقة الطلاب" },
+  pack100: { en: "Pro Pack", ar: "الباقة الاحترافية" },
+};
 
 export function egpForCustomCredits(credits: number): number {
   return Math.round(credits * CUSTOM_EGP_PER_CREDIT * 100) / 100;
@@ -39,8 +46,7 @@ export function egpForCustomCredits(credits: number): number {
 /**
  * Unique, human-communicable reference code (e.g. REF-849201) stamped on the
  * payment instructions so the operator can match the transfer to the request.
- */
-export function generateRefCode(): string {
+ */export function generateRefCode(): string {
   const digits = Math.floor(100000 + Math.random() * 900000);
   return `REF-${digits}`;
 }

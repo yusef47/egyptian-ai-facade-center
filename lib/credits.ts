@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { CREDIT_REFRESH_MS, DAILY_CREDITS } from "./supabase.js";
+import { DAILY_CREDITS } from "./supabase.js";
 
 /**
  * Server-side credit authority for Qattan AI. Uses the service-role key and
@@ -31,7 +31,7 @@ export type CreditDeduction =
 
 /** Bilingual exhaustion notice surfaced to users on 429 (gate + deduction). */
 export const CREDITS_EXHAUSTED_BILINGUAL =
-  "انتهى رصيدك اليومي (10 كريديت)! يتجدد رصيدك أوتوماتيكياً كل 24 ساعة. | Daily credit limit reached (10 credits)! It renews automatically every 24 hours.";
+  "انتهى رصيدك اليومي (10 كريديت)! يتجدد رصيدك تلقائياً عند منتصف الليل (12 صباحاً) بتوقيت القاهرة. | Daily credit limit reached (10 credits)! Your balance resets automatically at 12:00 AM Cairo time.";
 
 /**
  * Bilingual sign-in notice surfaced on 401. Generation requires a verified
@@ -65,14 +65,83 @@ export function getSupabaseAdminClient(): SupabaseClient | null {
 }
 
 /**
- * Daily refresh rule: if the profile's last reset is older than 24 hours,
- * bring the balance back to the daily allowance before evaluating the gate.
+ * Cairo is the operational clock for the daily allowance: every user's free
+ * credits replenish at 12:00 AM (midnight) Africa/Cairo each calendar day.
+ */
+const CAIRO_TIME_ZONE = "Africa/Cairo";
+
+type CairoWallClock = { year: number; month: number; day: number; hour: number; minute: number };
+
+function cairoWallClock(instant: Date): CairoWallClock {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: CAIRO_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  return {
+    year: read("year"),
+    month: read("month"),
+    day: read("day"),
+    hour: read("hour"),
+    minute: read("minute"),
+  };
+}
+
+/**
+ * The UTC instant whose Cairo wall clock is exactly `hour`:00 of the given
+ * Cairo calendar date. Cairo alternates between UTC+2 (EET) and UTC+3 (EEST
+ * summer time), so both offsets are probed and the one that renders back as
+ * the requested wall clock wins. Egypt's DST transitions happen at NOON, so
+ * midnight wall time always exists — the loop below always resolves; the
+ * trailing default is pure defense-in-depth against future tzdb changes.
+ */
+function cairoInstantFor(date: { year: number; month: number; day: number }, hour: number): Date {
+  for (const offsetMinutes of [180, 120]) {
+    const candidate = new Date(
+      Date.UTC(date.year, date.month - 1, date.day, hour, 0, 0) - offsetMinutes * 60_000,
+    );
+    const wall = cairoWallClock(candidate);
+    if (
+      wall.year === date.year &&
+      wall.month === date.month &&
+      wall.day === date.day &&
+      wall.hour === hour &&
+      wall.minute === 0
+    ) {
+      return candidate;
+    }
+  }
+  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, 0, 0) - 120 * 60_000);
+}
+
+/**
+ * Today's 12:00 AM (00:00) midnight in Cairo, as a UTC instant. Any profile
+ * stamped before this moment belongs to a previous Cairo day and is due for
+ * the daily allowance; anything stamped at or after it is current.
+ */
+export function lastCairoMidnight(now: Date = new Date()): Date {
+  const wall = cairoWallClock(now);
+  return cairoInstantFor({ year: wall.year, month: wall.month, day: wall.day }, 0);
+}
+
+/**
+ * Daily refresh rule: at 12:00 AM Cairo time every calendar day the balance
+ * returns to the full daily allowance, regardless of the previous balance
+ * (0, 2, or 5). Within the same Cairo day the stored balance is untouched.
  *
  * CRITICAL correctness rules (production bug fixes):
- * - A null/legacy `last_credit_reset` must NOT force a reset on every call:
- *   we stamp it once and PRESERVE the current balance.
- * - Only a timestamp genuinely older than 24h triggers a reset to the daily
- *   allowance. Anything else returns the stored balance untouched.
+ * - The reset writes `credits` AND `last_credit_reset` in the SAME update, so
+ *   a null/legacy timestamp triggers the allowance exactly once — never on
+ *   every call.
+ * - The boundary is a calendar-day comparison against Cairo midnight, not a
+ *   rolling 24h window: generating at 23:59 Cairo and again at 00:01 means a
+ *   fresh allowance, while generating twice in one afternoon never re-gifts.
  */
 export async function refreshDailyCredits(
   admin: SupabaseClient,
@@ -87,26 +156,19 @@ export async function refreshDailyCredits(
   if (error || !data) return null;
 
   const currentCredits = typeof data.credits === "number" ? data.credits : null;
+  if (currentCredits === null) return null;
 
-  // Legacy row without a reset timestamp: stamp it now, keep the balance.
-  if (!data.last_credit_reset) {
-    if (currentCredits === null) return null;
-    const { error: stampError } = await admin
-      .from("profiles")
-      .update({ last_credit_reset: new Date().toISOString() })
-      .eq("id", userId);
-    return stampError ? currentCredits : currentCredits;
-  }
+  const lastResetMs = data.last_credit_reset
+    ? new Date(data.last_credit_reset).getTime()
+    : Number.NaN;
+  const hasUsableStamp = Number.isFinite(lastResetMs);
 
-  const lastReset = new Date(data.last_credit_reset).getTime();
-  if (Number.isNaN(lastReset)) return currentCredits;
-
-  // Reset ONLY when 24h have truly elapsed since the last reset.
-  if (Date.now() - lastReset > CREDIT_REFRESH_MS) {
-    const nextReset = new Date().toISOString();
+  // Reset when there is no usable stamp OR the last reset happened on an
+  // earlier Cairo calendar day (before today's 12:00 AM Cairo midnight).
+  if (!hasUsableStamp || lastResetMs < lastCairoMidnight().getTime()) {
     const { data: updated, error: updateError } = await admin
       .from("profiles")
-      .update({ credits: DAILY_CREDITS, last_credit_reset: nextReset })
+      .update({ credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() })
       .eq("id", userId)
       .select("credits")
       .maybeSingle();
@@ -189,8 +251,8 @@ export function getGenerationUserId(creditCheck: CreditCheck): string | undefine
 }
 
 /**
- * Current remaining daily balance for a user (after applying the 24h
- * refresh rule), or null when unknown/unresolvable.
+ * Current remaining daily balance for a user (after applying the Cairo
+ * midnight refresh rule), or null when unknown/unresolvable.
  */
 export async function getRemainingCredits(
   admin: SupabaseClient,
@@ -221,9 +283,9 @@ export async function readProfileCredits(
 
 /**
  * Gate a generation request: verifies the Supabase session from the request's
- * bearer token (with cookie fallback), applies the 24h refresh rule, and
- * enforces a positive balance. When Supabase is not configured the request is
- * allowed unchanged.
+ * bearer token (with cookie fallback), applies the Cairo midnight refresh
+ * rule, and enforces a positive balance. When Supabase is not configured the
+ * request is refused (fail closed).
  */
 export async function checkGenerationCredits(
   request: Request,

@@ -10,13 +10,14 @@ import { createBrowserClient } from "@supabase/ssr";
  */
 
 export const DAILY_CREDITS = 10;
-/** The daily refresh window in milliseconds (24 hours). */
-export const CREDIT_REFRESH_MS = 24 * 60 * 60 * 1000;
+/** The Cairo calendar day the current allowance belongs to, for display. */
+export const CREDIT_RESET_NOTE_EN = "Your 10 free credits return every day at 12:00 AM (Cairo time).";
+export const CREDIT_RESET_NOTE_AR = "يعود رصيدك (10 كريديت) كل يوم عند الساعة 12 صباحاً بتوقيت القاهرة.";
 
 export const CREDITS_EXHAUSTED_MESSAGE_EN =
-  "You have used all 10 free credits for today. Your credits reset automatically every 24 hours.";
+  "You have used all 10 free credits for today. Your credits reset automatically at 12:00 AM Cairo time.";
 export const CREDITS_EXHAUSTED_MESSAGE_AR =
-  "لقد استهلكت الرصيد المجاني اليومي (10). يتجدد رصيدك تلقائياً كل ٢٤ ساعة.";
+  "لقد استهلكت الرصيد المجاني اليومي (10). يتجدد رصيدك تلقائياً عند الساعة 12 صباحاً بتوقيت القاهرة.";
 
 export function supabaseEnvConfigured(): boolean {
   return Boolean(

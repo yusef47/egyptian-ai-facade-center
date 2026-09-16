@@ -200,6 +200,20 @@ describe("POST /api/topup/request", () => {
     expect(payload.ok).toBe(true);
     expect(payload.refCode).toMatch(/^REF-\d{6}$/);
   });
+
+  it("accepts ONLY InstaPay as the payment method", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    const png = `data:image/png;base64,${Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]).toString("base64")}`;
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "vodafone_cash", receiptDataUrl: png }),
+    );
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error?: string };
+    expect(payload.error).toContain("InstaPay");
+  });
 });
 
 describe("POST /api/topup/promo", () => {
@@ -333,8 +347,8 @@ describe("Admin queue surface", () => {
   });
 });
 
-describe("TopUpModal surface", () => {
-  it("renders packs, slider, payment rails, and promo box when opened", async () => {
+describe("TopUpModal surface (InstaPay exclusively)", () => {
+  it("renders packs, slider, the InstaPay handle + QR, and promo box when opened", async () => {
     state.clientConfigured = true;
     render(
       <QattanProviders locale="en">
@@ -345,13 +359,32 @@ describe("TopUpModal surface", () => {
     expect(screen.getByText("Top Up Credits")).toBeInTheDocument();
     expect(screen.getByText("50 EGP")).toBeInTheDocument();
     expect(screen.getByText("450 EGP")).toBeInTheDocument();
-    expect(screen.getByText("qattan@instapay")).toBeInTheDocument();
-    expect(screen.getByText("010XXXXXXX")).toBeInTheDocument();
+    // The exclusive IPA handle is displayed, with the QR right beside it.
+    expect(screen.getByText("ahmedelqattan78@instapay")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /InstaPay transfer QR code/i })).toBeInTheDocument();
     expect(screen.getByText(/Reference code/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Enter promo code")).toBeInTheDocument();
+    // Pack labels are shown (Student Pack selected by default).
+    expect(screen.getByText("Student Pack")).toBeInTheDocument();
+    expect(screen.getByText("Pro Pack")).toBeInTheDocument();
     // Reference code is always present and well-formed.
     const ref = screen.getAllByText(/^REF-\d{6}$/)[0];
     expect(ref).toBeTruthy();
+  });
+
+  it("shows NO mobile-wallet rails — InstaPay is the only payment method", () => {
+    state.clientConfigured = true;
+    render(
+      <QattanProviders locale="en">
+        <TopUpModal open onClose={() => {}} />
+      </QattanProviders>,
+    );
+    expect(screen.queryByText(/Vodafone/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Orange Cash/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/wallet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/010XXXXXXX/)).not.toBeInTheDocument();
+    // The payment header states exclusivity explicitly.
+    expect(screen.getByText(/Payment instructions \(InstaPay only\)/i)).toBeInTheDocument();
   });
 
   it("shows the bilingual submit gate when no receipt is attached yet", async () => {

@@ -20,7 +20,7 @@ const sections: LegalSection[] = [
   {
     heading: "2. Credits & Billing",
     body: [
-      "Every registered account receives 10 free credits that renew automatically every 24 hours. Each successful generation deducts exactly one credit. Credit balances are maintained server-side and hold no cash value.",
+      "Every registered account receives 10 free credits that replenish automatically at 12:00 AM (midnight) Cairo time each calendar day. Each successful generation deducts exactly one credit. Credit balances are maintained server-side and hold no cash value.",
     ],
   },
   {
