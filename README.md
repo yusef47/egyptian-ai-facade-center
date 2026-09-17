@@ -241,7 +241,9 @@ The 10 free daily credits replenish at **12:00 AM (midnight) Africa/Cairo** each
 
 ### Payments — InstaPay exclusively
 
-Credit top-ups accept **InstaPay only** (`ahmedelqattan78@instapay`). The API rejects any other payment method, the top-up modal shows the IPA handle with a scannable QR (`public/instapay-qr.svg`), and no mobile-wallet rails exist anywhere in the product.
+Credit top-ups accept **InstaPay only** (`ahmedelqattan78@instapay`). The API rejects any other payment method, the top-up modal shows the official direct transfer link (`https://ipn.eg/S/ahmedelqattan78/instapay/9RkGnD`) with copy buttons for both link and handle, a scannable QR encoding the direct link (`public/instapay-qr.svg`), and no mobile-wallet rails exist anywhere in the product.
+
+Admin access (`/admin`, `/api/admin/*`) is limited to the owner (`yusefelshater979@gmail.com`), the co-admin (`archkattan78@gmail.com`), and any emails listed in the `ADMIN_EMAILS` env var.
 
 ### Request contract
 

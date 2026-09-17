@@ -33,11 +33,13 @@ const SLIDER_MAX = 500;
 const CUSTOM_RATE = 5;
 
 /**
- * InstaPay is the exclusive Egyptian payment rail. The IPA handle is stated
- * in ONE place and reused by the copy action; the QR encodes the handle so a
- * phone camera opens the InstaPay transfer directly.
+ * InstaPay is the exclusive Egyptian payment rail. The IPA handle and the
+ * official direct transfer link are stated here and reused by the copy
+ * actions; the QR encodes the direct link so a phone camera opens the
+ * InstaPay transfer directly.
  */
 const INSTAPAY_ADDRESS = "ahmedelqattan78@instapay";
+const INSTAPAY_DIRECT_LINK = "https://ipn.eg/S/ahmedelqattan78/instapay/9RkGnD";
 const INSTAPAY_QR_HREF = "/instapay-qr.svg";
 
 type SubmissionState =
@@ -70,6 +72,7 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
   >({ kind: "idle" });
   const [copied, setCopied] = useState(false);
   const [handleCopied, setHandleCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -326,6 +329,28 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
           <h3>{L ? "تعليمات التحويل (InstaPay فقط)" : "Payment instructions (InstaPay only)"}</h3>
           <div className="qattan-topup-pay-grid">
             <ul>
+              <li>
+                <span>{L ? "رابط التحويل المباشر" : "Direct transfer link"}</span>
+                <code dir="ltr" className="qattan-topup-ref">
+                  <a
+                    href={INSTAPAY_DIRECT_LINK}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="qattan-topup-link"
+                  >
+                    {INSTAPAY_DIRECT_LINK}
+                  </a>
+                  <button
+                    type="button"
+                    className="qattan-topup-copy"
+                    aria-label={L ? "نسخ رابط التحويل" : "Copy transfer link"}
+                    onClick={() => void copyText(INSTAPAY_DIRECT_LINK, setLinkCopied)}
+                  >
+                    <Copy size={13} aria-hidden="true" />
+                    {linkCopied ? (L ? "تم النسخ" : "Copied") : ""}
+                  </button>
+                </code>
+              </li>
               <li>
                 <span>{L ? "عنوان InstaPay (IPA)" : "InstaPay address (IPA)"}</span>
                 <code dir="ltr" className="qattan-topup-ref">

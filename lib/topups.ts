@@ -32,6 +32,10 @@ export const CUSTOM_EGP_PER_CREDIT = 5;
 /** InstaPay IPA handle shown in the modal and re-validated server-side. */
 export const INSTAPAY_ADDRESS = "ahmedelqattan78@instapay";
 
+/** Official InstaPay direct transfer link — encoded in the QR and shown as a
+ * clickable/copyable URL in the modal. */
+export const INSTAPAY_DIRECT_LINK = "https://ipn.eg/S/ahmedelqattan78/instapay/9RkGnD";
+
 /** Pack labels shown on the modal cards (bilingual). */
 export const PACK_LABELS: Record<string, { en: string; ar: string }> = {
   pack10: { en: "Starter Pack", ar: "باقة البداية" },

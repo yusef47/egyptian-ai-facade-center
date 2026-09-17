@@ -13,6 +13,7 @@ import { QattanProviders } from "../components/qattan/QattanProviders";
 import AuthButton from "../components/qattan/AuthButton";
 
 const OWNER_EMAIL = "yusefelshater979@gmail.com";
+const CO_ADMIN_EMAIL = "archkattan78@gmail.com";
 
 /**
  * One state-driven Supabase mock serves every role in the flow: the
@@ -353,6 +354,13 @@ describe("Admin gate", () => {
     expect(gate.authorized).toBe(true);
   });
 
+  it("authorizes the co-admin (Dr. Ahmed) account", async () => {
+    state.adminSession = { access_token: "t", user: { id: "coadmin-1", email: CO_ADMIN_EMAIL } };
+    state.profile = { credits: 3, email: CO_ADMIN_EMAIL };
+    const gate = await authorizeAdmin(bearerRequest("jwt"), getSupabaseAdminClient()!);
+    expect(gate.authorized).toBe(true);
+  });
+
   it("rejects authenticated non-admin accounts (403 semantics)", async () => {
     state.adminSession = { access_token: "t", user: { id: "rand-1", email: "random@gmail.com" } };
     state.profile = { credits: 3, email: "random@gmail.com" };
@@ -389,6 +397,15 @@ describe("Admin stats route authorization", () => {
     state.profile = { credits: 3, email: "random@gmail.com" };
     const forbidden = await GET(bearerRequest("jwt"));
     expect(forbidden.status).toBe(403);
+  });
+
+  it("returns stats for the co-admin account", async () => {
+    const { GET } = await import("../app/api/admin/stats/route");
+    state.adminSession = { access_token: "t", user: { id: "coadmin-1", email: CO_ADMIN_EMAIL } };
+    state.profile = { credits: 3, email: CO_ADMIN_EMAIL };
+
+    const response = await GET(bearerRequest("jwt"));
+    expect(response.status).toBe(200);
   });
 
   it("returns stats for the owner account", async () => {

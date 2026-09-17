@@ -362,6 +362,12 @@ describe("TopUpModal surface (InstaPay exclusively)", () => {
     // The exclusive IPA handle is displayed, with the QR right beside it.
     expect(screen.getByText("ahmedelqattan78@instapay")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /InstaPay transfer QR code/i })).toBeInTheDocument();
+    // The official direct transfer link is clickable and copyable.
+    const directLink = screen.getByRole("link", { name: /ipn\.eg\/S\/ahmedelqattan78/i });
+    expect(directLink).toHaveAttribute("href", "https://ipn.eg/S/ahmedelqattan78/instapay/9RkGnD");
+    expect(directLink).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("button", { name: /Copy transfer link/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Copy InstaPay address/i })).toBeInTheDocument();
     expect(screen.getByText(/Reference code/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Enter promo code")).toBeInTheDocument();
     // Pack labels are shown (Student Pack selected by default).

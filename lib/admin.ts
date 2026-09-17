@@ -10,13 +10,15 @@ import { verifySupabaseUser } from "./credits.js";
 
 /** Owner account — always authorized. */
 const OWNER_ADMIN_EMAIL = "yusefelshater979@gmail.com";
+/** Co-admin (Dr. Ahmed) — always authorized. */
+const CO_ADMIN_EMAIL = "archkattan78@gmail.com";
 
 function authorizedAdminEmails(): string[] {
   const extra = (process.env.ADMIN_EMAILS ?? "")
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
-  return [OWNER_ADMIN_EMAIL, ...extra];
+  return [OWNER_ADMIN_EMAIL, CO_ADMIN_EMAIL, ...extra];
 }
 
 function isAdminEmail(email: string | null | undefined): boolean {

@@ -1869,6 +1869,20 @@ html[data-qattan-theme="light"] .qattan-admin-title {
 
 .qattan-topup-copy:hover { background: rgba(212, 175, 55, 0.3); }
 
+.qattan-topup-link {
+  color: #ffe9a8;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(212, 175, 55, 0.55);
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.qattan-topup-link:hover {
+  color: #fff3c4;
+  text-decoration-color: #d4af37;
+}
+
 .qattan-topup-upload {
   display: grid;
   justify-items: center;
