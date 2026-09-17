@@ -26,6 +26,13 @@ create index if not exists topup_requests_user
 create unique index if not exists topup_requests_one_pending_per_ref
   on public.topup_requests (ref_code) where status = 'pending';
 
+-- ── Anti-replay ledger (AI receipt audit) ───────────────────────────────
+-- SHA-256 hex digest of the receipt image bytes. Two submissions with the
+-- same image hash are the same screenshot re-uploaded → fraud gate.
+alter table public.topup_requests add column if not exists receipt_hash text;
+create index if not exists topup_requests_receipt_hash
+  on public.topup_requests (receipt_hash) where receipt_hash is not null;
+
 -- ── Promo codes ─────────────────────────────────────────────────────────
 create table if not exists public.promo_codes (
   code text primary key,

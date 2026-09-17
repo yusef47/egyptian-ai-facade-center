@@ -144,11 +144,8 @@ export async function approveTopupRequest(
   return { ok: true, remaining };
 }
 
-export type TopupSubmission = {
-  ok: true;
-  requestId: string;
-  refCode: string;
-}
+export type TopupSubmission =
+  | { ok: true; requestId: string; refCode: string }
   | { ok: false; reason: "invalid" | "unavailable" };
 
 /**
@@ -166,6 +163,8 @@ export async function submitTopupRequest(
     receiptUrl: string;
     /** Pre-validated REF-###### code shown on the transfer, when supplied. */
     refCode?: string;
+    /** SHA-256 of the receipt bytes — the anti-replay ledger key. */
+    receiptHash?: string;
   },
 ): Promise<TopupSubmission> {
   // Use the code the user already wrote on the transfer note (validated by
@@ -181,6 +180,7 @@ export async function submitTopupRequest(
       receipt_url: input.receiptUrl,
       ref_code: refCode,
       status: "pending",
+      ...(input.receiptHash ? { receipt_hash: input.receiptHash } : {}),
     })
     .select("id, ref_code")
     .single();
@@ -202,6 +202,59 @@ function parseScalar(data: unknown): number {
     return Number((data as Record<string, unknown>).credits);
   }
   return Number.NaN;
+}
+
+export type ReceiptReplayCheck =
+  | { replayed: false }
+  | { replayed: true }
+  | { replayed: null }
+  | { replayed: false; error: "unavailable" };
+
+/**
+ * Layer 3 — anti-replay. A receipt image whose SHA-256 hash was already
+ * accepted or is still pending on ANY account is the same screenshot being
+ * re-used; reject it before any credit moves. Returns `null` only when the
+ * hash could not be evaluated (query failure) so the caller can fail closed.
+ */
+export async function isReceiptAlreadyUsed(
+  admin: SupabaseClient,
+  receiptHash: string,
+): Promise<boolean | null> {
+  const { data, error } = await admin
+    .from("topup_requests")
+    .select("id")
+    .eq("receipt_hash", receiptHash)
+    .in("status", ["pending", "approved"])
+    .limit(1);
+  if (error) {
+    console.log(
+      `[TOPUP_REPLAY_CHECK_ERROR] code=${error.code ?? "unknown"} message=${(error.message ?? "").slice(0, 160)}`,
+    );
+    return null;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
+export type InstantTopupGrant =
+  | { ok: true; remaining: number }
+  | { ok: false; reason: "not_found" | "unavailable" };
+
+/**
+ * Layer 4 — instant auto-grant. Claims the freshly inserted pending request
+ * (status='pending' guard keeps it single-fire) and adds the credits to the
+ * buyer's profile inside one atomic approve_topup call. Reuses the exact RPC
+ * the admin queue uses, so manual and instant approval share one ledger.
+ */
+export async function grantTopupInstantly(
+  admin: SupabaseClient,
+  requestId: string,
+): Promise<InstantTopupGrant> {
+  const result = await approveTopupRequest(admin, requestId);
+  return result.ok
+    ? { ok: true, remaining: result.remaining }
+    : result.reason === "not_pending"
+      ? { ok: false, reason: "not_found" }
+      : { ok: false, reason: "unavailable" };
 }
 
 function isUuid(value: string): boolean {

@@ -25,7 +25,9 @@ const state = vi.hoisted(() => ({
     | { access_token: string; user: { id: string; email: string | null; user_metadata: Record<string, unknown> } }
     | null,
   rpcResponses: new Map<string, { data: unknown; error: { code?: string; message?: string } | null }>(),
-  insertResult: { data: { id: "req-1", ref_code: "REF-111222" }, error: null },
+  insertResult: { data: { id: "11111111-2222-4333-8444-555555555555", ref_code: "REF-111222" }, error: null },
+  /** Layer-3 anti-replay: rows returned by the receipt-hash lookup. */
+  replayRows: [] as { id: string }[],
   clientConfigured: false,
 }));
 
@@ -45,6 +47,8 @@ vi.mock("@supabase/supabase-js", () => ({
           eq: () => ({
             select: () => ({ maybeSingle: () => Promise.resolve({ data: { id: "r1" }, error: null }) }),
           }),
+          // Anti-replay shape: .eq("receipt_hash", h).in("status", [...]).limit(1)
+          in: () => ({ limit: () => Promise.resolve({ data: state.replayRows, error: null }) }),
         }),
       }));
       return table;
@@ -114,12 +118,40 @@ function bearerRequest(token: string | null, body?: unknown): Request {
   });
 }
 
+/** A genuine-PNG data URL above the 10KB Layer-1 floor. */
+function validReceiptDataUrl(): string {
+  const bytes = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(11 * 1024, 7),
+  ]);
+  return `data:image/png;base64,${bytes.toString("base64")}`;
+}
+
+/** Stub the vision-engine fetch for the Layer-2 receipt audit. */
+function setAuditVerdict(verdict: Record<string, unknown> | null, failUpstream = false) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url: string | URL | Request, _init?: RequestInit) => {
+      if (failUpstream) return Promise.resolve(new Response("boom", { status: 500 }));
+      const text = verdict === null ? "I cannot help with that." : JSON.stringify(verdict);
+      return Promise.resolve(
+        new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }),
+  );
+}
+
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-test-key");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-test-key");
+  vi.stubEnv("OPENROUTER_API_KEY", "audit-test-key");
   state.rpcResponses.clear();
-  state.insertResult = { data: { id: "req-1", ref_code: "REF-111222" }, error: null };
+  state.insertResult = { data: { id: "11111111-2222-4333-8444-555555555555", ref_code: "REF-111222" }, error: null };
+  state.replayRows = [];
 });
 
 afterEach(() => {
@@ -189,16 +221,17 @@ describe("POST /api/topup/request", () => {
   it("inserts a pending request attributed to the VERIFIED user (never the body)", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "verified-user", email: "a@b.c" } };
-    const png = `data:image/png;base64,${Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ]).toString("base64")}`;
+    setAuditVerdict({ isValidReceipt: true, detectedAmount: 450, confidence: "high", reason: "genuine receipt" });
+    setRpc("approve_topup", { data: 60, error: null });
     const response = await POST(
-      bearerRequest("jwt", { credits: 100, amountEgp: 450, paymentMethod: "instapay", receiptDataUrl: png }),
+      bearerRequest("jwt", { credits: 100, amountEgp: 450, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { ok?: boolean; refCode?: string };
+    const payload = (await response.json()) as { ok?: boolean; refCode?: string; autoApproved?: boolean; creditsRemaining?: number };
     expect(payload.ok).toBe(true);
     expect(payload.refCode).toMatch(/^REF-\d{6}$/);
+    expect(payload.autoApproved).toBe(true);
+    expect(payload.creditsRemaining).toBe(60);
   });
 
   it("accepts ONLY InstaPay as the payment method", async () => {
@@ -213,6 +246,101 @@ describe("POST /api/topup/request", () => {
     expect(response.status).toBe(400);
     const payload = (await response.json()) as { error?: string };
     expect(payload.error).toContain("InstaPay");
+  });
+
+  it("rejects an undersized receipt image below the 10KB Layer-1 floor", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    const tiny = `data:image/png;base64,${Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]).toString("base64")}`;
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: tiny }),
+    );
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error?: string };
+    expect(payload.error).toContain("too small");
+  });
+
+  it("answers a fake/random image (fails the AI audit) with 422 and no credits", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict({ isValidReceipt: false, detectedAmount: 0, confidence: "low", reason: "nature photo" });
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(422);
+    const payload = (await response.json()) as { error?: string };
+    expect(payload.error).toContain("ليست إيصال تحويل InstaPay صالح");
+  });
+
+  it("rejects a low-confidence verdict even when isValidReceipt is true", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "low", reason: "blurry" });
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(422);
+  });
+
+  it("rejects when the detected amount disagrees with the requested pack", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict({ isValidReceipt: true, detectedAmount: 50, confidence: "high", reason: "genuine but different amount" });
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(422);
+    const payload = (await response.json()) as { error?: string };
+    expect(payload.error).toContain("does not match the selected pack");
+  });
+
+  it("blocks a previously-used receipt with 409 and the replay notice", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "high", reason: "genuine receipt" });
+    state.replayRows = [{ id: "older-request" }];
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(409);
+    const payload = (await response.json()) as { error?: string };
+    expect(payload.error).toContain("تم استخدام هذا الإيصال من قبل");
+  });
+
+  it("fails closed with 502 when the vision engine is unreachable", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict(null, true);
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(502);
+  });
+
+  it("fails closed with 502 when the engine answers non-JSON (no silent pass)", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict(null);
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(502);
+  });
+
+  it("keeps the request pending (no auto-approve) when the atomic grant fails", async () => {
+    const { POST } = await import("../app/api/topup/request/route");
+    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
+    setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "high", reason: "genuine receipt" });
+    setRpc("approve_topup", { data: null, error: { code: "P0001", message: "TOPUP_NOT_PENDING" } });
+    const response = await POST(
+      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
+    );
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { ok?: boolean; autoApproved?: boolean };
+    expect(payload.ok).toBe(true);
+    expect(payload.autoApproved).toBe(false);
   });
 });
 
@@ -348,7 +476,7 @@ describe("Admin queue surface", () => {
 });
 
 describe("TopUpModal surface (InstaPay exclusively)", () => {
-  it("renders packs, slider, the InstaPay handle + QR, and promo box when opened", async () => {
+  it("renders packs, slider, the InstaPay handle + QR, direct link, warning, and promo box when opened", async () => {
     state.clientConfigured = true;
     render(
       <QattanProviders locale="en">
@@ -376,6 +504,8 @@ describe("TopUpModal surface (InstaPay exclusively)", () => {
     // Reference code is always present and well-formed.
     const ref = screen.getAllByText(/^REF-\d{6}$/)[0];
     expect(ref).toBeTruthy();
+    // AI anti-fraud security warning is visible.
+    expect(screen.getByText(/Security notice: receipts are verified by AI/i)).toBeInTheDocument();
   });
 
   it("shows NO mobile-wallet rails — InstaPay is the only payment method", () => {

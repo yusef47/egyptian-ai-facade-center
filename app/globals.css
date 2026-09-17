@@ -1883,6 +1883,19 @@ html[data-qattan-theme="light"] .qattan-admin-title {
   text-decoration-color: #d4af37;
 }
 
+.qattan-topup-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(224, 90, 71, 0.42);
+  border-radius: 11px;
+  background: rgba(224, 90, 71, 0.09);
+  color: #ffd9d0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: start;
+}
+
 .qattan-topup-upload {
   display: grid;
   justify-items: center;

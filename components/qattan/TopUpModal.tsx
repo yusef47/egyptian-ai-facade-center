@@ -45,7 +45,7 @@ const INSTAPAY_QR_HREF = "/instapay-qr.svg";
 type SubmissionState =
   | { kind: "idle" }
   | { kind: "sending" }
-  | { kind: "done"; refCode: string }
+  | { kind: "done"; refCode: string; instant?: boolean }
   | { kind: "error"; message: string };
 
 /**
@@ -168,7 +168,7 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
         }),
       });
       const payload = (await response.json().catch(() => null)) as
-        | { ok?: boolean; refCode?: string; message?: string; error?: string }
+        | { ok?: boolean; refCode?: string; message?: string; error?: string; autoApproved?: boolean; creditsRemaining?: number }
         | null;
       if (!response.ok || !payload?.ok) {
         setSubmission({
@@ -177,7 +177,18 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
         });
         return;
       }
-      setSubmission({ kind: "done", refCode: payload.refCode ?? refCode });
+      setSubmission({
+        kind: "done",
+        refCode: payload.refCode ?? refCode,
+        instant: payload.autoApproved === true,
+      });
+      // Instant grant: the header badge updates live, exactly like a
+      // generation deduction or a promo redemption.
+      if (typeof payload.creditsRemaining === "number") {
+        window.dispatchEvent(
+          new CustomEvent(QATTAN_CREDITS_EVENT, { detail: payload.creditsRemaining }),
+        );
+      }
       setReceipt(null);
     } catch {
       setSubmission({
@@ -324,6 +335,13 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
           </div>
         )}
 
+        {/* ── Security warning (AI receipt verification) ── */}
+        <p className="qattan-topup-warning" role="note">
+          ⚠️ {L
+            ? "تنبيه أمني: يتم فحص الإيصالات بالذكاء الاصطناعي. محاولة رفع إيصالات مزورة تؤدي للحظر النهائي للحساب."
+            : "Security notice: receipts are verified by AI. Attempting to upload forged receipts leads to a permanent account ban."}
+        </p>
+
         {/* ── Payment instructions (InstaPay exclusively) ── */}
         <div className="qattan-topup-pay">
           <h3>{L ? "تعليمات التحويل (InstaPay فقط)" : "Payment instructions (InstaPay only)"}</h3>
@@ -433,8 +451,12 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
         {submission.kind === "done" ? (
           <p className="qattan-topup-status qattan-topup-status-ok" role="status">
             {L
-              ? `تم إرسال الطلب بكود المرجع ${submission.refCode} — سيتم المراجعة قريباً.`
-              : `Request sent with reference ${submission.refCode} — it will be reviewed shortly.`}
+              ? submission.instant
+                ? `تم شحن رصيدك فوراً! 🎉 (كود المرجع ${submission.refCode})`
+                : `تم إرسال الطلب بكود المرجع ${submission.refCode} — سيتم المراجعة قريباً.`
+              : submission.instant
+                ? `Credits added instantly! 🎉 (reference ${submission.refCode})`
+                : `Request sent with reference ${submission.refCode} — it will be reviewed shortly.`}
           </p>
         ) : (
           <button
