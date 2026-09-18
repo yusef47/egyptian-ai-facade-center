@@ -56,7 +56,39 @@ async function requireSupabaseAccessToken(): Promise<string | null> {
   try {
     const { data } = await supabase.auth.getSession();
     token = data.session?.access_token ?? null;
+
+    // Auto-refresh: Supabase JWTs expire (default 1h). If the cached session
+    // is expired (or missing) a refresh is attempted BEFORE the generation
+    // request, so an otherwise-valid logged-in user never gets a 401/403
+    // rejection mid-session just because the hour rolled over.
+    const expiresAt = data.session?.expires_at; // epoch seconds
+    const expired =
+      typeof token === "string" &&
+      typeof expiresAt === "number" &&
+      expiresAt * 1000 <= Date.now();
+    if (!token || expired) {
+      console.log(
+        `[AUTH_REFRESH] ${token ? "token expired —" : "no cached session —"} attempting refreshSession()`,
+      );
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      const refreshedToken = refreshed?.session?.access_token ?? null;
+      if (refreshedToken) {
+        token = refreshedToken;
+        console.log("[AUTH_REFRESH] token refreshed successfully");
+      } else {
+        // Fail closed: sending a known-expired (or absent) token guarantees a
+        // 401 round-trip. Surface the sign-in modal instead.
+        console.log(
+          `[AUTH_REFRESH_FAILED] ${refreshError?.message ?? "refresh returned no session"}`,
+        );
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(QATTAN_AUTH_REQUIRED_EVENT));
+        }
+        throw new AuthRequiredError();
+      }
+    }
   } catch (error) {
+    if (error instanceof AuthRequiredError) throw error;
     // Fail closed: a session read that throws must never degrade into a
     // tokenless request (that is how generations escaped the credit ledger).
     console.log(

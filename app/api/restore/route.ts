@@ -41,7 +41,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   //    allowlist would 403 every visitor landing on qattan-ai.com.
   if (!isAllowedOrigin(request)) {
     console.log(
-      `[ORIGIN_REJECTED] ${JSON.stringify({ origin: request.headers.get("origin") })}`,
+      `[RESTORE_403_REASON] ${JSON.stringify({ reason: "origin_rejected", status: 403, origin: request.headers.get("origin") })}`,
     );
     return NextResponse.json(
       { error: "Request origin is not allowed." },
@@ -67,6 +67,17 @@ export async function POST(request: Request): Promise<NextResponse> {
   const hasSession = Boolean(userId);
   console.log(`[RESTORE_START] ${JSON.stringify({ userId: userId ?? null, hasSession })}`);
   if (!userId) {
+    // Pinpoint the exact auth failure class for Vercel log triage:
+    // missing_bearer_token = no Authorization header at all;
+    // auth_verification_failed = a token was sent but Supabase rejected it
+    // (expired, revoked, or wrong audience) — the client auto-refreshes
+    // expired tokens before the call, so this now indicates a deeper issue.
+    const authReason = request.headers.get("authorization")
+      ? "auth_verification_failed"
+      : "missing_bearer_token";
+    console.log(
+      `[RESTORE_403_REASON] ${JSON.stringify({ reason: authReason, status: 401 })}`,
+    );
     // Diagnostics for the "generated but never charged" failure class: record
     // whether the browser attached a credential at all.
     console.log(
@@ -94,6 +105,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const admin = getSupabaseAdminClient();
   if (!admin) {
+    console.log(
+      `[RESTORE_403_REASON] ${JSON.stringify({ reason: "service_role_error", status: 503 })}`,
+    );
     console.log("[NO_ADMIN_CLIENT] SUPABASE env vars missing on server");
     return NextResponse.json(
       { error: "Credit service unavailable. Try again shortly." },
