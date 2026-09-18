@@ -5,6 +5,7 @@ import {
   TRIPTYCH_DIRECTIVE,
   type ToolId,
 } from "../tools/registry.js";
+import { SITE_ORIGIN } from "./site.js";
 
 export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -220,6 +221,12 @@ export function buildOpenRouterRequest(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        // Provider-recommended attribution headers. They also identify the
+        // request as a first-party app to the gateway's bot protection —
+        // serverless egress IPs without attribution headers are the classic
+        // trigger for opaque HTML 403 challenge pages instead of JSON errors.
+        "HTTP-Referer": SITE_ORIGIN,
+        "X-Title": "Qattan AI",
       },
       body: JSON.stringify({
         model: opts.model ?? OPENROUTER_MODEL,
