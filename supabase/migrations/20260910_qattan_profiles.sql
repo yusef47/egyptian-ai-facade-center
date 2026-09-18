@@ -140,7 +140,6 @@ as $$
 declare
   current_row public.profiles;
   remaining integer;
-  stamped integer;
 begin
 
   select * into current_row from public.profiles where id = user_id;
@@ -152,27 +151,28 @@ begin
     return 10;
   end if;
 
-  -- Legacy row without a timestamp: stamp it and grant the fresh allowance
-  -- exactly once — there is no prior Cairo day to compare against.
-  if current_row.last_credit_reset is null then
-    update public.profiles
-    set credits = 10, last_credit_reset = now()
-    where id = user_id
-    returning credits into stamped;
-    return coalesce(stamped, 10);
+  -- ATOMIC GUARDED WRITE — the single query that grants the daily allowance.
+  -- credits AND last_credit_reset are set TOGETHER in this one UPDATE, so the
+  -- stamp can never move without the balance resetting to 10. The WHERE clause
+  -- re-verifies the Cairo calendar-day boundary inside the write itself, so
+  -- two concurrent refreshes can never double-grant: the loser updates zero
+  -- rows and falls through to the authoritative re-read below.
+  update public.profiles
+  set credits = 10, last_credit_reset = now()
+  where id = user_id
+    and (last_credit_reset is null
+         or date(last_credit_reset at time zone 'Africa/Cairo')
+            < date(now() at time zone 'Africa/Cairo'))
+  returning credits into remaining;
+
+  if remaining is not null then
+    return remaining;
   end if;
 
-  -- Reset when the last reset happened on an EARLIER Cairo calendar day.
-  -- Strict date comparison: '2026-09-18' < '2026-09-19' — hours, minutes,
-  -- seconds, and DST transitions never influence the decision.
-  if date(current_row.last_credit_reset at time zone 'Africa/Cairo')
-     < date(now() at time zone 'Africa/Cairo') then
-    update public.profiles
-    set credits = 10, last_credit_reset = now()
-    where id = user_id
-    returning credits into remaining;
-    return coalesce(remaining, 10);
-  end if;  return current_row.credits;
+  -- Zero rows updated: the balance was already current today, or a concurrent
+  -- refresh just won the race. Re-read the authoritative row — never guess.
+  select credits into remaining from public.profiles where id = user_id;
+  return coalesce(remaining, current_row.credits);
 end;
 
 $$;

@@ -46,6 +46,7 @@ vi.mock("@supabase/supabase-js", () => ({
       builder.select = vi.fn(() => builder);
       builder.eq = vi.fn(() => builder);
       builder.update = vi.fn(() => builder);
+      builder.or = vi.fn(() => builder);
       builder.maybeSingle = vi.fn(() => Promise.resolve({ data: state.profile, error: null }));
       return builder;
     };

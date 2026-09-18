@@ -106,6 +106,7 @@ function queryChain(results: { data: unknown; error: unknown }[]) {
   builder.eq = vi.fn(() => builder);
   builder.update = vi.fn(() => builder);
   builder.gt = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.maybeSingle = vi.fn(() =>
     Promise.resolve(results[Math.min(call++, results.length - 1)]),
   );

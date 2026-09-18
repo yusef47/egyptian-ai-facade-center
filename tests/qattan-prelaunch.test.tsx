@@ -149,15 +149,17 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
 
   it("resets credits on a strict Cairo calendar-date comparison, not a rolling 24h window", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
-    // The RPC boundary is the Cairo DATE (YYYY-MM-DD) of the stamp vs today,
-    // derived from the IANA zone (DST-safe) — hours never influence it.
+    // The RPC grants the allowance through ONE atomic guarded write: credits
+    // and the stamp move together, with the Cairo calendar-day boundary
+    // re-verified inside the UPDATE's WHERE clause (concurrency-safe).
     expect(sql).toMatch(
-      /date\(current_row\.last_credit_reset at time zone 'Africa\/Cairo'\)\s*\n\s*< date\(now\(\) at time zone 'Africa\/Cairo'\)/,
+      /update public\.profiles\s*\n\s*set credits = 10, last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*and \(last_credit_reset is null/,
+    );
+    expect(sql).toMatch(
+      /or date\(last_credit_reset at time zone 'Africa\/Cairo'\)\s*\n\s*< date\(now\(\) at time zone 'Africa\/Cairo'\)/,
     );
     // No rolling-24h reset may remain anywhere in the migration.
     expect(sql).not.toMatch(/interval '24 hours'/);
-    // Stamping legacy rows grants the allowance and stamps in ONE update.
-    expect(sql).toMatch(/set credits = 10, last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*returning credits into stamped;/);
     // Bulk alignment pass for accounts stamped on an earlier Cairo day.
     expect(sql).toMatch(
       /update public\.profiles\s*\n\s*set credits = 10, last_credit_reset = now\(\)\s*\n\s*where last_credit_reset is null/,
