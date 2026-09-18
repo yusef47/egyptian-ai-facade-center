@@ -47,6 +47,28 @@ type LoadState =
 
 type TopupRow = NonNullable<AdminStatsPayload["topups"]>[number];
 
+type EngineProbe = {
+  model: string;
+  ok: boolean;
+  status: number | null;
+  message: string;
+  classification: string;
+};
+
+type EngineProbeState = {
+  loading: boolean;
+  checkedAt: string | null;
+  probes: EngineProbe[];
+  error: string | null;
+};
+
+const EMPTY_ENGINE_PROBE: EngineProbeState = {
+  loading: false,
+  checkedAt: null,
+  probes: [],
+  error: null,
+};
+
 /**
  * Secure Qattan admin stats dashboard (obsidian & gold). Authorization is
  * enforced server-side by /api/admin/stats (owner email + ADMIN_EMAILS);
@@ -65,6 +87,7 @@ export default function AdminPage() {
   const [topupBusyId, setTopupBusyId] = useState<string | null>(null);
   const [topupNotice, setTopupNotice] = useState<string | null>(null);
   const [previewReceipt, setPreviewReceipt] = useState<string | null>(null);
+  const [engineProbe, setEngineProbe] = useState<EngineProbeState>(EMPTY_ENGINE_PROBE);
 
   const loadStats = useCallback(async () => {
     if (!supabase) return;
@@ -109,6 +132,45 @@ export default function AdminPage() {
     const { data: subscription } = supabase.auth.onAuthStateChange(() => void loadStats());
     return () => subscription?.subscription.unsubscribe();
   }, [supabase, loadStats]);
+
+  /**
+   * One-tap engine probe: asks the server to ping the generation gateway on
+   * both models and reports the exact status + upstream message, so a key
+   * credit cap or access restriction is diagnosable without log diving.
+   */
+  const runEngineProbe = useCallback(async () => {
+    if (!supabase || engineProbe.loading) return;
+    setEngineProbe({ ...EMPTY_ENGINE_PROBE, loading: true });
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setEngineProbe({ ...EMPTY_ENGINE_PROBE, error: "Session expired — sign in again." });
+        return;
+      }
+      const response = await fetch("/api/admin/engine-health", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { checkedAt?: string; probes?: EngineProbe[]; error?: string }
+        | null;
+      if (!response.ok || !payload) {
+        setEngineProbe({
+          ...EMPTY_ENGINE_PROBE,
+          error: payload?.error ?? "The probe failed. Try again.",
+        });
+        return;
+      }
+      setEngineProbe({
+        loading: false,
+        checkedAt: payload.checkedAt ?? new Date().toISOString(),
+        probes: payload.probes ?? [],
+        error: null,
+      });
+    } catch {
+      setEngineProbe({ ...EMPTY_ENGINE_PROBE, error: "Network error while probing the engine." });
+    }
+  }, [supabase, engineProbe.loading]);
 
   /** One-tap approve (atomic RPC) / reject on a pending top-up request. */
   const decideTopup = useCallback(
@@ -274,6 +336,55 @@ export default function AdminPage() {
                 the migration is applied.
               </p>
             )}
+
+            <section className="qattan-admin-table-wrap" data-testid="admin-engine-health">
+              <div className="qattan-admin-table-head">
+                <h2>Engine health</h2>
+                <button
+                  type="button"
+                  className="qattan-admin-action"
+                  onClick={() => void runEngineProbe()}
+                  disabled={engineProbe.loading}
+                >
+                  {engineProbe.loading ? "Probing…" : "Run probe"}
+                </button>
+              </div>
+              {engineProbe.error && (
+                <p className="qattan-admin-note" role="alert">{engineProbe.error}</p>
+              )}
+              {engineProbe.checkedAt && !engineProbe.error && (
+                <p className="qattan-admin-note" role="status">
+                  Checked {new Date(engineProbe.checkedAt).toLocaleTimeString("en-GB")} —
+                  {engineProbe.probes.every((p) => p.classification === "ok")
+                    ? " engine is healthy."
+                    : " engine issue detected — see below."}
+                </p>
+              )}
+              {engineProbe.probes.map((probe) => (
+                <div
+                  key={probe.model}
+                  className="qattan-admin-note"
+                  style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}
+                >
+                  <strong style={{ minWidth: 0 }}>
+                    {probe.model === "primary" ? "Primary" : "Fallback"}:
+                  </strong>
+                  <span
+                    style={{
+                      color:
+                        probe.classification === "ok"
+                          ? "#39d98a"
+                          : "#ffb020",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {probe.classification}
+                  </span>
+                  {probe.status !== null && <span>(HTTP {probe.status})</span>}
+                  <span style={{ opacity: 0.85 }}>— {probe.message}</span>
+                </div>
+              ))}
+            </section>
 
             <section className="qattan-admin-table-wrap" data-testid="admin-topup-queue">
               <div className="qattan-admin-table-head">
