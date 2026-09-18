@@ -54,15 +54,15 @@ export const OUTPUT_PRESENTATION_LABELS: Record<OutputPresentation, { en: string
 
 /** Appended to the brief when the user requests the combined 3-panel board. */
 export const TRIPTYCH_DIRECTIVE =
-  "Create a professional architectural presentation board showing THREE different style interpretations arranged as a triptych. Each panel should have a distinct architectural style with its name labeled. Present all three in one cohesive wide image.";
+  "Render a single 16:9 widescreen panoramic architectural presentation triptych board. The image must contain 3 side-by-side panels: Left panel = Daytime view, Center panel = Dusk/Golden hour lighting, Right panel = Architectural detail close-up. Crisp vertical division lines between panels.";
 
 /**
- * Single-call directive for the 3-gallery-cards mode. The three variations
- * are produced INSIDE one wide image by one API call (and therefore exactly
- * one credit) — never by issuing three separate generation requests.
+ * Single-call directive for the 3-gallery-cards mode. The three views are
+ * produced INSIDE one wide presentation sheet by one API call (and therefore
+ * exactly one credit) — never by issuing three separate generation requests.
  */
 export const GALLERY_VARIATION_DIRECTIVE =
-  "Generate THREE distinctly different architectural style variations of this design side by side in a single wide image. Label each variation with its style name at the top. The three variations must show noticeably different architectural styles, materials, colors, and design approaches while maintaining the same building footprint and scale.";
+  "Render a single 16:9 architectural presentation sheet showing a primary hero view on the left and 2 stacked detail thumbnail views on the right. Professional architectural portfolio presentation layout.";
 
 export type ToolOption = { value: string; label: { en: string; ar: string } };
 

@@ -92,24 +92,33 @@ describe("V115 triptych restoration request", () => {
     expect(instruction).not.toMatch(/NO vertical side text/i);
   });
 
-  it("injects the 16:9 board layout and strict negatives for Triptych and 3-gallery briefs", () => {
-    for (const directive of [TRIPTYCH_DIRECTIVE, GALLERY_VARIATION_DIRECTIVE]) {
-      const instruction = systemPromptFor(`Redesign this building. ${directive}`);
+  it("injects mode-aware board layout and strict negatives for Triptych and 3-gallery briefs", () => {
+    const triptychInstruction = systemPromptFor(`Redesign this building. ${TRIPTYCH_DIRECTIVE}`);
 
-      expect(instruction).toMatch(/3-PANEL PRESENTATION BOARD LAYOUT \(NON-NEGOTIABLE\)/i);
-      expect(instruction).toMatch(/16:9 LANDSCAPE canvas/i);
-      expect(instruction).toMatch(/EXACTLY THREE TALL VERTICAL panels side by side/i);
-      expect(instruction).toMatch(/thin elegant gold dividing lines/i);
-      expect(instruction).toMatch(/short style title centred directly above each panel/i);
-      // Strict negatives: the exact exclusions requested for board outputs.
-      expect(instruction).toMatch(/no infographics/i);
-      expect(instruction).toMatch(/no vertical side text/i);
-      expect(instruction).toMatch(/no bottom thumbnail rows/i);
-      expect(instruction).toMatch(/no diagrams/i);
-      expect(instruction).toMatch(/no technical charts/i);
-      expect(instruction).toMatch(/no poster margins/i);
-      expect(instruction).toMatch(/Pure photorealistic architectural renders only/i);
-    }
+    expect(triptychInstruction).toMatch(/TRIPTYCH BOARD LAYOUT \(NON-NEGOTIABLE\)/i);
+    expect(triptychInstruction).toMatch(/16:9 LANDSCAPE panoramic canvas/i);
+    expect(triptychInstruction).toMatch(/EXACTLY THREE side-by-side panels/i);
+    expect(triptychInstruction).toMatch(/Left panel = full Daytime view/i);
+    expect(triptychInstruction).toMatch(/Center panel = the same view under Dusk\/Golden-hour lighting/i);
+    expect(triptychInstruction).toMatch(/Right panel = an Architectural detail close-up/i);
+    expect(triptychInstruction).toMatch(/crisp thin vertical division lines/i);
+    // Strict negatives: the exact exclusions requested for board outputs.
+    expect(triptychInstruction).toMatch(/no infographics/i);
+    expect(triptychInstruction).toMatch(/no vertical side text/i);
+    expect(triptychInstruction).toMatch(/no bottom thumbnail rows/i);
+    expect(triptychInstruction).toMatch(/no diagrams/i);
+    expect(triptychInstruction).toMatch(/no technical charts/i);
+    expect(triptychInstruction).toMatch(/no poster margins/i);
+    expect(triptychInstruction).toMatch(/Pure photorealistic architectural renders only/i);
+
+    // Gallery briefs get the portfolio-sheet spec — hero left, stacked right.
+    const galleryInstruction = systemPromptFor(`Redesign this building. ${GALLERY_VARIATION_DIRECTIVE}`);
+    expect(galleryInstruction).toMatch(/GALLERY PRESENTATION SHEET LAYOUT \(NON-NEGOTIABLE\)/i);
+    expect(galleryInstruction).toMatch(/16:9 LANDSCAPE canvas split into TWO columns/i);
+    expect(galleryInstruction).toMatch(/primary HERO view/i);
+    expect(galleryInstruction).toMatch(/exactly TWO stacked detail views/i);
+    expect(galleryInstruction).toMatch(/must never be three equal panels/i);
+    expect(galleryInstruction).not.toMatch(/TRIPTYCH BOARD LAYOUT/i);
   });
 });
 
@@ -153,7 +162,7 @@ describe("Structural fidelity — enforced across all 8 tools", () => {
     );
     expect(instruction.indexOf(STRUCTURAL_FIDELITY_CLAUSE)).toBeGreaterThan(-1);
     expect(instruction.indexOf(STRUCTURAL_FIDELITY_CLAUSE)).toBeLessThan(
-      instruction.indexOf("3-PANEL PRESENTATION BOARD LAYOUT"),
+      instruction.indexOf("TRIPTYCH BOARD LAYOUT"),
     );
   });
 

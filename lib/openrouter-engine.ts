@@ -69,19 +69,45 @@ TECHNICAL STANDARDS
 Photorealistic 8K architectural visualization: crisp edges, correct perspective, realistic materials and reflections, cinematic natural or night lighting, deep depth of field, sharp focus throughout, no warped geometry, no duplicated windows, no visible artifacts.`.trim();
 
 /**
- * Layout enforcement for the 3-panel presentation board (Triptych and
- * 3-gallery modes). Appended to the system prompt ONLY when the brief carries
- * one of the board directives, so single-image generations stay clean.
+ * Layout enforcement for the Triptych board: three side-by-side panels with
+ * per-panel roles (day / golden hour / detail close-up). Appended to the
+ * system prompt ONLY when the brief carries the triptych directive, so
+ * single-image generations stay clean.
  */
-export const THREE_PANEL_BOARD_LAYOUT_CLAUSE = `3-PANEL PRESENTATION BOARD LAYOUT (NON-NEGOTIABLE)
-- ORIENTATION: one wide 16:9 LANDSCAPE canvas (e.g. 2048×1152 or wider) containing EXACTLY THREE TALL VERTICAL panels side by side, together occupying 100% of the canvas width, edge to edge.
-- STYLE: a clean architectural presentation board with thin elegant gold dividing lines between the panels and a short style title centred directly above each panel.
-- CONTENT: each panel is a complete photorealistic architectural render at full standalone detail; the building's geometry, floor levels, and opening rhythm stay identical across all three panels — only style, materials, and lighting differ.
+export const TRIPTYCH_BOARD_LAYOUT_CLAUSE = `TRIPTYCH BOARD LAYOUT (NON-NEGOTIABLE)
+- ORIENTATION: one single wide 16:9 LANDSCAPE panoramic canvas containing EXACTLY THREE side-by-side panels, together occupying 100% of the canvas width, edge to edge.
+- PANEL CONTENT: Left panel = full Daytime view of the building; Center panel = the same view under Dusk/Golden-hour lighting; Right panel = an Architectural detail close-up of the same design.
+- STYLE: crisp thin vertical division lines between panels; a clean presentation-board look with a short style title centred above each panel.
+- CONTENT: each panel is a complete photorealistic architectural render at full standalone detail; the building's geometry, floor levels, and opening rhythm stay identical across all three panels.
+STRICT NEGATIVES (NEVER INCLUDE): no infographics, no vertical side text, no bottom thumbnail rows, no diagrams, no technical charts, no poster margins, no annotated callouts, no watermarks. Pure photorealistic architectural renders only.`;
+
+/**
+ * Layout enforcement for the 3-gallery presentation sheet: a hero view on the
+ * left and two stacked detail views on the right — a professional portfolio
+ * layout, appended ONLY when the brief carries the gallery directive.
+ */
+export const GALLERY_SHEET_LAYOUT_CLAUSE = `GALLERY PRESENTATION SHEET LAYOUT (NON-NEGOTIABLE)
+- ORIENTATION: one single wide 16:9 LANDSCAPE canvas split into TWO columns: a dominant LEFT column (~60% width) and a RIGHT column (~40% width).
+- LEFT: one primary HERO view of the design, full-bleed within its column.
+- RIGHT: exactly TWO stacked detail views (top and bottom) of the same design — e.g. a close-up of materials/entrance and a secondary angle. The two stacked views must never be three equal panels.
+- STYLE: clean architectural portfolio presentation layout; thin elegant gold dividing lines between the views; a short caption above each view.
+- CONTENT: every view is a complete photorealistic architectural render at full standalone detail; the building's geometry and opening rhythm stay identical across all views.
 STRICT NEGATIVES (NEVER INCLUDE): no infographics, no vertical side text, no bottom thumbnail rows, no diagrams, no technical charts, no poster margins, no annotated callouts, no watermarks. Pure photorealistic architectural renders only.`;
 
 /** True when the brief asks for the 3-panel presentation board. */
 export function wantsThreePanelBoard(prompt: string): boolean {
   return prompt.includes(TRIPTYCH_DIRECTIVE) || prompt.includes(GALLERY_VARIATION_DIRECTIVE);
+}
+
+/**
+ * Mode-aware board layout clause: the triptych directive gets the 3-vertical-
+ * panel daylight/dusk/detail spec, the gallery directive gets the hero-left +
+ * stacked-thumbnails portfolio sheet spec.
+ */
+export function boardLayoutClauseFor(prompt: string): string {
+  return prompt.includes(TRIPTYCH_DIRECTIVE)
+    ? TRIPTYCH_BOARD_LAYOUT_CLAUSE
+    : GALLERY_SHEET_LAYOUT_CLAUSE;
 }
 
 export const GENERAL_VISUALIZATION_SYSTEM_PROMPT = `You are the Qattan AI Architectural Visualization Engine for interiors, sketches, masterplans, landscapes, virtual staging, and render enhancement.
@@ -182,7 +208,9 @@ export function buildOpenRouterRequest(
   const briefLabel = promptMode === "cad" ? "USER FLOOR PLAN BRIEF" : "USER RESTORATION BRIEF";
   // The board layout rules are injected only for Triptych / 3-gallery briefs:
   // single-image generations must never receive panel or board framing.
-  const boardClause = wantsThreePanelBoard(prompt) ? `${THREE_PANEL_BOARD_LAYOUT_CLAUSE}\n\n` : "";
+  const boardClause = wantsThreePanelBoard(prompt)
+    ? `${boardLayoutClauseFor(prompt)}\n\n`
+    : "";
   // Every tool — exterior, interior, sketch, masterplan, landscape, staging,
   // enhancer and floorplan — carries the structural fidelity directive ahead
   // of the layout/watermark rules, so surface redesign can never move a wall.
