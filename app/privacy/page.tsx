@@ -40,7 +40,7 @@ const sections: LegalSection[] = [
   {
     heading: "5. Contact",
     body: [
-      "For privacy questions or data deletion requests, contact us at yusefelshater979@gmail.com.",
+      "For privacy questions or data deletion requests, contact our support team at archkattan78@gmail.com.",
     ],
   },
 ];

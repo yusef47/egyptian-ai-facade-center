@@ -36,7 +36,10 @@ describe("Qattan marketing page (mnml.ai hierarchy)", () => {
     expect(screen.getByRole("heading", { name: /أدوات الذكاء الاصطناعي للتصميم/ })).toBeInTheDocument();
     expect(screen.getAllByText("متاح الآن").length).toBeGreaterThanOrEqual(8);
     expect(screen.getAllByText(/قريباً/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("$29").length).toBeGreaterThan(0);
+    // Official EGP credit packs replaced the old $29/month subscription card.
+    expect(screen.getAllByText("50").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("250").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("450").length).toBeGreaterThan(0);
 
     // Tool cards expose feature checkmarks and live deep links.
     expect(screen.getAllByText("وضع تريبتيك التراث").length).toBeGreaterThan(0);

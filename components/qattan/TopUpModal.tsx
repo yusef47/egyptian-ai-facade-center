@@ -19,6 +19,8 @@ import { useQattan } from "./QattanProviders";
 type TopUpModalProps = {
   open: boolean;
   onClose: () => void;
+  /** Pack pre-selected when opened from a pricing card (default: Student). */
+  initialPack?: string;
 };
 
 /** Fixed packs mirror lib/topups.ts (server re-validates pricing). */
@@ -54,7 +56,7 @@ type SubmissionState =
  * unique reference code, a receipt screenshot upload, and an instant promo
  * code redemption box.
  */
-export default function TopUpModal({ open, onClose }: TopUpModalProps) {
+export default function TopUpModal({ open, onClose, initialPack }: TopUpModalProps) {
   const { locale } = useQattan();
   const L = locale === "ar";
   const supabase = getSupabaseBrowserClient();
@@ -93,13 +95,17 @@ export default function TopUpModal({ open, onClose }: TopUpModalProps) {
   }, [open, onClose]);
 
   // Fresh reference code per session so the operator can match the transfer.
+  // A pack pre-selected from the pricing card wins over the default.
   useEffect(() => {
     if (open) {
+      if (initialPack && (PACKS.some((p) => p.id === initialPack) || initialPack === "custom")) {
+        setSelected(initialPack);
+      }
       setRefCode(`REF-${Math.floor(100000 + Math.random() * 900000)}`);
       setSubmission({ kind: "idle" });
       setPromoState({ kind: "idle" });
     }
-  }, [open]);
+  }, [open, initialPack]);
 
   const isCustom = selected === "custom";
   const credits = isCustom ? customCredits : PACKS.find((p) => p.id === selected)?.credits ?? 10;

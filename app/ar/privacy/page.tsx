@@ -39,7 +39,7 @@ const sections: LegalSection[] = [
   },
   {
     heading: "٥. التواصل",
-    body: ["لأي استفسارات تتعلق بالخصوصية أو لطلب حذف البيانات، تواصل معنا عبر yusefelshater979@gmail.com."],
+    body: ["لأي استفسارات تتعلق بالخصوصية أو لطلب حذف البيانات، تواصل مع فريق الدعم عبر archkattan78@gmail.com."],
   },
 ];
 
