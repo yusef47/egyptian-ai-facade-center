@@ -10,6 +10,16 @@ export const OPENROUTER_ENDPOINT =
   "https://openrouter.ai/api/v1/chat/completions";
 export const OPENROUTER_MODEL = "google/gemini-3.1-flash-lite-image";
 
+/**
+ * Secondary image model used when the primary endpoint rejects a request with
+ * a key-level or capacity-level status (401/402/403/429/5xx). These rejections
+ * are frequently specific to one model's gateway (per-model access flags,
+ * moderation routing, temporary capacity) rather than the account itself, so
+ * a second image model on the same key often succeeds and the user's render
+ * goes through instead of failing with a busy notice.
+ */
+export const FALLBACK_OPENROUTER_MODEL = "google/gemini-2.5-flash-image";
+
 export const CAD_SYSTEM_PROMPT = `You are an expert AI Architectural CAD Generator for the Egyptian Center for Artificial Intelligence in Architecture & Urbanism. The image you produce will be directly parsed by a CAD Vectorizer to generate editable DXF blueprint files for AutoCAD 2027.
 
 CRITICAL REQUIREMENT: Do NOT generate ANY text inside the drawings — NO room names (e.g. Bed, Family, Kitchen), NO dimension numbers (e.g. 12000), NO elevation tags (e.g. FFL +3.00), and NO quadrant title texts (PLAN, ELEVATION, SECTION, PERSPECTIVE). ABSOLUTELY ZERO LETTERS OR NUMBERS inside the generated image.
@@ -159,7 +169,7 @@ export function buildOpenRouterRequest(
   imageDataUrl: string,
   prompt: string,
   apiKey: string,
-  opts: { inlineSystemPrompt?: boolean; mode?: RestoreMode; promptMode?: RestoreMode } = {},
+  opts: { inlineSystemPrompt?: boolean; mode?: RestoreMode; promptMode?: RestoreMode; model?: string } = {},
 ): OpenRouterRequest {
   const promptMode: RestoreMode = opts.promptMode ?? opts.mode ?? "facade";
   const systemPrompt =
@@ -212,7 +222,7 @@ export function buildOpenRouterRequest(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
+        model: opts.model ?? OPENROUTER_MODEL,
         modalities: ["image", "text"],
         messages,
       }),
@@ -435,53 +445,85 @@ export async function executeRestore(
   }
 
   const validated = validateRestorePayload(body);
-  if (!validated.ok) return validated;
-
-  try {
-    let request = buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
-      promptMode: validated.payload.promptMode,
-    });
-    let upstream = await fetch(request.url, request.init);
-    let data: unknown = await safeJson(upstream);
-
-    if (!upstream.ok && /role|system|invalid messages?/i.test(extractUpstreamMessage(data))) {
-      request = buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
-        inlineSystemPrompt: true,
+  if (!validated.ok) return validated;  try {
+    const buildFor = (model: string, inlineSystemPrompt = false) =>
+      buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
         promptMode: validated.payload.promptMode,
+        inlineSystemPrompt,
+        model,
       });
-      upstream = await fetch(request.url, request.init);
-      data = await safeJson(upstream);
-    }
+
+    /**
+     * Runs the two-attempt sequence (inline-system-prompt retry on message-
+     * shape rejections) against ONE model. Returns the last upstream response
+     * pair so the caller can decide on a fallback-model retry.
+     */
+    const runModel = async (model: string) => {
+      let request = buildFor(model);
+      let upstream = await fetch(request.url, request.init);
+      let data: unknown = await safeJson(upstream);
+
+      if (!upstream.ok && /role|system|invalid messages?/i.test(extractUpstreamMessage(data))) {
+        request = buildFor(model, true);
+        upstream = await fetch(request.url, request.init);
+        data = await safeJson(upstream);
+      }
+      return { upstream, data };
+    };
+
+    let { upstream, data } = await runModel(OPENROUTER_MODEL);
 
     if (!upstream.ok) {
-      // Server-side diagnostic (never sent to the client): the sanitized HTTP
-      // status pinpoints invalid-key vs empty-account vs model errors without
-      // naming the provider anywhere a user can see.
       console.log(
         `[ENGINE_UPSTREAM] status=${upstream.status} detail=${JSON.stringify(
           extractUpstreamMessage(data).slice(0, 200),
         )}`,
       );
       const upstreamMessage = extractUpstreamMessage(data);
-      if (
+      const accountDrained =
         upstream.status === 402 ||
-        /insufficient.?credits|out of credits|insufficient balance/i.test(upstreamMessage)
-      ) {
-        // Provider-side capacity/balance issues are presented as a busy engine,
-        // never as an account or provider problem.
-        return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
+        /insufficient.?credits|out of credits|insufficient balance|key limit/i.test(upstreamMessage);
+      console.log(
+        `[ENGINE_CLASS] ${JSON.stringify({
+          status: upstream.status,
+          class: accountDrained ? "account_credits" : "gateway",
+        })}`,
+      );
+      const retryable =
+        upstream.status === 401 ||
+        upstream.status === 402 ||
+        upstream.status === 403 ||
+        upstream.status === 429 ||
+        upstream.status >= 500;
+      if (retryable) {
+        // Second chance on a different image model — per-model gateways reject
+        // for reasons (access flags, moderation routing, capacity) that do not
+        // apply account-wide. User-facing copy stays the busy notice.
+        console.log(`[ENGINE_FALLBACK] retrying generation on the secondary image model`);
+        const fallback = await runModel(FALLBACK_OPENROUTER_MODEL);
+        if (fallback.upstream.ok) {
+          const output = extractImageData(fallback.data);
+          if (output) return { ok: true, imageDataUrl: await trimOutputDataUrl(output) };
+        } else {
+          console.log(
+            `[ENGINE_FALLBACK] status=${fallback.upstream.status} detail=${JSON.stringify(
+              extractUpstreamMessage(fallback.data).slice(0, 200),
+            )}`,
+          );
+        }
       }
-      return {
-        ok: false,
-        status: upstream.status >= 500 ? 502 : upstream.status,
-        message: ENGINE_BUSY_BILINGUAL,
-      };
+      // NEVER relay the upstream status to the browser: provider codes leak
+      // account state (402/403) and masquerade as Qattan errors. Everything
+      // maps to 502 + the proprietary busy message; a provider outage or key
+      // problem is OUR engine being busy, not the user's fault.
+      return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
     }
 
     const output = extractImageData(data);
     if (!output) return { ok: false, status: 502, message: "لم تصل صورة من نموذج الترميم." };
 
     return { ok: true, imageDataUrl: await trimOutputDataUrl(output) };
+
   } catch {
     return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
   }
