@@ -131,17 +131,31 @@ export function lastCairoMidnight(now: Date = new Date()): Date {
 }
 
 /**
- * Daily refresh rule: at 12:00 AM Cairo time every calendar day the balance
- * returns to the full daily allowance, regardless of the previous balance
- * (0, 2, or 5). Within the same Cairo day the stored balance is untouched.
+ * The Cairo calendar date (YYYY-MM-DD) of an instant, derived from the IANA
+ * Africa/Cairo zone via Intl. Comparing these STRINGS is a strict calendar-day
+ * comparison — '2026-09-18' < '2026-09-19' — immune to hours, minutes,
+ * seconds, and DST offset drift (EET/EEST never enter the decision).
+ */
+export function getCairoDateString(instant: Date): string {
+  const wall = cairoWallClock(instant);
+  return `${wall.year}-${String(wall.month).padStart(2, "0")}-${String(wall.day).padStart(2, "0")}`;
+}
+
+/**
+ * Daily refresh rule: the balance returns to the full daily allowance whenever
+ * the stored stamp's CAIRO CALENDAR DATE is earlier than today's Cairo date,
+ * regardless of the previous balance (0, 2, or 5) and regardless of hours,
+ * minutes, or seconds. Within the same Cairo day the stored balance is
+ * untouched.
  *
  * CRITICAL correctness rules (production bug fixes):
  * - The reset writes `credits` AND `last_credit_reset` in the SAME update, so
  *   a null/legacy timestamp triggers the allowance exactly once — never on
  *   every call.
- * - The boundary is a calendar-day comparison against Cairo midnight, not a
- *   rolling 24h window: generating at 23:59 Cairo and again at 00:01 means a
- *   fresh allowance, while generating twice in one afternoon never re-gifts.
+ * - The boundary is a strict date-string comparison ('2026-09-18' <
+ *   '2026-09-19'), not a rolling 24h window: generating at 23:59 Cairo and
+ *   again at 00:01 means a fresh allowance, while generating twice in one
+ *   afternoon never re-gifts.
  */
 export async function refreshDailyCredits(
   admin: SupabaseClient,
@@ -158,14 +172,14 @@ export async function refreshDailyCredits(
   const currentCredits = typeof data.credits === "number" ? data.credits : null;
   if (currentCredits === null) return null;
 
-  const lastResetMs = data.last_credit_reset
-    ? new Date(data.last_credit_reset).getTime()
-    : Number.NaN;
-  const hasUsableStamp = Number.isFinite(lastResetMs);
+  const todayCairoDate = getCairoDateString(new Date());
+  const lastResetCairoDate = data.last_credit_reset
+    ? getCairoDateString(new Date(data.last_credit_reset))
+    : null;
 
   // Reset when there is no usable stamp OR the last reset happened on an
-  // earlier Cairo calendar day (before today's 12:00 AM Cairo midnight).
-  if (!hasUsableStamp || lastResetMs < lastCairoMidnight().getTime()) {
+  // earlier Cairo calendar day.
+  if (!lastResetCairoDate || lastResetCairoDate < todayCairoDate) {
     const { data: updated, error: updateError } = await admin
       .from("profiles")
       .update({ credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() })

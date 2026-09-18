@@ -147,15 +147,21 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     expect(creditsRoute).toContain("force-dynamic");
   });
 
-  it("resets credits at 12:00 AM Cairo midnight, not on a rolling 24h window", () => {
+  it("resets credits on a strict Cairo calendar-date comparison, not a rolling 24h window", () => {
     const sql = readFileSync("supabase/migrations/20260910_qattan_profiles.sql", "utf8");
-    // The RPC boundary is Cairo midnight, derived from the IANA zone (DST-safe).
-    expect(sql).toMatch(/last_credit_reset < cairo_midnight/);
-    expect(sql).toMatch(/date\(now\(\) at time zone 'Africa\/Cairo'\)/);
+    // The RPC boundary is the Cairo DATE (YYYY-MM-DD) of the stamp vs today,
+    // derived from the IANA zone (DST-safe) — hours never influence it.
+    expect(sql).toMatch(
+      /date\(current_row\.last_credit_reset at time zone 'Africa\/Cairo'\)\s*\n\s*< date\(now\(\) at time zone 'Africa\/Cairo'\)/,
+    );
     // No rolling-24h reset may remain anywhere in the migration.
     expect(sql).not.toMatch(/interval '24 hours'/);
     // Stamping legacy rows grants the allowance and stamps in ONE update.
     expect(sql).toMatch(/set credits = 10, last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*returning credits into stamped;/);
+    // Bulk alignment pass for accounts stamped on an earlier Cairo day.
+    expect(sql).toMatch(
+      /update public\.profiles\s*\n\s*set credits = 10, last_credit_reset = now\(\)\s*\n\s*where last_credit_reset is null/,
+    );
   });
 });
 

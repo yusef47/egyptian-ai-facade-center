@@ -122,21 +122,14 @@ end;
 $$;
 
 -- ── Cairo midnight boundary ────────────────────────────────────────────
--- The daily allowance replenishes at 12:00 AM (midnight) Africa/Cairo each
--- calendar day — NOT on a rolling 24h window. `now() at time zone
--- 'Africa/Cairo'::text` renders the current Cairo wall clock (date() casts it
--- to that day's date), and `::timestamptz` reads that date back AT MIDNIGHT
--- Cairo time, resolving the UTC+2 / UTC+3 (EEST) offset automatically from
--- the IANA database — DST-correct without hardcoding offsets.
-create or replace function public.qattan_cairo_midnight()
-returns timestamptz
-language sql
-immutable
-as $$
-  select date(now() at time zone 'Africa/Cairo')::text::timestamp at time zone 'Africa/Cairo';
-$$;
+-- The daily allowance replenishes when the stored stamp's CAIRO CALENDAR DATE
+-- is earlier than today's Cairo date — a strict YYYY-MM-DD string/date
+-- comparison, NOT a rolling 24h window. `x at time zone 'Africa/Cairo'`
+-- renders the Cairo wall clock and date() casts it to that day's date, so the
+-- UTC+2 / UTC+3 (EEST) offset resolves automatically from the IANA database —
+-- DST-correct without hardcoding offsets.
 
--- ── Daily refresh helper: resets at 12:00 AM Cairo time every day ─────
+-- ── Daily refresh helper: resets at the Cairo calendar-day boundary ─────
 drop function if exists public.refresh_daily_credit(uuid);
 create function public.refresh_daily_credit(user_id uuid)
 returns integer
@@ -148,9 +141,7 @@ declare
   current_row public.profiles;
   remaining integer;
   stamped integer;
-  cairo_midnight timestamptz;
 begin
-  cairo_midnight := public.qattan_cairo_midnight();
 
   select * into current_row from public.profiles where id = user_id;
 
@@ -171,19 +162,29 @@ begin
     return coalesce(stamped, 10);
   end if;
 
-  -- Reset when the last reset happened on an EARLIER Cairo calendar day,
-  -- i.e. before today's 12:00 AM Cairo midnight.
-  if current_row.last_credit_reset < cairo_midnight then
+  -- Reset when the last reset happened on an EARLIER Cairo calendar day.
+  -- Strict date comparison: '2026-09-18' < '2026-09-19' — hours, minutes,
+  -- seconds, and DST transitions never influence the decision.
+  if date(current_row.last_credit_reset at time zone 'Africa/Cairo')
+     < date(now() at time zone 'Africa/Cairo') then
     update public.profiles
     set credits = 10, last_credit_reset = now()
     where id = user_id
     returning credits into remaining;
     return coalesce(remaining, 10);
-  end if;
-
-  return current_row.credits;
+  end if;  return current_row.credits;
 end;
+
 $$;
+
+-- One-time bulk alignment: bring every account whose stamp is from an earlier
+-- Cairo day (or missing) up to the full allowance immediately. Idempotent —
+-- re-running after the first pass updates zero rows.
+update public.profiles
+set credits = 10, last_credit_reset = now()
+where last_credit_reset is null
+   or date(last_credit_reset at time zone 'Africa/Cairo')
+      < date(now() at time zone 'Africa/Cairo');
 
 -- Flush PostgREST's schema cache so the recreated functions are immediately
 -- callable through the Supabase JS client (no more PGRST202 "Could not find

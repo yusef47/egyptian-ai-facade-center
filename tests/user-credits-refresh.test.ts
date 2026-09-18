@@ -20,14 +20,14 @@ describe("GET /api/user/credits — refresh-before-read contract", () => {
     expect(route.match(/refreshDailyCredits\(/g)?.length).toBe(1);
   });
 
-  it("applies the Cairo-midnight calendar-day rule, not a rolling 24h window", () => {
+  it("applies the strict Cairo calendar-date rule, not a rolling 24h window", () => {
     const lib = readFileSync("lib/credits.ts", "utf8");
-    expect(lib).toContain("lastCairoMidnight");
     expect(lib).toContain("Africa/Cairo");
-    // A stale stamp (earlier Cairo day) triggers the full-allowance reset.
-    expect(lib).toContain(
-      "lastResetMs < lastCairoMidnight().getTime()",
-    );
+    // A stale stamp (earlier Cairo calendar day) triggers the full-allowance
+    // reset via a strict YYYY-MM-DD string comparison — hours are irrelevant.
+    expect(lib).toContain("getCairoDateString");
+    expect(lib).toContain("lastResetCairoDate < todayCairoDate");
+    expect(lib).not.toContain("CREDIT_REFRESH_MS");
   });
 
   it("feeds the badge from /api/user/credits with the session bearer token", () => {
