@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "../../../../../lib/credits.js";
 import { authorizeAdmin } from "../../../../../lib/admin.js";
 import { TOPUP_SERVICE_UNAVAILABLE, approveTopupRequest } from "../../../../../lib/topups.js";
+import { isAllowedOrigin } from "../../../../../lib/origin.js";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,12 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // CSRF origin gate — apex, www, Vercel deployments, and localhost are trusted.
+  if (!isAllowedOrigin(request)) {
+    console.log(`[ORIGIN_REJECTED] ${JSON.stringify({ route: "admin/topup/approve", origin: request.headers.get("origin") })}`);
+    return NextResponse.json({ error: "Request origin is not allowed." }, { status: 403 });
+  }
+
   const admin = getSupabaseAdminClient();
   if (!admin) {
     console.log("[TOPUP_ADMIN_NO_CLIENT] SUPABASE env vars missing on server");

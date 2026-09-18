@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdminClient, verifySupabaseUser } from "../../../../lib/credits.js";
+import { isAllowedOrigin } from "../../../../lib/origin.js";
 import {
   TOPUP_AUTH_REQUIRED_BILINGUAL,
   TOPUP_PROMO_INVALID_BILINGUAL,
@@ -21,6 +22,11 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // CSRF origin gate — apex, www, Vercel deployments, and localhost are trusted.
+  if (!isAllowedOrigin(request)) {
+    console.log(`[ORIGIN_REJECTED] ${JSON.stringify({ route: "topup/promo", origin: request.headers.get("origin") })}`);
+    return NextResponse.json({ error: "Request origin is not allowed." }, { status: 403 });
+  }
   const userId = await verifySupabaseUser(request);
   if (!userId) {
     return NextResponse.json({ error: TOPUP_AUTH_REQUIRED_BILINGUAL }, { status: 401 });

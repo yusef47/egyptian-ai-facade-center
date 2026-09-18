@@ -10,6 +10,7 @@ import {
   verifySupabaseUser,
 } from "../../../lib/credits.js";
 import { RATE_LIMIT_MESSAGE_BILINGUAL, rateLimit } from "../../../lib/request-guards.js";
+import { isAllowedOrigin } from "../../../lib/origin.js";
 import { getSupabaseAdminClient } from "../../../lib/credits.js";
 import { validateImageDataUrl } from "../../../lib/image-validation.js";
 
@@ -34,6 +35,20 @@ export async function GET(): Promise<NextResponse> {
 
 export async function POST(request: Request): Promise<NextResponse> {
   // ── Simple, linear credit flow (per launch spec) ──────────────────────
+  // 0) CSRF origin gate: the apex (qattan-ai.com), www, Vercel deployments,
+  //    and localhost are all trusted first-party origins. The apex MUST be
+  //    allowed — Vercel serves the site from both hosts, and a www-only
+  //    allowlist would 403 every visitor landing on qattan-ai.com.
+  if (!isAllowedOrigin(request)) {
+    console.log(
+      `[ORIGIN_REJECTED] ${JSON.stringify({ origin: request.headers.get("origin") })}`,
+    );
+    return NextResponse.json(
+      { error: "Request origin is not allowed." },
+      { status: 403 },
+    );
+  }
+
   // 1) Per-IP abuse guard: 15 requests per rolling minute (keeps bursts off).
   const limited = rateLimit(getClientKey(request));
   if (!limited.allowed) {
