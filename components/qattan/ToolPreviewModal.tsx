@@ -17,6 +17,18 @@ type ToolPreviewModalProps = {
   poster: string;
   /** Real HD architectural video (MP4). Optional — falls back to the poster. */
   videoSrc?: string;
+  /**
+   * Derived "before" image (1-to-1 matched to this tool's output). When set,
+   * the stage becomes an interactive before/after comparison: the before
+   * image overlays the left of a gold divider while the video plays as the
+   * living "after". Optional — plain video stage when omitted.
+   */
+  beforeSrc?: string;
+  /**
+   * Static "after" image for image-pair showcases (e.g. Floor Plan → CAD
+   * sheet) that have no matching video. Replaces the video layer entirely.
+   */
+  afterSrc?: string;
 };
 
 const PREVIEW_COPY = {
@@ -25,12 +37,18 @@ const PREVIEW_COPY = {
     open: "Open preview",
     playing: "Preview playing — click to pause",
     paused: "Preview paused — click to play",
+    before: "Before",
+    after: "After",
+    compare: "Drag to compare before and after",
   },
   ar: {
     close: "إغلاق المعاينة",
     open: "فتح المعاينة",
     playing: "المعاينة تعمل — انقر للإيقاف",
     paused: "المعاينة متوقفة — انقر للتشغيل",
+    before: "قبل",
+    after: "بعد",
+    compare: "اسحب للمقارنة بين قبل وبعد",
   },
 } as const;
 
@@ -50,12 +68,16 @@ export default function ToolPreviewModal({
   description,
   poster,
   videoSrc,
+  beforeSrc,
+  afterSrc,
 }: ToolPreviewModalProps) {
   const { locale } = useQattan();
   const L = locale === "ar";
   const copy = L ? PREVIEW_COPY.ar : PREVIEW_COPY.en;
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(true);
+  /** Before/after divider position (%) — only rendered when `beforeSrc` is set. */
+  const [divider, setDivider] = useState(45);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -95,6 +117,7 @@ export default function ToolPreviewModal({
         onClick={() => {
           setOpen(true);
           setPlaying(true);
+          setDivider(45);
         }}
         aria-haspopup="dialog"
         aria-label={`${copy.open} — ${title}`}
@@ -154,14 +177,58 @@ export default function ToolPreviewModal({
                     onPause={() => setPlaying(false)}
                   />
                 ) : (
-                  // Poster-only fallback for slow connections or missing clips.
+                  // Poster/after-image fallback for image-pair showcases or
+                  // missing clips.
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={poster} alt="" className="qattan-preview-video" draggable={false} />
+                  <img
+                    src={afterSrc ?? poster}
+                    alt=""
+                    className="qattan-preview-video"
+                    draggable={false}
+                  />
                 )}
+                {beforeSrc ? (
+                  <>
+                    {/* Derived 1-to-1 "before" treatment over the living
+                        after layer, clipped to the left of the divider. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="qattan-preview-before"
+                      src={beforeSrc}
+                      alt=""
+                      draggable={false}
+                      style={{ clipPath: `inset(0 ${100 - divider}% 0 0)` }}
+                    />
+                    <span
+                      className="qattan-preview-divider-line"
+                      style={{ left: `${divider}%` }}
+                      aria-hidden="true"
+                    />
+                    <span className="qattan-comparison-label qattan-comparison-label-before">
+                      {copy.before}
+                    </span>
+                    <span className="qattan-comparison-label qattan-comparison-label-after">
+                      {copy.after}
+                    </span>
+                  </>
+                ) : null}
                 <span className="qattan-preview-state" aria-hidden="true">
                   {playing ? <Pause size={18} /> : <Play size={18} />}
                 </span>
               </button>
+              {beforeSrc ? (
+                <label className="qattan-preview-divider-control">
+                  <span className="qattan-sr-only">{copy.compare}</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={divider}
+                    onChange={(event) => setDivider(Number(event.target.value))}
+                  />
+                </label>
+              ) : null}
               <p className="qattan-preview-description">{description}</p>
             </motion.div>
           </motion.div>,

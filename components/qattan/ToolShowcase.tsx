@@ -8,16 +8,32 @@ import { TOOL_ICONS } from "./toolIcons";
 import ToolPreviewModal from "./ToolPreviewModal";
 import type { ToolId } from "@tools/registry";
 
-/** Real HD preview clip + poster per tool id. */
-const TOOL_PREVIEWS: Record<ToolId, { video: string; poster: string }> = {
-  exterior: { video: "/videos/tool-exterior.mp4", poster: "/poster-exterior.jpg" },
-  interior: { video: "/videos/tool-interior.mp4", poster: "/poster-interior.jpg" },
-  sketch: { video: "/videos/tool-sketch.mp4", poster: "/poster-sketch.jpg" },
-  masterplan: { video: "/videos/tool-masterplan.mp4", poster: "/poster-masterplan.jpg" },
-  landscape: { video: "/videos/tool-landscape.mp4", poster: "/poster-landscape.jpg" },
-  staging: { video: "/videos/tool-staging.mp4", poster: "/poster-staging.jpg" },
-  enhancer: { video: "/videos/tool-enhancer.mp4", poster: "/poster-enhancer.jpg" },
-  floorplan: { video: "/videos/tool-floorplan.mp4", poster: "/poster-floorplan.jpg" },
+/**
+ * Per-tool preview showcase. Every tool gets a DISTINCT transformation:
+ * a real HD clip + poster, and — where a 1-to-1 "before" treatment exists
+ * (derived by scripts/derive-showcases.cjs) — an interactive before/after
+ * stage instead of a plain video.
+ */
+export const TOOL_PREVIEWS: Record<
+  ToolId,
+  { video: string; poster: string; before?: string; after?: string }
+> = {
+  // 1 Exterior: facade material & lighting transformation.
+  exterior: { video: "/videos/tool-exterior.mp4", poster: "/poster-exterior.jpg", before: "/preview-exterior-before.jpg" },
+  // 2 Interior: unfurnished empty room → fully styled interior.
+  interior: { video: "/videos/tool-interior.mp4", poster: "/poster-interior.jpg", before: "/preview-interior-before.jpg" },
+  // 3 Sketch: hand drawing → photorealistic building (matched pair).
+  sketch: { video: "/videos/tool-sketch.mp4", poster: "/poster-sketch.jpg", before: "/poster-sketch.jpg" },
+  // 4 Masterplan: top-down site plan → aerial 3D community.
+  masterplan: { video: "/videos/tool-masterplan.mp4", poster: "/poster-masterplan.jpg", before: "/preview-masterplan-before.jpg" },
+  // 5 Landscape: bare plot → garden, pool & outdoor seating.
+  landscape: { video: "/videos/tool-landscape.mp4", poster: "/poster-landscape.jpg", before: "/preview-landscape-before.jpg" },
+  // 6 Staging: empty room → virtual furniture placement.
+  staging: { video: "/videos/tool-staging.mp4", poster: "/poster-staging.jpg", before: "/preview-staging-before.jpg" },
+  // 7 Enhancer: low-res draft → resolution & texture enhancement.
+  enhancer: { video: "/videos/tool-enhancer.mp4", poster: "/poster-enhancer.jpg", before: "/preview-enhancer-before.jpg" },
+  // 8 Floorplan: colour plan → technical CAD vector sheet (image pair).
+  floorplan: { video: "", poster: "/preview-floorplan-after.jpg", before: "/preview-floorplan-before.jpg", after: "/preview-floorplan-after.jpg" },
 };
 
 export function ToolShowcase() {
@@ -68,7 +84,9 @@ export function ToolShowcase() {
                     title={tool.title}
                     description={tool.description}
                     poster={TOOL_PREVIEWS[tool.id as ToolId]?.poster ?? "/poster-exterior.jpg"}
-                    videoSrc={TOOL_PREVIEWS[tool.id as ToolId]?.video ?? "/videos/tool-exterior.mp4"}
+                    videoSrc={TOOL_PREVIEWS[tool.id as ToolId]?.video || undefined}
+                    beforeSrc={TOOL_PREVIEWS[tool.id as ToolId]?.before}
+                    afterSrc={TOOL_PREVIEWS[tool.id as ToolId]?.after}
                   >
                     <span className="qattan-preview-chip">
                       <Play size={13} aria-hidden="true" /> {copy.tools.preview}

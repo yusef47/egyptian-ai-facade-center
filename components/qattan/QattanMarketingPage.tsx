@@ -5,6 +5,7 @@ import { QattanFooter } from "./QattanFooter";
 import { QattanHeader } from "./QattanHeader";
 import { QattanHero } from "./QattanHero";
 import { PricingPreview } from "./PricingPreview";
+import IntroVideoModal from "./IntroVideoModal";
 import { QattanProviders, useQattan } from "./QattanProviders";
 import { ToolShowcase } from "./ToolShowcase";
 import { WorkflowSection } from "./WorkflowSection";
@@ -43,8 +44,8 @@ function ProofSection() {
             <BeforeAfterSlider
               beforeLabel={copy.proof.before}
               afterLabel={copy.proof.after}
-              beforeSrc="/proof-before-sketch.jpg"
-              afterSrc="/proof-after-villa.jpg"
+              beforeSrc="/proof-exterior-before.jpg"
+              afterSrc="/hero-night-pool.jpg"
             />
           </Reveal>
           <Reveal className="qattan-proof-card">
@@ -52,8 +53,8 @@ function ProofSection() {
             <BeforeAfterSlider
               beforeLabel={copy.proof.before}
               afterLabel={copy.proof.after}
-              beforeSrc="/hero-before-sketch.jpg"
-              afterSrc="/hero-after-villa.jpg"
+              beforeSrc="/proof-interior-before.jpg"
+              afterSrc="/poster-interior.jpg"
             />
           </Reveal>
         </div>
@@ -75,6 +76,7 @@ function QattanMarketingContent() {
         <PricingPreview />
       </main>
       <QattanFooter />
+      <IntroVideoModal />
       <div className="qattan-proof-banner"><div className="qattan-container"><span>{copy.footer.disclaimer}</span></div></div>
     </>
   );

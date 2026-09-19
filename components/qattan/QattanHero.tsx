@@ -6,10 +6,11 @@ import {
   useReducedMotion,
   useSpring,
 } from "framer-motion";
-import { ArrowUpRight, Sparkles, Star } from "lucide-react";
+import { ArrowUpRight, Play, Sparkles, Star } from "lucide-react";
 import Link from "next/link";
 import { type MouseEvent } from "react";
 import { useQattan } from "./QattanProviders";
+import { INTRO_PLAY_EVENT, introReplayLabel } from "./IntroVideoModal";
 import BeforeAfterSlider from "./BeforeAfterSlider";
 import HeroShowreel from "./HeroShowreel";
 
@@ -201,6 +202,13 @@ export function QattanHero() {
               {copy.hero.primary}<ArrowUpRight size={17} aria-hidden="true" />
             </Link>
             <a className="qattan-button qattan-button-secondary" href="#workflow">{copy.hero.secondary}</a>
+            <button
+              type="button"
+              className="qattan-button qattan-button-secondary qattan-intro-replay"
+              onClick={() => window.dispatchEvent(new Event(INTRO_PLAY_EVENT))}
+            >
+              <Play size={15} aria-hidden="true" /> {introReplayLabel(locale)}
+            </button>
           </motion.div>
           <motion.p
             className="qattan-hero-note"
