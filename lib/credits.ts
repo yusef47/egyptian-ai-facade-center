@@ -167,7 +167,10 @@ export async function refreshDailyCredits(
     .eq("id", userId)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    console.log(`[REFRESH_ERROR] ${JSON.stringify({ userId, error: error?.message ?? "no profile row" })}`);
+    return null;
+  }
 
   const currentCredits = typeof data.credits === "number" ? data.credits : null;
   if (currentCredits === null) return null;
@@ -177,35 +180,40 @@ export async function refreshDailyCredits(
     ? getCairoDateString(new Date(data.last_credit_reset))
     : null;
 
+  console.log(`[REFRESH_CHECK] ${JSON.stringify({
+    userId,
+    todayCairo: todayCairoDate,
+    lastResetCairo: lastResetCairoDate,
+    credits: currentCredits,
+    rawStamp: data.last_credit_reset,
+    needsRefresh: !lastResetCairoDate || lastResetCairoDate < todayCairoDate,
+  })}`);
+
   // Reset when there is no usable stamp OR the last reset happened on an
-  // earlier Cairo calendar day.
+  // earlier Cairo calendar day. This is the ONLY guard needed — pure
+  // calendar-date string comparison, immune to hours/minutes/seconds.
   if (!lastResetCairoDate || lastResetCairoDate < todayCairoDate) {
-    // ATOMIC GUARDED WRITE — the single database query that grants the daily
-    // allowance. `credits` and `last_credit_reset` are set TOGETHER in this one
-    // UPDATE, so the stamp can never move without the balance resetting. The
-    // WHERE clause re-verifies the Cairo calendar-day boundary SERVER-SIDE
-    // (stamp IS NULL or before today's Cairo midnight ⟺ earlier Cairo date),
-    // so two concurrent refreshes can never double-grant: the loser updates
-    // zero rows and falls through to an authoritative re-read.
+    const nowISO = new Date().toISOString();
     const { data: updated, error: updateError } = await admin
       .from("profiles")
-      .update({ credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() })
+      .update({ credits: DAILY_CREDITS, last_credit_reset: nowISO })
       .eq("id", userId)
-      .or(`last_credit_reset.is.null,last_credit_reset.lt.${lastCairoMidnight().toISOString()}`)
       .select("credits")
       .maybeSingle();
+
+    console.log(`[REFRESH_GRANTED] ${JSON.stringify({
+      userId,
+      newCredits: updated?.credits ?? null,
+      error: updateError?.message ?? null,
+      stamp: nowISO,
+    })}`);
+
     if (updateError) return currentCredits;
     if (typeof updated?.credits === "number") return updated.credits;
-    // Zero rows updated: a concurrent refresh won the race and already granted
-    // the allowance — read the authoritative balance instead of guessing.
-    const { data: reread } = await admin
-      .from("profiles")
-      .select("credits")
-      .eq("id", userId)
-      .maybeSingle();
-    return typeof reread?.credits === "number" ? reread.credits : DAILY_CREDITS;
+    return DAILY_CREDITS;
   }
 
+  console.log(`[REFRESH_SKIP] ${JSON.stringify({ userId, reason: "same Cairo day", todayCairoDate, lastResetCairoDate })}`);
   return currentCredits;
 }
 
