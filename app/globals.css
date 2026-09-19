@@ -404,6 +404,20 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   border: 1px solid rgba(212,175,55,.28); border-radius: 18px;
   background: rgba(15,16,22,.92); box-shadow: 0 40px 120px rgba(0,0,0,.6); overflow: hidden;
 }
+/* Cinematic variant: glowing gold active border around the HD player. */
+.qattan-preview-dialog-cinema { box-shadow: 0 40px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(212,175,55,.14), 0 0 44px rgba(212,175,55,.16); }
+.qattan-preview-expanded { max-width: min(1600px, 96vw); }
+.qattan-preview-head-actions { display: inline-flex; align-items: center; gap: 8px; }
+/* Gold live glow over the stage while the clip is playing. */
+.qattan-preview-live-glow { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .35s ease; box-shadow: inset 0 0 0 1px rgba(212,175,55,.5), inset 0 0 24px rgba(212,175,55,.14); }
+.qattan-preview-live-glow-on { opacity: 1; animation: qattan-stage-glow 2.6s ease-in-out infinite; }
+@keyframes qattan-stage-glow {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(212,175,55,.45), inset 0 0 20px rgba(212,175,55,.12); }
+  50% { box-shadow: inset 0 0 0 2px rgba(212,175,55,.8), inset 0 0 34px rgba(212,175,55,.24); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qattan-preview-live-glow-on { animation: none; }
+}
 .qattan-preview-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; }
 .qattan-preview-head h3 { margin: 0; color: #f3e5ab; font-size: 17px; font-weight: 700; }
 .qattan-preview-close {

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Pause, Play, X } from "lucide-react";
+import { Maximize2, Minimize2, Pause, Play, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQattan } from "./QattanProviders";
@@ -40,6 +40,8 @@ const PREVIEW_COPY = {
     before: "Before",
     after: "After",
     compare: "Drag to compare before and after",
+    fullscreen: "Enter fullscreen",
+    exitFullscreen: "Exit fullscreen",
   },
   ar: {
     close: "إغلاق المعاينة",
@@ -49,6 +51,8 @@ const PREVIEW_COPY = {
     before: "قبل",
     after: "بعد",
     compare: "اسحب للمقارنة بين قبل وبعد",
+    fullscreen: "ملء الشاشة",
+    exitFullscreen: "الخروج من ملء الشاشة",
   },
 } as const;
 
@@ -76,9 +80,11 @@ export default function ToolPreviewModal({
   const copy = L ? PREVIEW_COPY.ar : PREVIEW_COPY.en;
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   /** Before/after divider position (%) — only rendered when `beforeSrc` is set. */
   const [divider, setDivider] = useState(45);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -93,6 +99,31 @@ export default function ToolPreviewModal({
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  // Keep the expanded state in sync when the user leaves native fullscreen
+  // with Escape or the browser UI (the dialog class alone is the fallback).
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.addEventListener) return;
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setExpanded(false);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleExpanded = () => {
+    const dialog = dialogRef.current;
+    const next = !expanded;
+    setExpanded(next);
+    // Native fullscreen where available (jsdom-safe: property may not exist).
+    if (dialog && typeof dialog.requestFullscreen === "function") {
+      if (next) {
+        void Promise.resolve(dialog.requestFullscreen()).catch(() => undefined);
+      } else if (typeof document.exitFullscreen === "function" && document.fullscreenElement) {
+        void Promise.resolve(document.exitFullscreen()).catch(() => undefined);
+      }
+    }
+  };
 
   const togglePlayback = () => {
     // React state is the source of truth; the media element is synced
@@ -117,6 +148,7 @@ export default function ToolPreviewModal({
         onClick={() => {
           setOpen(true);
           setPlaying(true);
+          setExpanded(false);
           setDivider(45);
         }}
         aria-haspopup="dialog"
@@ -138,7 +170,8 @@ export default function ToolPreviewModal({
             onClick={() => setOpen(false)}
           >
             <motion.div
-            className="qattan-preview-dialog max-w-3xl w-full"
+            ref={dialogRef}
+            className={`qattan-preview-dialog qattan-preview-dialog-cinema ${expanded ? "qattan-preview-expanded" : "max-w-3xl"} w-full`}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ type: "spring", stiffness: 220, damping: 26 }}
@@ -146,14 +179,25 @@ export default function ToolPreviewModal({
           >
               <div className="qattan-preview-head">
                 <h3>{title}</h3>
-                <button
-                  type="button"
-                  className="qattan-preview-close"
-                  onClick={() => setOpen(false)}
-                  aria-label={copy.close}
-                >
-                  <X size={16} aria-hidden="true" />
-                </button>
+                <div className="qattan-preview-head-actions">
+                  <button
+                    type="button"
+                    className="qattan-preview-close"
+                    onClick={toggleExpanded}
+                    aria-label={expanded ? copy.exitFullscreen : copy.fullscreen}
+                    aria-pressed={expanded}
+                  >
+                    {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="qattan-preview-close"
+                    onClick={() => setOpen(false)}
+                    aria-label={copy.close}
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
               <button
                 type="button"
@@ -215,6 +259,10 @@ export default function ToolPreviewModal({
                 <span className="qattan-preview-state" aria-hidden="true">
                   {playing ? <Pause size={18} /> : <Play size={18} />}
                 </span>
+                <span
+                  className={`qattan-preview-live-glow ${playing ? "qattan-preview-live-glow-on" : ""}`}
+                  aria-hidden="true"
+                />
               </button>
               {beforeSrc ? (
                 <label className="qattan-preview-divider-control">

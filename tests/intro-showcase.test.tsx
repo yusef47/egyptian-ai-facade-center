@@ -1,3 +1,5 @@
+import { readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -105,7 +107,7 @@ describe("Distinct per-tool preview showcases", () => {
       const preview = TOOL_PREVIEWS[id];
       if (preview.video) videoCount += 1;
       expect(preview.before, `no before treatment for ${id}`).toMatch(/^\/.+\.jpg$/);
-      befores.add(preview.before);
+      befores.add(preview.before as string);
     }
     // Floorplan uses an image-pair showcase (CAD sheet) instead of video.
     expect(videoCount).toBe(7);
@@ -113,5 +115,75 @@ describe("Distinct per-tool preview showcases", () => {
     expect(TOOL_PREVIEWS.floorplan.after).toBe("/preview-floorplan-after.jpg");
     // All 8 before treatments are distinct — no shared generic sketch.
     expect(befores.size).toBe(8);
+  });
+
+  it("ships real cinematic HD clips for every video tool (on disk, HD-sized)", () => {
+    for (const id of TOOL_IDS) {
+      const video = TOOL_PREVIEWS[id].video;
+      if (!video) continue;
+      expect(video).toBe(`/videos/tool-${id}.mp4`);
+      const file = path.join(process.cwd(), "public", video);
+      const stats = statSync(file);
+      // Cinematic clips: never the old sub-1MB placeholders.
+      expect(
+        stats.size,
+        `${video} is only ${stats.size} bytes`,
+      ).toBeGreaterThan(250_000);
+      // MP4 magic bytes — a real video container, not a renamed file.
+      const header = readFileSync(file).subarray(4, 8).toString("latin1");
+      expect(header).toBe("ftyp");
+    }
+  });
+});
+
+describe("Cinematic preview player", () => {
+  function openFirstPreview() {
+    render(<QattanMarketingPage locale="en" />);
+    const triggers = screen.getAllByRole("button", { name: /open preview/i });
+    fireEvent.click(triggers[0]);
+    return screen.getByRole("dialog");
+  }
+
+  it("expands to a fullscreen cinema dialog and collapses back", () => {
+    const dialog = openFirstPreview();
+    const card = dialog.firstElementChild as HTMLElement;
+    expect(card.className).toContain("qattan-preview-dialog-cinema");
+
+    const expand = within(dialog).getByRole("button", { name: /enter fullscreen/i });
+    fireEvent.click(expand);
+    expect((dialog.firstElementChild as HTMLElement).className).toContain(
+      "qattan-preview-expanded",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: /exit fullscreen/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /exit fullscreen/i }));
+    expect((dialog.firstElementChild as HTMLElement).className).not.toContain(
+      "qattan-preview-expanded",
+    );
+  });
+
+  it("shows the gold live glow while the clip is playing", () => {
+    const dialog = openFirstPreview();
+    const glow = dialog.querySelector(".qattan-preview-live-glow");
+    expect(glow).not.toBeNull();
+    expect(glow?.className).toContain("qattan-preview-live-glow-on");
+
+    // Pausing the clip extinguishes the live glow.
+    const stage = within(dialog).getByRole("button", { name: /preview playing/i });
+    fireEvent.click(stage);
+    expect(dialog.querySelector(".qattan-preview-live-glow-on")).toBeNull();
+  });
+
+  it("keeps the lightbox contract: portaled, centered, glassmorphic backdrop", () => {
+    const dialog = openFirstPreview();
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog.className).toContain("fixed");
+    expect(dialog.className).toContain("items-center");
+    expect(dialog.className).toContain("justify-center");
+    expect(dialog.className).toContain("backdrop-blur-md");
+    const card = dialog.firstElementChild as HTMLElement;
+    expect(card.className).toContain("max-w-3xl");
   });
 });
