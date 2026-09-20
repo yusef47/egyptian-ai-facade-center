@@ -8,6 +8,7 @@ import {
   shouldAutoPlayIntro,
 } from "../components/qattan/IntroVideoModal";
 import IntroVideoModal from "../components/qattan/IntroVideoModal";
+import ToolPreviewModal from "../components/qattan/ToolPreviewModal";
 import { QattanProviders } from "../components/qattan/QattanProviders";
 import { QattanMarketingPage } from "../components/qattan/QattanMarketingPage";
 import { TOOL_PREVIEWS } from "../components/qattan/ToolShowcase";
@@ -100,21 +101,18 @@ describe("Distinct per-tool preview showcases", () => {
     }
   });
 
-  it("gives 7 tools a video clip and every tool a distinct before treatment", () => {
-    const befores = new Set<string>();
+  it("gives 7 tools a signature video and never forces a split-view state", () => {
     let videoCount = 0;
     for (const id of TOOL_IDS) {
       const preview = TOOL_PREVIEWS[id];
+      // The unified cinematic stage has no before/after split states.
+      expect("before" in preview, `${id} still carries a split-view state`).toBe(false);
       if (preview.video) videoCount += 1;
-      expect(preview.before, `no before treatment for ${id}`).toMatch(/^\/.+\.jpg$/);
-      befores.add(preview.before as string);
     }
-    // Floorplan uses an image-pair showcase (CAD sheet) instead of video.
+    // Floorplan presents a single full-frame image showcase instead of video.
     expect(videoCount).toBe(7);
     expect(TOOL_PREVIEWS.floorplan.video).toBe("");
     expect(TOOL_PREVIEWS.floorplan.after).toBe("/preview-floorplan-after.jpg");
-    // All 8 before treatments are distinct — no shared generic sketch.
-    expect(befores.size).toBe(8);
   });
 
   it("ships real cinematic HD clips for every video tool (on disk, HD-sized)", () => {
@@ -185,5 +183,31 @@ describe("Cinematic preview player", () => {
     expect(dialog.className).toContain("backdrop-blur-md");
     const card = dialog.firstElementChild as HTMLElement;
     expect(card.className).toContain("max-w-3xl");
+  });
+
+  it("renders a seamless full-frame stage even when beforeSrc is passed (back-compat)", () => {
+    render(
+      <QattanProviders locale="en">
+        <ToolPreviewModal
+          title="Legacy caller"
+          description="Backwards-compatible caller still passing beforeSrc."
+          poster="/poster-exterior.jpg"
+          videoSrc="/videos/tool-exterior.mp4"
+          beforeSrc="/hero-before-sketch.jpg"
+        >
+          <span>legacy</span>
+        </ToolPreviewModal>
+      </QattanProviders>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /open preview/i }));
+    const dialog = screen.getByRole("dialog");
+    // No split-screen artifacts anywhere.
+    expect(dialog.querySelector(".qattan-preview-before")).toBeNull();
+    expect(dialog.querySelector(".qattan-preview-divider-line")).toBeNull();
+    expect(dialog.querySelector(".qattan-preview-divider-control")).toBeNull();
+    expect(dialog.querySelector("input[type=range]")).toBeNull();
+    expect(screen.queryByText("Before")).toBeNull();
+    // One seamless video layer fills the frame.
+    expect(dialog.querySelectorAll("video.qattan-preview-video")).toHaveLength(1);
   });
 });

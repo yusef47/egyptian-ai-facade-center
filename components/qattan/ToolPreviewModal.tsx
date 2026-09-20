@@ -18,14 +18,13 @@ type ToolPreviewModalProps = {
   /** Real HD architectural video (MP4). Optional — falls back to the poster. */
   videoSrc?: string;
   /**
-   * Derived "before" image (1-to-1 matched to this tool's output). When set,
-   * the stage becomes an interactive before/after comparison: the before
-   * image overlays the left of a gold divider while the video plays as the
-   * living "after". Optional — plain video stage when omitted.
+   * Deprecated: retained for backwards compatibility with existing callers
+   * and tests. The stage no longer renders a split-screen divider — the
+   * signature video plays full-frame, seamlessly.
    */
   beforeSrc?: string;
   /**
-   * Static "after" image for image-pair showcases (e.g. Floor Plan → CAD
+   * Static full-frame image for image showcases (e.g. Floor Plan → CAD
    * sheet) that have no matching video. Replaces the video layer entirely.
    */
   afterSrc?: string;
@@ -37,9 +36,6 @@ const PREVIEW_COPY = {
     open: "Open preview",
     playing: "Preview playing — click to pause",
     paused: "Preview paused — click to play",
-    before: "Before",
-    after: "After",
-    compare: "Drag to compare before and after",
     fullscreen: "Enter fullscreen",
     exitFullscreen: "Exit fullscreen",
   },
@@ -48,9 +44,6 @@ const PREVIEW_COPY = {
     open: "فتح المعاينة",
     playing: "المعاينة تعمل — انقر للإيقاف",
     paused: "المعاينة متوقفة — انقر للتشغيل",
-    before: "قبل",
-    after: "بعد",
-    compare: "اسحب للمقارنة بين قبل وبعد",
     fullscreen: "ملء الشاشة",
     exitFullscreen: "الخروج من ملء الشاشة",
   },
@@ -60,6 +53,11 @@ const PREVIEW_COPY = {
  * Real architectural video preview modal: a centered fullscreen glassmorphic
  * lightbox playing a muted, auto-looping HD clip of the tool's signature
  * shot, with a high-quality poster fallback for slow connections.
+ *
+ * The stage is one seamless full-frame cinematic layer — no split-screen,
+ * no before/after divider. The clip fills the 16:9 stage edge to edge with
+ * a subtle gold border glow, click-to-pause/play, and a glassmorphic
+ * play-state indicator.
  *
  * The lightbox is portaled to document.body: tool cards live inside
  * TiltCard's 3D transforms, which create a containing block that would
@@ -72,7 +70,9 @@ export default function ToolPreviewModal({
   description,
   poster,
   videoSrc,
-  beforeSrc,
+  // Accepted for backwards compatibility; intentionally unused — the
+  // cinematic stage never splits the frame.
+  beforeSrc: _beforeSrc,
   afterSrc,
 }: ToolPreviewModalProps) {
   const { locale } = useQattan();
@@ -81,8 +81,6 @@ export default function ToolPreviewModal({
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  /** Before/after divider position (%) — only rendered when `beforeSrc` is set. */
-  const [divider, setDivider] = useState(45);
   const videoRef = useRef<HTMLVideoElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -149,7 +147,6 @@ export default function ToolPreviewModal({
           setOpen(true);
           setPlaying(true);
           setExpanded(false);
-          setDivider(45);
         }}
         aria-haspopup="dialog"
         aria-label={`${copy.open} — ${title}`}
@@ -170,13 +167,13 @@ export default function ToolPreviewModal({
             onClick={() => setOpen(false)}
           >
             <motion.div
-            ref={dialogRef}
-            className={`qattan-preview-dialog qattan-preview-dialog-cinema ${expanded ? "qattan-preview-expanded" : "max-w-3xl"} w-full`}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 220, damping: 26 }}
-            onClick={(event) => event.stopPropagation()}
-          >
+              ref={dialogRef}
+              className={`qattan-preview-dialog qattan-preview-dialog-cinema ${expanded ? "qattan-preview-expanded" : "max-w-3xl"} w-full`}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 220, damping: 26 }}
+              onClick={(event) => event.stopPropagation()}
+            >
               <div className="qattan-preview-head">
                 <h3>{title}</h3>
                 <div className="qattan-preview-head-actions">
@@ -221,8 +218,8 @@ export default function ToolPreviewModal({
                     onPause={() => setPlaying(false)}
                   />
                 ) : (
-                  // Poster/after-image fallback for image-pair showcases or
-                  // missing clips.
+                  // Full-frame image showcase fallback (e.g. Floor Plan → CAD
+                  // sheet) for tools without a signature clip.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={afterSrc ?? poster}
@@ -231,31 +228,6 @@ export default function ToolPreviewModal({
                     draggable={false}
                   />
                 )}
-                {beforeSrc ? (
-                  <>
-                    {/* Derived 1-to-1 "before" treatment over the living
-                        after layer, clipped to the left of the divider. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      className="qattan-preview-before"
-                      src={beforeSrc}
-                      alt=""
-                      draggable={false}
-                      style={{ clipPath: `inset(0 ${100 - divider}% 0 0)` }}
-                    />
-                    <span
-                      className="qattan-preview-divider-line"
-                      style={{ left: `${divider}%` }}
-                      aria-hidden="true"
-                    />
-                    <span className="qattan-comparison-label qattan-comparison-label-before">
-                      {copy.before}
-                    </span>
-                    <span className="qattan-comparison-label qattan-comparison-label-after">
-                      {copy.after}
-                    </span>
-                  </>
-                ) : null}
                 <span className="qattan-preview-state" aria-hidden="true">
                   {playing ? <Pause size={18} /> : <Play size={18} />}
                 </span>
@@ -264,19 +236,6 @@ export default function ToolPreviewModal({
                   aria-hidden="true"
                 />
               </button>
-              {beforeSrc ? (
-                <label className="qattan-preview-divider-control">
-                  <span className="qattan-sr-only">{copy.compare}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={divider}
-                    onChange={(event) => setDivider(Number(event.target.value))}
-                  />
-                </label>
-              ) : null}
               <p className="qattan-preview-description">{description}</p>
             </motion.div>
           </motion.div>,

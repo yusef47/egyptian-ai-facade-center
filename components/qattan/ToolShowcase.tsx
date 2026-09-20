@@ -9,31 +9,30 @@ import ToolPreviewModal from "./ToolPreviewModal";
 import type { ToolId } from "@tools/registry";
 
 /**
- * Per-tool preview showcase. Every tool gets a DISTINCT transformation:
- * a real HD clip + poster, and — where a 1-to-1 "before" treatment exists
- * (derived by scripts/derive-showcases.cjs) — an interactive before/after
- * stage instead of a plain video.
+ * Per-tool preview showcase. Every tool highlights its signature cinematic
+ * clip full-frame — no split-view states. Tools without a clip (Floorplan)
+ * present a single full-frame output image instead.
  */
 export const TOOL_PREVIEWS: Record<
   ToolId,
-  { video: string; poster: string; before?: string; after?: string }
+  { video: string; poster: string; after?: string }
 > = {
-  // 1 Exterior: facade material & lighting transformation.
-  exterior: { video: "/videos/tool-exterior.mp4", poster: "/poster-exterior.jpg", before: "/preview-exterior-before.jpg" },
-  // 2 Interior: unfurnished empty room → fully styled interior.
-  interior: { video: "/videos/tool-interior.mp4", poster: "/poster-interior.jpg", before: "/preview-interior-before.jpg" },
-  // 3 Sketch: hand drawing → photorealistic building (matched pair).
-  sketch: { video: "/videos/tool-sketch.mp4", poster: "/poster-sketch.jpg", before: "/poster-sketch.jpg" },
-  // 4 Masterplan: top-down site plan → aerial 3D community.
-  masterplan: { video: "/videos/tool-masterplan.mp4", poster: "/poster-masterplan.jpg", before: "/preview-masterplan-before.jpg" },
-  // 5 Landscape: bare plot → garden, pool & outdoor seating.
-  landscape: { video: "/videos/tool-landscape.mp4", poster: "/poster-landscape.jpg", before: "/preview-landscape-before.jpg" },
-  // 6 Staging: empty room → virtual furniture placement.
-  staging: { video: "/videos/tool-staging.mp4", poster: "/poster-staging.jpg", before: "/preview-staging-before.jpg" },
-  // 7 Enhancer: low-res draft → resolution & texture enhancement.
-  enhancer: { video: "/videos/tool-enhancer.mp4", poster: "/poster-enhancer.jpg", before: "/preview-enhancer-before.jpg" },
-  // 8 Floorplan: colour plan → technical CAD vector sheet (image pair).
-  floorplan: { video: "", poster: "/preview-floorplan-after.jpg", before: "/preview-floorplan-before.jpg", after: "/preview-floorplan-after.jpg" },
+  // 1 Exterior: cinematic dusk transformation of the luxury villa facade.
+  exterior: { video: "/videos/tool-exterior.mp4", poster: "/poster-exterior.jpg" },
+  // 2 Interior: ultra-modern penthouse walkthrough pan.
+  interior: { video: "/videos/tool-interior.mp4", poster: "/poster-interior.jpg" },
+  // 3 Sketch: hand drawing morphing into the photorealistic building.
+  sketch: { video: "/videos/tool-sketch.mp4", poster: "/poster-sketch.jpg" },
+  // 4 Masterplan: photorealistic aerial 3D drone flyover.
+  masterplan: { video: "/videos/tool-masterplan.mp4", poster: "/poster-masterplan.jpg" },
+  // 5 Landscape: golden-hour infinity pool & resort garden sweep.
+  landscape: { video: "/videos/tool-landscape.mp4", poster: "/poster-landscape.jpg" },
+  // 6 Staging: empty room morphing into virtual luxury furniture placement.
+  staging: { video: "/videos/tool-staging.mp4", poster: "/poster-staging.jpg" },
+  // 7 Enhancer: draft texture resolving into 8K photorealism.
+  enhancer: { video: "/videos/tool-enhancer.mp4", poster: "/poster-enhancer.jpg" },
+  // 8 Floorplan: colour plan → technical CAD vector sheet (full-frame image).
+  floorplan: { video: "", poster: "/preview-floorplan-after.jpg", after: "/preview-floorplan-after.jpg" },
 };
 
 export function ToolShowcase() {
@@ -85,7 +84,6 @@ export function ToolShowcase() {
                     description={tool.description}
                     poster={TOOL_PREVIEWS[tool.id as ToolId]?.poster ?? "/poster-exterior.jpg"}
                     videoSrc={TOOL_PREVIEWS[tool.id as ToolId]?.video || undefined}
-                    beforeSrc={TOOL_PREVIEWS[tool.id as ToolId]?.before}
                     afterSrc={TOOL_PREVIEWS[tool.id as ToolId]?.after}
                   >
                     <span className="qattan-preview-chip">

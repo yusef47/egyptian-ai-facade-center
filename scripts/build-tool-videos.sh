@@ -53,11 +53,17 @@ seg() { # $1=input index  $2=zoompan expr  $3..=extra filters
 
 CINEMA=(vignette=PI/5.5,fade=t=in:st=0:d=0.6)
 
+# Signature lighting sweeps — cinematic color grades that read as animated
+# architectural-reel lighting rather than static photography.
+GOLDEN_HOUR="eq=saturation=1.14:brightness=0.02,colorbalance=rm=0.07:gm=0.02:bm=-0.07"
+TWILIGHT_OBSIDIAN="eq=brightness=-0.06:saturation=1.16:contrast=1.04,colorbalance=rm=0.05:bm=-0.09"
+PENTHOUSE_WARMTH="eq=saturation=1.1:brightness=0.015,colorbalance=rm=0.05:bm=-0.03"
+
 if want exterior; then
 echo "== 1 exterior — daylight villa → dusk =="
 "$FFMPEG" -y -v error -i "$PUB/hero-after-villa.jpg" -i "$PUB/hero-night-pool.jpg" -filter_complex "
     $(seg 0 "z='1+0.08*in/144':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'" eq=saturation=1.05);
-    $(seg 1 "z='1+0.05*in/144':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)/2'" eq=brightness=-0.05:saturation=1.18 colorbalance=rm=0.06:gm=0.01:bm=-0.08);
+    $(seg 1 "z='1+0.05*in/144':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)/2'" $TWILIGHT_OBSIDIAN);
     [a0][a1]xfade=transition=fade:duration=2.4:offset=3.4,trim=duration=6,setpts=PTS-STARTPTS,${CINEMA[*]},fade=t=out:st=5.4:d=0.6[v]
   " -map "[v]" "${ENC[@]}" "$OUT/tool-exterior.mp4"
 fi
@@ -65,7 +71,7 @@ fi
 if want interior; then
 echo "== 2 interior — penthouse walkthrough pan =="
 "$FFMPEG" -y -v error -i "$PUB/poster-interior.jpg" -filter_complex "
-    $(seg 0 "z='1.06':x='(iw-iw/zoom)*(1-in/144)':y='(ih-ih/zoom)/2'" eq=saturation=1.08:brightness=0.01 colorbalance=rm=0.04:bm=-0.04);
+    $(seg 0 "z='1.06':x='(iw-iw/zoom)*(1-in/144)':y='(ih-ih/zoom)/2'" $PENTHOUSE_WARMTH);
     [a0]${CINEMA[*]},fade=t=out:st=5.4:d=0.6[v]
   " -map "[v]" "${ENC[@]}" "$OUT/tool-interior.mp4"
 fi
@@ -82,7 +88,7 @@ fi
 if want masterplan; then
 echo "== 4 masterplan — aerial drone flyover =="
 "$FFMPEG" -y -v error -i "$PUB/poster-masterplan.jpg" -filter_complex "
-    $(seg 0 "z='1.10':x='(iw-iw/zoom)*in/144':y='(ih-ih/zoom)*in/144'" eq=saturation=1.06);
+    $(seg 0 "z='1.10':x='(iw-iw/zoom)*in/144':y='(ih-ih/zoom)*in/144'" eq=saturation=1.08:contrast=1.02);
     [a0]${CINEMA[*]},fade=t=out:st=5.4:d=0.6[v]
   " -map "[v]" "${ENC[@]}" "$OUT/tool-masterplan.mp4"
 fi
@@ -90,7 +96,7 @@ fi
 if want landscape; then
 echo "== 5 landscape — infinity pool & garden golden hour =="
 "$FFMPEG" -y -v error -i "$PUB/poster-landscape.jpg" -filter_complex "
-    $(seg 0 "z='1.07':x='(iw-iw/zoom)*in/144':y='(ih-ih/zoom)/2'" eq=saturation=1.12:brightness=0.015 colorbalance=rm=0.05:gm=0.01:bm=-0.05);
+    $(seg 0 "z='1.07':x='(iw-iw/zoom)*in/144':y='(ih-ih/zoom)/2'" $GOLDEN_HOUR);
     [a0]${CINEMA[*]},fade=t=out:st=5.4:d=0.6[v]
   " -map "[v]" "${ENC[@]}" "$OUT/tool-landscape.mp4"
 fi

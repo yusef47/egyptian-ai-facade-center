@@ -440,33 +440,47 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   color: #f3e5ab; background: rgba(9,10,15,.7); backdrop-filter: blur(8px);
 }
 .qattan-preview-description { margin: 0; padding: 14px 20px 18px; color: #b9b3a4; font-size: 13.5px; line-height: 1.6; }
-
-/* Before/after showcase stage inside the tool preview lightbox. */
-.qattan-preview-before { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-.qattan-preview-divider-line { position: absolute; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: linear-gradient(180deg, rgba(243,229,171,.95), #d4af37 55%, rgba(184,145,46,.95)); box-shadow: 0 0 14px rgba(212,175,55,.55); pointer-events: none; }
-.qattan-preview-divider-control { position: relative; display: block; height: 34px; margin: 2px 0 0; cursor: ew-resize; border-radius: 8px; background: linear-gradient(90deg, rgba(212,175,55,.14), rgba(212,175,55,.05) 50%, rgba(212,175,55,.14)); }
-.qattan-preview-divider-control input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; cursor: ew-resize; opacity: 0; }
 .qattan-intro-replay { gap: 7px; }
 
-/* ── Intro promo video modal ─────────────────────────────────────────── */
-.qattan-intro-overlay { touch-action: pan-y; }
-.qattan-intro-dialog { border: 1px solid rgba(212,175,55,.32); border-radius: 18px; background: rgba(9,10,15,.92); box-shadow: 0 40px 120px rgba(0,0,0,.65), 0 0 60px rgba(212,175,55,.08); overflow: hidden; }
+/* ── Intro promo video modal — responsive 9:16 cinematic reel ────────── */
+/* The promo source is a vertical 9:16 video: the dialog is a reel-shaped
+   obsidian card sized by HEIGHT so it adapts fluidly from phones (thumb-
+   friendly, near full-bleed) to tablets and laptops (centered cinema card). */
+.qattan-intro-overlay { touch-action: pan-y; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+.qattan-intro-dialog {
+  display: flex; flex-direction: column; width: auto; max-width: min(92vw, 26rem);
+  border: 1px solid rgba(212,175,55,.32); border-radius: 20px; background: rgba(9,10,15,.92);
+  box-shadow: 0 40px 120px rgba(0,0,0,.65), 0 0 60px rgba(212,175,55,.1), 0 0 0 1px rgba(212,175,55,.08);
+  overflow: hidden;
+}
+@media (min-width: 768px) { .qattan-intro-dialog { max-width: min(80vw, 28rem); } }
+@media (min-width: 1024px) { .qattan-intro-dialog { max-width: min(72vw, 30rem); } }
 .qattan-intro-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px; }
 .qattan-intro-brand { display: inline-flex; align-items: center; gap: 7px; color: #f3e5ab; font-size: 12px; font-weight: 700; letter-spacing: .04em; }
 .qattan-intro-close { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid rgba(212,175,55,.3); border-radius: 999px; color: #e5c158; background: transparent; cursor: pointer; transition: background .2s ease; }
 .qattan-intro-close:hover { background: rgba(212,175,55,.12); }
-.qattan-intro-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #050507; }
-.qattan-intro-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #050507; }
-.qattan-intro-foot { display: flex; justify-content: center; padding: 14px 16px 18px; }
-.qattan-intro-skip { min-height: 44px; padding: 0 26px; border: 1px solid rgba(212,175,55,.45); border-radius: 999px; color: #050507; background: linear-gradient(135deg, #f3e5ab, #d4af37 60%, #b8912e); font-size: 13.5px; font-weight: 700; cursor: pointer; transition: filter .2s ease, transform .2s ease; }
-.qattan-intro-skip:hover { filter: brightness(1.08); transform: translateY(-1px); }
+/* 9:16 reel stage, height-driven so the card never exceeds the viewport;
+   `width: auto` derives the width from the aspect ratio, and max-width
+   guards tiny landscape screens (the video then covers-crops gracefully). */
+.qattan-intro-stage {
+  position: relative; flex: 1 1 auto;
+  height: min(76vh, calc(88vh - 118px), 780px);
+  aspect-ratio: 9 / 16; width: auto; max-width: 92vw;
+  background: #050507;
+  box-shadow: inset 0 0 90px rgba(0,0,0,.55), inset 0 0 0 1px rgba(212,175,55,.16);
+}
+.qattan-intro-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #050507; }
+.qattan-intro-foot { display: flex; justify-content: center; padding: 14px 16px max(18px, env(safe-area-inset-bottom)); }
+.qattan-intro-skip { min-height: 44px; padding: 0 26px; border: 1px solid rgba(212,175,55,.45); border-radius: 999px; color: #050507; background: linear-gradient(135deg, #f3e5ab, #d4af37 60%, #b8912e); font-size: 13.5px; font-weight: 700; cursor: pointer; transition: filter .2s ease, transform .2s ease, box-shadow .2s ease; box-shadow: 0 6px 22px rgba(212,175,55,.25); }
+.qattan-intro-skip:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 8px 26px rgba(212,175,55,.4); }
 html[data-qattan-theme="light"] .qattan-intro-close, html[data-qattan-theme="light"] .qattan-intro-brand { color: #8a6d1f; }
 @media (prefers-reduced-motion: reduce) {
   .qattan-intro-overlay, .qattan-intro-dialog { animation: none !important; transition: none !important; }
 }
-@media (max-width: 640px) {
-  .qattan-intro-dialog { max-height: 92vh; }
-  .qattan-intro-stage { aspect-ratio: auto; height: min(52vh, 320px); }
+/* Phones & tablets: thumb-friendly skip control, comfortable reel height. */
+@media (max-width: 767px) {
+  .qattan-intro-skip { min-height: 48px; padding: 0 34px; font-size: 14px; }
+  .qattan-intro-foot { padding-top: 12px; }
 }
 
 /* ===== Output presentation toggle + multi-card gallery (studio) ===== */

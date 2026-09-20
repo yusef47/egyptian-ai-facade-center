@@ -112,7 +112,7 @@ export default function IntroVideoModal() {
 
   return createPortal(
     <motion.div
-      className="qattan-intro-overlay fixed inset-0 z-[9999] flex items-center justify-center bg-black/92 p-4 backdrop-blur-md"
+      className="qattan-intro-overlay fixed inset-0 z-[9999] flex items-center justify-center bg-black/92 backdrop-blur-xl"
       role="dialog"
       aria-modal="true"
       aria-label={copy.label}
@@ -122,7 +122,7 @@ export default function IntroVideoModal() {
       onClick={dismiss}
     >
       <motion.div
-        className="qattan-intro-dialog w-full max-w-4xl"
+        className="qattan-intro-dialog"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ type: "spring", stiffness: 220, damping: 26 }}
