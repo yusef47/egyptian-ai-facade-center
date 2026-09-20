@@ -95,7 +95,12 @@ $$;
 
 -- ── Compensating refund: +1 credit, -1 generation ─────────────────────
 -- Used only when a pre-charged generation fails upstream, so failed renders
--- never consume credits. Bounds credits at the daily allowance.
+-- never consume credits. NO CAP on the restored balance: paid top-up packs
+-- legitimately push balances far above the 10-credit daily allowance, and
+-- bounding the refund at that allowance would silently destroy purchased
+-- credits on every refunded render. There is no gaming risk in the unbounded
+-- form — this runs exclusively after a successful deduction, so deduct(-1)
+-- followed by refund(+1) is net zero no matter how often it repeats.
 drop function if exists public.refund_credit(uuid);
 create function public.refund_credit(user_id uuid)
 returns integer
@@ -107,7 +112,7 @@ declare
   updated integer;
 begin
   update public.profiles
-  set credits = least(credits + 1, 10),
+  set credits = credits + 1,
       generations_used = greatest(generations_used - 1, 0)
   where id = user_id
   returning credits into updated;
@@ -201,4 +206,3 @@ revoke execute on function public.refresh_daily_credit(uuid) from public, anon, 
 grant execute on function public.deduct_credit(uuid, integer) to service_role;
 grant execute on function public.refund_credit(uuid) to service_role;
 grant execute on function public.refresh_daily_credit(uuid) to service_role;
-grant execute on function public.qattan_cairo_midnight() to service_role;

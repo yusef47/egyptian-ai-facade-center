@@ -399,17 +399,29 @@ function createRateLimiter({ windowMs, maxRequests }: { windowMs: number; maxReq
   };
 }
 
+/**
+ * Engine fetch budget. The route runs inside Vercel's 60s function limit and
+ * performs a compensating credit REFUND after every failed generation — a
+ * hard upstream hang must therefore abort WELL before the platform kills the
+ * function, or the refund never executes and the user silently loses a
+ * credit. 40s per attempt × at most 2 attempts leaves ~20s of headroom for
+ * the refund round-trip, response encoding, and cold-start overhead.
+ */
+export const ENGINE_FETCH_TIMEOUT_MS = 40_000;
+/** Hard ceiling on upstream attempts per generation (primary + fallback). */
+export const ENGINE_MAX_UPSTREAM_ATTEMPTS = 2;
+
+function extractUpstreamMessage(data: unknown): string {
+  const record = data as { error?: { message?: unknown } } | null;
+  return typeof record?.error?.message === "string" ? record.error.message : "";
+}
+
 async function safeJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch {
     return null;
   }
-}
-
-function extractUpstreamMessage(data: unknown): string {
-  const record = data as { error?: { message?: unknown } } | null;
-  return typeof record?.error?.message === "string" ? record.error.message : "";
 }
 
 const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 15 });
@@ -480,37 +492,54 @@ export async function executeRestore(
   }
 
   const validated = validateRestorePayload(body);
-  if (!validated.ok) return validated;  try {
-    const buildFor = (model: string, inlineSystemPrompt = false) =>
-      buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
+  if (!validated.ok) return validated;
+
+  try {
+    const buildFor = (model: string, inlineSystemPrompt = false) => {
+      const built = buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
         promptMode: validated.payload.promptMode,
         inlineSystemPrompt,
         model,
       });
+      // Budget-capped upstream call: an aborted hang surfaces as a standard
+      // retryable engine failure (and therefore a refund) instead of the
+      // serverless platform killing the function mid-generation.
+      return {
+        ...built,
+        init: { ...built.init, signal: AbortSignal.timeout(ENGINE_FETCH_TIMEOUT_MS) },
+      };
+    };
 
     /**
-     * Runs the two-attempt sequence (inline-system-prompt retry on message-
-     * shape rejections) against ONE model. Returns the last upstream response
-     * pair so the caller can decide on a fallback-model retry.
+     * Runs ONE attempt against a model (no internal retry): the message-shape
+     * inline retry is folded into the model sequence below, because every
+     * attempt shares the same bounded function budget. Returns the upstream
+     * response pair so the caller can decide on a fallback-model attempt.
      */
-    const runModel = async (model: string) => {
-      let request = buildFor(model);
-      let upstream = await fetch(request.url, request.init);
-      let data: unknown = await safeJson(upstream);
-
-      if (!upstream.ok && /role|system|invalid messages?/i.test(extractUpstreamMessage(data))) {
-        request = buildFor(model, true);
-        upstream = await fetch(request.url, request.init);
-        data = await safeJson(upstream);
-      }
+    const runModelOnce = async (model: string, inlineSystemPrompt = false) => {
+      const request = buildFor(model, inlineSystemPrompt);
+      const upstream = await fetch(request.url, request.init);
+      const data = await safeJson(upstream);
       return { upstream, data };
     };
 
-    let { upstream, data } = await runModel(OPENROUTER_MODEL);
+    let { upstream, data } = await runModelOnce(OPENROUTER_MODEL);
+
+    // One opportunistic same-model retry when the gateway explicitly rejects
+    // the message SHAPE (role/system errors). It is counted against the
+    // attempt budget, so worst case stays at ENGINE_MAX_UPSTREAM_ATTEMPTS
+    // upstream fetches per generation — inside the abort-bounded window.
+    let attempts = 1;
+    if (!upstream.ok && /role|system|invalid messages?/i.test(extractUpstreamMessage(data))) {
+      if (attempts < ENGINE_MAX_UPSTREAM_ATTEMPTS) {
+        attempts += 1;
+        ({ upstream, data } = await runModelOnce(OPENROUTER_MODEL, true));
+      }
+    }
 
     if (!upstream.ok) {
       console.log(
-        `[ENGINE_UPSTREAM] status=${upstream.status} detail=${JSON.stringify(
+        `[ENGINE_UPSTREAM] status=${upstream.status} attempts=${attempts} detail=${JSON.stringify(
           extractUpstreamMessage(data).slice(0, 200),
         )}`,
       );
@@ -530,12 +559,14 @@ export async function executeRestore(
         upstream.status === 403 ||
         upstream.status === 429 ||
         upstream.status >= 500;
-      if (retryable) {
-        // Second chance on a different image model — per-model gateways reject
-        // for reasons (access flags, moderation routing, capacity) that do not
-        // apply account-wide. User-facing copy stays the busy notice.
+      if (retryable && attempts < ENGINE_MAX_UPSTREAM_ATTEMPTS) {
+        // Second (and final) chance on a different image model — per-model
+        // gateways reject for reasons (access flags, moderation routing,
+        // capacity) that do not apply account-wide. User-facing copy stays
+        // the busy notice.
         console.log(`[ENGINE_FALLBACK] retrying generation on the secondary image model`);
-        const fallback = await runModel(FALLBACK_OPENROUTER_MODEL);
+        attempts += 1;
+        const fallback = await runModelOnce(FALLBACK_OPENROUTER_MODEL);
         if (fallback.upstream.ok) {
           const output = extractImageData(fallback.data);
           if (output) return { ok: true, imageDataUrl: await trimOutputDataUrl(output) };
@@ -560,6 +591,9 @@ export async function executeRestore(
     return { ok: true, imageDataUrl: await trimOutputDataUrl(output) };
 
   } catch {
+    // Aborted fetches (ENGINE_FETCH_TIMEOUT_MS), network failures, and any
+    // other thrown engine error land here as a refundable 502 — the route's
+    // compensating refund ALWAYS runs for this result.
     return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
   }
 }

@@ -4,6 +4,7 @@ import {
   AUTH_REQUIRED_BILINGUAL,
   CREDITS_EXHAUSTED_BILINGUAL,
   deductGenerationCredit,
+  provisionProfileCredits,
   readProfileCredits,
   refreshDailyCredits,
   refundGenerationCredit,
@@ -115,8 +116,19 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // 4) Refresh: RPC returns the current balance (resets to 10 after 24h).
-  const creditsAfterRefresh = await refreshDailyCredits(admin, userId);
+  // 4) Refresh: returns the current balance (resets at the Cairo midnight
+  //    boundary). A null here means the profile row is UNREADABLE — most
+  //    commonly a user who signed up before the on_auth_user_created trigger
+  //    existed. Provision-on-first-use instead of answering 429: locking
+  //    paying users out with "daily limit reached" when they actually hold a
+  //    fresh allowance is exactly the class of bug this gate must never
+  //    produce. Provisioning is race-safe (ignoreDuplicates) and re-reads the
+  //    authoritative row when a concurrent provision wins.
+  let creditsAfterRefresh = await refreshDailyCredits(admin, userId);
+  if (creditsAfterRefresh === null) {
+    console.log(`[REFRESH_PROFILE_MISSING] provisioning on first use: ${JSON.stringify({ userId })}`);
+    creditsAfterRefresh = await provisionProfileCredits(admin, userId);
+  }
   console.log(`[REFRESH_CHECK] ${JSON.stringify({ userId, creditsAfterRefresh })}`);
   if (creditsAfterRefresh === null || creditsAfterRefresh <= 0) {
     return NextResponse.json({ error: CREDITS_EXHAUSTED_BILINGUAL }, { status: 429 });

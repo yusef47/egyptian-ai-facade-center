@@ -61,3 +61,14 @@ create policy "profiles_insert_own"
 -- Flush PostgREST's schema cache so the admin RPCs above are immediately
 -- callable through the Supabase JS client.
 notify pgrst, 'reload schema';
+
+-- Lock the admin statistics RPCs down to the server. These SECURITY DEFINER
+-- functions read the ENTIRE profiles table (every user's email, name, credit
+-- balance, and generation count), and Postgres grants EXECUTE to PUBLIC by
+-- default — without this lockdown anyone holding the public anon key could
+-- call them directly through PostgREST (/rest/v1/rpc/...) and dump the whole
+-- user table, bypassing the app's authorizeAdmin gate entirely.
+revoke execute on function public.admin_platform_stats() from public, anon, authenticated;
+revoke execute on function public.admin_recent_profiles(integer) from public, anon, authenticated;
+grant execute on function public.admin_platform_stats() to service_role;
+grant execute on function public.admin_recent_profiles(integer) to service_role;

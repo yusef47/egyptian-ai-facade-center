@@ -320,6 +320,46 @@ export async function readProfileCredits(
 }
 
 /**
+ * Provision-on-first-use for authenticated users with no readable profile
+ * row (e.g. signups that predate the on_auth_user_created trigger, or rows
+ * lost before RLS was enabled). Race-safe: ignoreDuplicates ensures a plain
+ * upsert can never overwrite an existing row's balance back to the daily
+ * allowance, and a concurrent provision's win is resolved by re-reading the
+ * authoritative row instead of guessing.
+ *
+ * Returns the resolved balance, or null when the row truly cannot be
+ * provisioned/read (infrastructure failure — the caller decides).
+ */
+export async function provisionProfileCredits(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<number | null> {
+  const { data: created, error: createError } = await admin
+    .from("profiles")
+    .upsert(
+      { id: userId, credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() },
+      { onConflict: "id", ignoreDuplicates: true },
+    )
+    .select("credits")
+    .maybeSingle();
+  if (createError) {
+    console.log(
+      `[PROFILE_PROVISION_ERROR] ${JSON.stringify({ userId, error: createError.message })}`,
+    );
+    return null;
+  }
+  // ignoreDuplicates returns no row when a concurrent provision won the race
+  // (or the row already existed) — read the authoritative balance.
+  if (typeof created?.credits === "number") return created.credits;
+  const { data: existing } = await admin
+    .from("profiles")
+    .select("credits")
+    .eq("id", userId)
+    .maybeSingle();
+  return typeof existing?.credits === "number" ? existing.credits : null;
+}
+
+/**
  * Gate a generation request: verifies the Supabase session from the request's
  * bearer token (with cookie fallback), applies the Cairo midnight refresh
  * rule, and enforces a positive balance. When Supabase is not configured the
@@ -346,32 +386,15 @@ export async function checkGenerationCredits(
 
   const credits = await refreshDailyCredits(admin, userId);
   if (credits === null) {
-    // Profile missing (trigger not yet applied): provision on first use.
-    // ignoreDuplicates is ESSENTIAL — a plain upsert would overwrite an
-    // existing row's balance back to the daily allowance.
-    const { data: created, error: createError } = await admin
-      .from("profiles")
-      .upsert(
-        { id: userId, credits: DAILY_CREDITS, last_credit_reset: new Date().toISOString() },
-        { onConflict: "id", ignoreDuplicates: true },
-      )
-      .select("credits")
-      .maybeSingle();
-    if (createError) {
+    // Profile missing (trigger not yet applied): provision on first use via
+    // the shared race-safe helper (ignoreDuplicates is ESSENTIAL — a plain
+    // upsert would overwrite an existing row's balance back to the daily
+    // allowance).
+    const balance = await provisionProfileCredits(admin, userId);
+    if (balance === null) {
       return { allowed: false, status: 503, message: CREDIT_SERVICE_UNAVAILABLE };
     }
-    // ignoreDuplicates can return no row when a concurrent provision won the
-    // race — read the authoritative row instead of wrongly reporting 429.
-    let balance = created?.credits ?? null;
-    if (balance === null) {
-      const { data: existing } = await admin
-        .from("profiles")
-        .select("credits")
-        .eq("id", userId)
-        .maybeSingle();
-      balance = typeof existing?.credits === "number" ? existing.credits : null;
-    }
-    return balance !== null && balance > 0
+    return balance > 0
       ? { allowed: true, remaining: balance, userId }
       : { allowed: false, status: 429, message: CREDITS_EXHAUSTED_BILINGUAL };
   }
