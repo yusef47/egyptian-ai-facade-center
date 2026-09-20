@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  ENGINE_FETCH_TIMEOUT_MS,
+  ENGINE_FETCH_BUDGET_MS,
   ENGINE_MAX_UPSTREAM_ATTEMPTS,
 } from "../lib/openrouter-engine";
 
@@ -50,15 +50,19 @@ describe("CRITICAL-2b — migration is truly idempotent (stale grant removed)", 
   });
 });
 
-describe("CRITICAL-3 — bounded engine fetch budget", () => {
-  it("aborts every upstream attempt well inside the 60s function window", () => {
-    expect(ENGINE_FETCH_TIMEOUT_MS).toBe(40_000);
+describe("CRITICAL-3 — bounded engine time budget", () => {
+  it("budgets upstream time well inside the 60s function window", () => {
+    expect(ENGINE_FETCH_BUDGET_MS).toBe(45_000);
     expect(ENGINE_MAX_UPSTREAM_ATTEMPTS).toBe(2);
   });
 
-  it("wires AbortSignal.timeout into the engine request builder", () => {
+  it("shares ONE AbortSignal.timeout deadline across the whole attempt chain", () => {
     const source = readFileSync("lib/openrouter-engine.ts", "utf8");
-    expect(source).toContain("AbortSignal.timeout(ENGINE_FETCH_TIMEOUT_MS)");
+    expect(source).toContain("const engineDeadline = AbortSignal.timeout(ENGINE_FETCH_BUDGET_MS);");
+    expect(source).toContain("signal: engineDeadline");
+    // The per-attempt shape (2 × timeout could exceed the 60s window) must
+    // never return.
+    expect(source).not.toContain("ENGINE_FETCH_TIMEOUT_MS");
   });
 });
 

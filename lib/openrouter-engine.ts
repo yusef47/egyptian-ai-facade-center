@@ -400,14 +400,22 @@ function createRateLimiter({ windowMs, maxRequests }: { windowMs: number; maxReq
 }
 
 /**
- * Engine fetch budget. The route runs inside Vercel's 60s function limit and
+ * Engine time budget. The route runs inside Vercel's 60s function limit and
  * performs a compensating credit REFUND after every failed generation — a
  * hard upstream hang must therefore abort WELL before the platform kills the
  * function, or the refund never executes and the user silently loses a
- * credit. 40s per attempt × at most 2 attempts leaves ~20s of headroom for
- * the refund round-trip, response encoding, and cold-start overhead.
+ * credit.
+ *
+ * The budget is a SINGLE shared AbortSignal deadline passed to every fetch in
+ * the attempt chain (primary → shape retry → fallback): whether the engine
+ * spends it on one hanging attempt or spreads it across retries, total
+ * upstream time can never exceed the budget. Per-attempt timeouts would
+ * allow 2 × timeout to exceed the 60s window on the retry path, which is
+ * exactly the unrefunded-credit bug this guards against. 45s of upstream
+ * budget leaves ~15s of headroom for the refund round-trip, response
+ * encoding, and cold-start overhead.
  */
-export const ENGINE_FETCH_TIMEOUT_MS = 40_000;
+export const ENGINE_FETCH_BUDGET_MS = 45_000;
 /** Hard ceiling on upstream attempts per generation (primary + fallback). */
 export const ENGINE_MAX_UPSTREAM_ATTEMPTS = 2;
 
@@ -495,18 +503,20 @@ export async function executeRestore(
   if (!validated.ok) return validated;
 
   try {
+    // ONE shared deadline for the whole attempt chain (see the constant's
+    // doc): a hang on any attempt — including the fallback — aborts inside
+    // the budget, so the catch below always turns it into a refundable 502
+    // instead of the serverless platform killing the function mid-generation.
+    const engineDeadline = AbortSignal.timeout(ENGINE_FETCH_BUDGET_MS);
     const buildFor = (model: string, inlineSystemPrompt = false) => {
       const built = buildOpenRouterRequest(validated.payload.imageDataUrl, validated.payload.prompt, apiKey, {
         promptMode: validated.payload.promptMode,
         inlineSystemPrompt,
         model,
       });
-      // Budget-capped upstream call: an aborted hang surfaces as a standard
-      // retryable engine failure (and therefore a refund) instead of the
-      // serverless platform killing the function mid-generation.
       return {
         ...built,
-        init: { ...built.init, signal: AbortSignal.timeout(ENGINE_FETCH_TIMEOUT_MS) },
+        init: { ...built.init, signal: engineDeadline },
       };
     };
 
@@ -591,9 +601,9 @@ export async function executeRestore(
     return { ok: true, imageDataUrl: await trimOutputDataUrl(output) };
 
   } catch {
-    // Aborted fetches (ENGINE_FETCH_TIMEOUT_MS), network failures, and any
-    // other thrown engine error land here as a refundable 502 — the route's
-    // compensating refund ALWAYS runs for this result.
+    // Aborted fetches (ENGINE_FETCH_BUDGET_MS deadline), network failures,
+    // and any other thrown engine error land here as a refundable 502 — the
+    // route's compensating refund ALWAYS runs for this result.
     return { ok: false, status: 502, message: ENGINE_BUSY_BILINGUAL };
   }
 }
