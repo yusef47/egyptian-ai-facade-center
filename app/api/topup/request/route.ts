@@ -11,8 +11,8 @@ import {
 import {
   TOPUP_AUTH_REQUIRED_BILINGUAL,
   TOPUP_SERVICE_UNAVAILABLE,
+  TOPUP_SUBMITTED_BILINGUAL,
   isValidRefCode,
-  grantTopupInstantly,
   isReceiptAlreadyUsed,
   submitTopupRequest,
   type PaymentMethod,
@@ -22,16 +22,19 @@ export const runtime = "nodejs";
 
 /**
  * Submit a credit top-up request (Egypt — InstaPay exclusively) through a
- * four-layer anti-fraud pipeline:
+ * three-layer anti-fraud pipeline:
  *
  *   1. Strict file validation — MIME + magic bytes + size window.
  *   2. AI receipt audit — vision verdict that the screenshot is a genuine,
  *      SUCCESSFUL transfer to the Qattan InstaPay address (high confidence).
  *   3. Anti-replay — the receipt image's SHA-256 hash must never have been
  *      submitted before, on any account.
- *   4. Instant auto-grant — all layers pass → the pending request is claimed
- *      atomically (approve_topup RPC) and credits land immediately; the
- *      response carries creditsRemaining so the header badge updates live.
+ *
+ * A request that passes all three layers is saved strictly as 'pending' —
+ * there is NO automatic credit granting. Credits move ONLY when an
+ * authorized administrator (yusefelshater979@gmail.com or
+ * archkattan78@gmail.com) reviews the receipt in the /admin dashboard and
+ * approves it through the atomic approve_topup RPC.
  *
  * The user id always comes from the verified session, never the body.
  */
@@ -41,8 +44,6 @@ const PAYMENT_METHODS: PaymentMethod[] = ["instapay"];
 const MAX_CREDITS_PER_REQUEST = 500;
 /** Layer 1 window: junk-proof but cheap to upload. */
 const MIN_RECEIPT_BYTES = 10 * 1024;
-/** Instant grant only when the vision verdict is unambiguous. */
-const INSTANT_GRANT_MAX_AMOUNT = 10_000;
 
 type TopupRequestBody = {
   credits?: unknown;
@@ -205,39 +206,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: TOPUP_SERVICE_UNAVAILABLE }, { status: 503 });
   }
 
-  // ── Layer 4: instant auto-grant on a clean high-confidence pass ──
-  if (verdict.detectedAmount <= INSTANT_GRANT_MAX_AMOUNT) {
-    const grant = await grantTopupInstantly(admin, submission.requestId);
-    if (grant.ok) {
-      console.log(
-        `[TOPUP_INSTANT_GRANT] ${JSON.stringify({
-          userId,
-          credits,
-          newBalance: grant.remaining,
-          refCode: submission.refCode,
-        })}`,
-      );
-      return NextResponse.json({
-        ok: true,
-        autoApproved: true,
-        requestId: submission.requestId,
-        refCode: submission.refCode,
-        creditsRemaining: grant.remaining,
-        message:
-          "تم شحن رصيدك فوراً! | Credits added instantly — thank you!",
-      });
-    }
-    // Grant failed (racing admin, infra hiccup) — the request stays pending
-    // for manual review instead of erroring the user out.
-    console.log(
-      `[TOPUP_INSTANT_GRANT_DEFERRED] ${JSON.stringify({
-        userId,
-        requestId: submission.requestId,
-        reason: grant.reason,
-      })}`,
-    );
-  }
-
+  // ── Manual admin approval ONLY — never auto-grant ──
+  // The request stays 'pending' until an authorized administrator reviews
+  // the receipt in /admin and clicks Approve (atomic approve_topup RPC).
   console.log(
     `[TOPUP_REQUESTED] ${JSON.stringify({ userId, credits, amountEgp, refCode: submission.refCode })}`,
   );
@@ -246,7 +217,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     autoApproved: false,
     requestId: submission.requestId,
     refCode: submission.refCode,
-    message:
-      "تم إرسال طلب الشحن بنجاح! سيتم مراجعته من الإدارة قريباً. | Top-up request submitted! It will be reviewed shortly.",
+    message: TOPUP_SUBMITTED_BILINGUAL,
   });
 }

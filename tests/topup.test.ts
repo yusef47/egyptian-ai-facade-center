@@ -6,7 +6,7 @@ import {
   hashReceiptImage,
   parseReceiptAuditJson,
 } from "../lib/receipt-audit";
-import { grantTopupInstantly, isReceiptAlreadyUsed } from "../lib/topups";
+import { approveTopupRequest, isReceiptAlreadyUsed } from "../lib/topups";
 
 /** UUID-shaped request id — approveTopupRequest refuses non-UUID ids. */
 const REQUEST_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -115,32 +115,37 @@ describe("Anti-replay lookup (lib/topups)", () => {
   });
 });
 
-describe("Instant grant (Layer 4)", () => {
+describe("Manual admin approval path (approve_topup RPC)", () => {
   function adminClient(scalar: unknown, rpcError: { code?: string; message?: string } | null) {
     return {
       rpc: async (_name: string, _args: unknown) => ({ data: scalar, error: rpcError }),
-    } as unknown as Parameters<typeof grantTopupInstantly>[0];
+    } as unknown as Parameters<typeof approveTopupRequest>[0];
   }
 
-  it("returns the new balance on a successful atomic claim", async () => {
-    const result = await grantTopupInstantly(adminClient(60, null), REQUEST_ID);
+  it("credits the buyer atomically when an authorized admin approves", async () => {
+    const result = await approveTopupRequest(adminClient(60, null), REQUEST_ID);
     expect(result).toEqual({ ok: true, remaining: 60 });
   });
 
-  it("maps TOPUP_NOT_PENDING to not_found without double-crediting", async () => {
-    const result = await grantTopupInstantly(
+  it("maps TOPUP_NOT_PENDING to not_pending — a request can never be double-credited", async () => {
+    const result = await approveTopupRequest(
       adminClient(null, { code: "P0001", message: "TOPUP_NOT_PENDING" }),
       REQUEST_ID,
     );
-    expect(result).toEqual({ ok: false, reason: "not_found" });
+    expect(result).toEqual({ ok: false, reason: "not_pending" });
   });
 
   it("maps infrastructure failures to unavailable", async () => {
-    const result = await grantTopupInstantly(
+    const result = await approveTopupRequest(
       adminClient(null, { code: "XX000", message: "connection refused" }),
       REQUEST_ID,
     );
     expect(result).toEqual({ ok: false, reason: "unavailable" });
+  });
+
+  it("refuses a malformed request id before touching the ledger", async () => {
+    const result = await approveTopupRequest(adminClient(60, null), "not-a-uuid");
+    expect(result).toEqual({ ok: false, reason: "not_pending" });
   });
 });
 

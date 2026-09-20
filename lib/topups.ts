@@ -63,7 +63,7 @@ export function isValidRefCode(code: string): boolean {
 export const TOPUP_AUTH_REQUIRED_BILINGUAL =
   "تسجيل الدخول مطلوب لشحن الرصيد. | Sign in with Google to top up your credits.";
 export const TOPUP_SUBMITTED_BILINGUAL =
-  "تم إرسال طلب الشحن بنجاح! سيتم مراجعته من الإدارة قريباً. | Top-up request submitted! It will be reviewed shortly.";
+  "تم إرسال طلب الشحن بنجاح! سيتم مراجعة الإيصال وإضافة الرصيد فور تأكيد التحويل. | Top-up request submitted! Your credits will be added once the transfer receipt is verified by administration.";
 export const TOPUP_PROMO_SUCCESS_BILINGUAL =
   "تم تفعيل الكود وإضافة الرصيد فوراً! | Promo code applied — credits added instantly!";
 export const TOPUP_PROMO_INVALID_BILINGUAL =
@@ -233,28 +233,6 @@ export async function isReceiptAlreadyUsed(
     return null;
   }
   return Array.isArray(data) && data.length > 0;
-}
-
-export type InstantTopupGrant =
-  | { ok: true; remaining: number }
-  | { ok: false; reason: "not_found" | "unavailable" };
-
-/**
- * Layer 4 — instant auto-grant. Claims the freshly inserted pending request
- * (status='pending' guard keeps it single-fire) and adds the credits to the
- * buyer's profile inside one atomic approve_topup call. Reuses the exact RPC
- * the admin queue uses, so manual and instant approval share one ledger.
- */
-export async function grantTopupInstantly(
-  admin: SupabaseClient,
-  requestId: string,
-): Promise<InstantTopupGrant> {
-  const result = await approveTopupRequest(admin, requestId);
-  return result.ok
-    ? { ok: true, remaining: result.remaining }
-    : result.reason === "not_pending"
-      ? { ok: false, reason: "not_found" }
-      : { ok: false, reason: "unavailable" };
 }
 
 function isUuid(value: string): boolean {

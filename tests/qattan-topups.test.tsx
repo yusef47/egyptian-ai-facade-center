@@ -25,6 +25,10 @@ const state = vi.hoisted(() => ({
     | { access_token: string; user: { id: string; email: string | null; user_metadata: Record<string, unknown> } }
     | null,
   rpcResponses: new Map<string, { data: unknown; error: { code?: string; message?: string } | null }>(),
+  /** Every RPC name invoked — proves no approve_topup fires on submission. */
+  rpcCalls: [] as string[],
+  /** Last insert payload into topup_requests — asserts strict pending status. */
+  lastInsert: null as Record<string, unknown> | null,
   insertResult: { data: { id: "11111111-2222-4333-8444-555555555555", ref_code: "REF-111222" }, error: null },
   /** Layer-3 anti-replay: rows returned by the receipt-hash lookup. */
   replayRows: [] as { id: string }[],
@@ -39,9 +43,12 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => ({
     from: vi.fn(() => {
       const table: Record<string, unknown> = {};
-      table.insert = vi.fn(() => ({
-        select: () => ({ single: () => Promise.resolve(state.insertResult) }),
-      }));
+      table.insert = vi.fn((payload: Record<string, unknown>) => {
+        state.lastInsert = payload;
+        return {
+          select: () => ({ single: () => Promise.resolve(state.insertResult) }),
+        };
+      });
       table.select = vi.fn(() => ({
         eq: () => ({
           eq: () => ({
@@ -69,11 +76,12 @@ vi.mock("@supabase/supabase-js", () => ({
           ),
       },
     },
-    rpc: vi.fn((name: string) =>
-      Promise.resolve(
+    rpc: vi.fn((name: string) => {
+      state.rpcCalls.push(name);
+      return Promise.resolve(
         state.rpcResponses.get(name) ?? { data: null, error: null },
-      ),
-    ),
+      );
+    }),
   })),
 }));
 
@@ -150,6 +158,8 @@ beforeEach(() => {
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-test-key");
   vi.stubEnv("OPENROUTER_API_KEY", "audit-test-key");
   state.rpcResponses.clear();
+  state.rpcCalls = [];
+  state.lastInsert = null;
   state.insertResult = { data: { id: "11111111-2222-4333-8444-555555555555", ref_code: "REF-111222" }, error: null };
   state.replayRows = [];
 });
@@ -218,20 +228,25 @@ describe("POST /api/topup/request", () => {
     expect(response.status).toBe(415);
   });
 
-  it("inserts a pending request attributed to the VERIFIED user (never the body)", async () => {
+  it("saves every valid submission as PENDING for manual admin approval (never auto-grants)", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "verified-user", email: "a@b.c" } };
     setAuditVerdict({ isValidReceipt: true, detectedAmount: 450, confidence: "high", reason: "genuine receipt" });
-    setRpc("approve_topup", { data: 60, error: null });
     const response = await POST(
       bearerRequest("jwt", { credits: 100, amountEgp: 450, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { ok?: boolean; refCode?: string; autoApproved?: boolean; creditsRemaining?: number };
+    const payload = (await response.json()) as { ok?: boolean; refCode?: string; autoApproved?: boolean; creditsRemaining?: number; message?: string };
     expect(payload.ok).toBe(true);
     expect(payload.refCode).toMatch(/^REF-\d{6}$/);
-    expect(payload.autoApproved).toBe(true);
-    expect(payload.creditsRemaining).toBe(60);
+    // ZERO automatic credit granting: manual review is mandatory.
+    expect(payload.autoApproved).toBe(false);
+    expect(payload.creditsRemaining).toBeUndefined();
+    expect(payload.message).toContain("verified by administration");
+    // The row is stored strictly pending.
+    expect(state.lastInsert?.status).toBe("pending");
+    // And no approval RPC ever fired during submission.
+    expect(state.rpcCalls).not.toContain("approve_topup");
   });
 
   it("accepts ONLY InstaPay as the payment method", async () => {
@@ -329,18 +344,20 @@ describe("POST /api/topup/request", () => {
     expect(response.status).toBe(502);
   });
 
-  it("keeps the request pending (no auto-approve) when the atomic grant fails", async () => {
+  it("always returns the manual-review contract even on a perfect high-confidence receipt", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
     setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "high", reason: "genuine receipt" });
-    setRpc("approve_topup", { data: null, error: { code: "P0001", message: "TOPUP_NOT_PENDING" } });
     const response = await POST(
       bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { ok?: boolean; autoApproved?: boolean };
+    const payload = (await response.json()) as { ok?: boolean; autoApproved?: boolean; requestId?: string; refCode?: string };
     expect(payload.ok).toBe(true);
     expect(payload.autoApproved).toBe(false);
+    expect(payload.requestId).toBe("11111111-2222-4333-8444-555555555555");
+    expect(payload.refCode).toMatch(/^REF-\d{6}$/);
+    expect(state.rpcCalls).not.toContain("approve_topup");
   });
 });
 
