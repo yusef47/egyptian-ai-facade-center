@@ -158,12 +158,15 @@ begin
 
   -- ATOMIC GUARDED WRITE — the single query that grants the daily allowance.
   -- credits AND last_credit_reset are set TOGETHER in this one UPDATE, so the
-  -- stamp can never move without the balance resetting to 10. The WHERE clause
-  -- re-verifies the Cairo calendar-day boundary inside the write itself, so
-  -- two concurrent refreshes can never double-grant: the loser updates zero
-  -- rows and falls through to the authoritative re-read below.
+  -- stamp can never move without the allowance being applied. The allowance
+  -- is a FLOOR, never a ceiling: greatest(credits, 10) tops spent balances up
+  -- to 10 while PRESERVING paid top-up balances (19, 50, 100…) — writing a
+  -- plain 10 here would destroy purchased credits at every rollover. The
+  -- WHERE clause re-verifies the Cairo calendar-day boundary inside the write
+  -- itself, so two concurrent refreshes can never double-grant: the loser
+  -- updates zero rows and falls through to the authoritative re-read below.
   update public.profiles
-  set credits = 10, last_credit_reset = now()
+  set credits = greatest(credits, 10), last_credit_reset = now()
   where id = user_id
     and (last_credit_reset is null
          or date(last_credit_reset at time zone 'Africa/Cairo')
@@ -183,10 +186,11 @@ end;
 $$;
 
 -- One-time bulk alignment: bring every account whose stamp is from an earlier
--- Cairo day (or missing) up to the full allowance immediately. Idempotent —
--- re-running after the first pass updates zero rows.
+-- Cairo day (or missing) up to at least the full allowance immediately. The
+-- allowance is a floor — balances above 10 (paid top-ups) are kept intact.
+-- Idempotent — re-running after the first pass updates zero rows.
 update public.profiles
-set credits = 10, last_credit_reset = now()
+set credits = greatest(credits, 10), last_credit_reset = now()
 where last_credit_reset is null
    or date(last_credit_reset at time zone 'Africa/Cairo')
       < date(now() at time zone 'Africa/Cairo');

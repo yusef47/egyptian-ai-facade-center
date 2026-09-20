@@ -183,6 +183,78 @@ describe("Daily 10-credit refresh rule (Cairo midnight)", () => {
     );
   });
 
+  it("PRESERVES a paid 19-credit balance when a new Cairo day rolls over", async () => {
+    // The allowance is a FLOOR, never a ceiling: the midnight refresh may
+    // only top balances UP to 10, never write below the current balance.
+    // Destroying purchased credits at rollover is the exact bug this pins.
+    const chain = queryChain([
+      {
+        data: {
+          credits: 19,
+          last_credit_reset: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        error: null,
+      },
+      { data: { credits: 19 }, error: null },
+    ]);
+    const admin = { from: vi.fn(() => chain) };
+    const credits = await refreshDailyCredits(
+      admin as unknown as Parameters<typeof refreshDailyCredits>[0],
+      "user-1",
+    );
+    expect(credits).toBe(19);
+    // The stamp still moves (the allowance was consumed for the day) but the
+    // balance write must be exactly the retained 19 — never 10.
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ credits: 19, last_credit_reset: expect.any(String) }),
+    );
+  });
+
+  it("PRESERVES a 100-credit top-up balance across the midnight boundary", async () => {
+    const chain = queryChain([
+      {
+        data: {
+          credits: 100,
+          last_credit_reset: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        error: null,
+      },
+      { data: { credits: 100 }, error: null },
+    ]);
+    const admin = { from: vi.fn(() => chain) };
+    const credits = await refreshDailyCredits(
+      admin as unknown as Parameters<typeof refreshDailyCredits>[0],
+      "user-1",
+    );
+    expect(credits).toBe(100);
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ credits: 100, last_credit_reset: expect.any(String) }),
+    );
+  });
+
+  it("still tops a spent balance up to the allowance on rollover (floor semantics)", async () => {
+    // The inverse case: 4 credits + a stale stamp ⇒ topped up to exactly 10.
+    const chain = queryChain([
+      {
+        data: {
+          credits: 4,
+          last_credit_reset: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        error: null,
+      },
+      { data: { credits: DAILY_CREDITS }, error: null },
+    ]);
+    const admin = { from: vi.fn(() => chain) };
+    const credits = await refreshDailyCredits(
+      admin as unknown as Parameters<typeof refreshDailyCredits>[0],
+      "user-1",
+    );
+    expect(credits).toBe(DAILY_CREDITS);
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ credits: DAILY_CREDITS }),
+    );
+  });
+
   it("derives Cairo midnight from the local calendar and never lands inside the previous day", () => {
     const midnight = lastCairoMidnight();
     expect(Number.isFinite(midnight.getTime())).toBe(true);

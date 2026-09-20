@@ -152,17 +152,21 @@ describe("P1 — generation route wires guards + exactly-once deduction", () => 
     // The RPC grants the allowance through ONE atomic guarded write: credits
     // and the stamp move together, with the Cairo calendar-day boundary
     // re-verified inside the UPDATE's WHERE clause (concurrency-safe).
+    // greatest(credits, 10) makes the allowance a FLOOR: paid balances above
+    // 10 survive the rollover untouched.
     expect(sql).toMatch(
-      /update public\.profiles\s*\n\s*set credits = 10, last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*and \(last_credit_reset is null/,
+      /update public\.profiles\s*\n\s*set credits = greatest\(credits, 10\), last_credit_reset = now\(\)\s*\n\s*where id = user_id\s*\n\s*and \(last_credit_reset is null/,
     );
     expect(sql).toMatch(
       /or date\(last_credit_reset at time zone 'Africa\/Cairo'\)\s*\n\s*< date\(now\(\) at time zone 'Africa\/Cairo'\)/,
     );
     // No rolling-24h reset may remain anywhere in the migration.
     expect(sql).not.toMatch(/interval '24 hours'/);
-    // Bulk alignment pass for accounts stamped on an earlier Cairo day.
+    // Bulk alignment pass for accounts stamped on an earlier Cairo day —
+    // same floor semantics, so re-running the migration can never destroy
+    // purchased balances.
     expect(sql).toMatch(
-      /update public\.profiles\s*\n\s*set credits = 10, last_credit_reset = now\(\)\s*\n\s*where last_credit_reset is null/,
+      /update public\.profiles\s*\n\s*set credits = greatest\(credits, 10\), last_credit_reset = now\(\)\s*\n\s*where last_credit_reset is null/,
     );
   });
 });

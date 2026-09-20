@@ -142,11 +142,14 @@ export function getCairoDateString(instant: Date): string {
 }
 
 /**
- * Daily refresh rule: the balance returns to the full daily allowance whenever
- * the stored stamp's CAIRO CALENDAR DATE is earlier than today's Cairo date,
- * regardless of the previous balance (0, 2, or 5) and regardless of hours,
- * minutes, or seconds. Within the same Cairo day the stored balance is
- * untouched.
+ * Daily refresh rule: whenever the stored stamp's CAIRO CALENDAR DATE is
+ * earlier than today's Cairo date, the balance is raised TO the daily
+ * allowance — never down to it. Balances below the allowance (0, 5, 9) are
+ * topped up to the full allowance; balances at or above it (19, 50, 100 —
+ * paid top-up packs) are PRESERVED in full and only the stamp moves.
+ * Destroying purchased credits at the midnight boundary is exactly the class
+ * of bug this rule exists to prevent. Within the same Cairo day the stored
+ * balance is untouched.
  *
  * CRITICAL correctness rules (production bug fixes):
  * - The reset writes `credits` AND `last_credit_reset` in the SAME update, so
@@ -193,16 +196,21 @@ export async function refreshDailyCredits(
   // earlier Cairo calendar day. This is the ONLY guard needed — pure
   // calendar-date string comparison, immune to hours/minutes/seconds.
   if (!lastResetCairoDate || lastResetCairoDate < todayCairoDate) {
+    // NEVER write below the current balance: a paid top-up balance (19, 50,
+    // 100…) survives the midnight rollover untouched, while a spent daily
+    // balance (0, 5, 9) is topped up to the full allowance.
     const nowISO = new Date().toISOString();
+    const newBalance = Math.max(currentCredits, DAILY_CREDITS);
     const { data: updated, error: updateError } = await admin
       .from("profiles")
-      .update({ credits: DAILY_CREDITS, last_credit_reset: nowISO })
+      .update({ credits: newBalance, last_credit_reset: nowISO })
       .eq("id", userId)
       .select("credits")
       .maybeSingle();
 
     console.log(`[REFRESH_GRANTED] ${JSON.stringify({
       userId,
+      oldCredits: currentCredits,
       newCredits: updated?.credits ?? null,
       error: updateError?.message ?? null,
       stamp: nowISO,
@@ -210,7 +218,7 @@ export async function refreshDailyCredits(
 
     if (updateError) return currentCredits;
     if (typeof updated?.credits === "number") return updated.credits;
-    return DAILY_CREDITS;
+    return newBalance;
   }
 
   console.log(`[REFRESH_SKIP] ${JSON.stringify({ userId, reason: "same Cairo day", todayCairoDate, lastResetCairoDate })}`);
