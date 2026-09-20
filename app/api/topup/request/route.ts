@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdminClient, verifySupabaseUser } from "../../../../lib/credits.js";
 import { isAllowedOrigin } from "../../../../lib/origin.js";
 import { validateImageDataUrl } from "../../../../lib/image-validation.js";
-import {
-  RECEIPT_INVALID_BILINGUAL,
-  RECEIPT_REPLAY_BILINGUAL,
-  auditReceipt,
-  hashReceiptImage,
-} from "../../../../lib/receipt-audit.js";
+import { RECEIPT_REPLAY_BILINGUAL, hashReceiptImage } from "../../../../lib/receipt-audit.js";
 import {
   TOPUP_AUTH_REQUIRED_BILINGUAL,
   TOPUP_SERVICE_UNAVAILABLE,
@@ -22,19 +17,19 @@ export const runtime = "nodejs";
 
 /**
  * Submit a credit top-up request (Egypt — InstaPay exclusively) through a
- * three-layer anti-fraud pipeline:
+ * two-layer pipeline — NO blocking AI receipt audit:
  *
- *   1. Strict file validation — MIME + magic bytes + size window.
- *   2. AI receipt audit — vision verdict that the screenshot is a genuine,
- *      SUCCESSFUL transfer to the Qattan InstaPay address (high confidence).
- *   3. Anti-replay — the receipt image's SHA-256 hash must never have been
+ *   1. Basic file validation — valid image data URL (MIME + magic bytes)
+ *      and a minimum size floor.
+ *   2. Anti-replay — the receipt image's SHA-256 hash must never have been
  *      submitted before, on any account.
  *
- * A request that passes all three layers is saved strictly as 'pending' —
- * there is NO automatic credit granting. Credits move ONLY when an
- * authorized administrator (yusefelshater979@gmail.com or
- * archkattan78@gmail.com) reviews the receipt in the /admin dashboard and
- * approves it through the atomic approve_topup RPC.
+ * Manual admin approval is strictly enforced, so ANY valid image is accepted
+ * into the pending queue: users may upload bank-themed, dark-mode, or cropped
+ * screenshots that a vision model would misread — the human reviewer in the
+ * /admin dashboard (yusefelshater979@gmail.com or archkattan78@gmail.com)
+ * cross-references the transfer and approves through the atomic
+ * approve_topup RPC. There is NO automatic credit granting.
  *
  * The user id always comes from the verified session, never the body.
  */
@@ -134,56 +129,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: TOPUP_SERVICE_UNAVAILABLE }, { status: 503 });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
   const receiptHash = hashReceiptImage(receiptDataUrl);
 
-  // ── Layer 2: AI receipt audit (before any ledger row is written) ──
-  if (!apiKey) {
-    console.log("[TOPUP_NO_AUDIT_KEY] OPENROUTER_API_KEY missing — audit unavailable");
-    return NextResponse.json({ error: TOPUP_SERVICE_UNAVAILABLE }, { status: 503 });
-  }
-  const audit = await auditReceipt(receiptDataUrl, apiKey);
-  if (!audit.ok) {
-    // A failed/ambiguous audit must NEVER become a silent pass: fail closed
-    // and let the user retry with a clearer screenshot.
-    console.log(`[TOPUP_AUDIT_UNAVAILABLE] reason=${audit.reason}`);
-    return NextResponse.json(
-      {
-        error:
-          "تعذر فحص الإيصال الآن. يرجى المحاولة مجدداً بعد قليل. | The receipt could not be verified right now. Please try again shortly.",
-      },
-      { status: 502 },
-    );
-  }
-  const { verdict } = audit;
-  console.log(
-    `[TOPUP_AUDIT] ${JSON.stringify({
-      userId,
-      isValid: verdict.isValidReceipt,
-      confidence: verdict.confidence,
-      detectedAmount: verdict.detectedAmount,
-      reason: verdict.reason,
-    })}`,
-  );
-  if (!verdict.isValidReceipt || verdict.confidence !== "high") {
-    return NextResponse.json({ error: RECEIPT_INVALID_BILINGUAL }, { status: 422 });
-  }
-  // Sanity cross-check: the detected transfer amount should roughly match the
-  // requested pack (allow a 10% tolerance for rounding in receipt renders).
-  if (
-    verdict.detectedAmount > 0 &&
-    Math.abs(verdict.detectedAmount - amountEgp) > amountEgp * 0.1
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "مبلغ التحويل في الإيصال لا يطابق الباقة المطلوبة. | The amount on the receipt does not match the selected pack.",
-      },
-      { status: 422 },
-    );
-  }
-
-  // ── Layer 3: anti-replay — has this exact image been submitted before? ──
+  // ── Layer 2 (anti-replay): has this exact image been submitted before? ──
   const replayed = await isReceiptAlreadyUsed(admin, receiptHash);
   if (replayed === null) {
     return NextResponse.json({ error: TOPUP_SERVICE_UNAVAILABLE }, { status: 503 });

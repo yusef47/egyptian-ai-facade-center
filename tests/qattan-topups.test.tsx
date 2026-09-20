@@ -135,23 +135,6 @@ function validReceiptDataUrl(): string {
   return `data:image/png;base64,${bytes.toString("base64")}`;
 }
 
-/** Stub the vision-engine fetch for the Layer-2 receipt audit. */
-function setAuditVerdict(verdict: Record<string, unknown> | null, failUpstream = false) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((_url: string | URL | Request, _init?: RequestInit) => {
-      if (failUpstream) return Promise.resolve(new Response("boom", { status: 500 }));
-      const text = verdict === null ? "I cannot help with that." : JSON.stringify(verdict);
-      return Promise.resolve(
-        new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
-    }),
-  );
-}
-
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-test-key");
@@ -231,7 +214,6 @@ describe("POST /api/topup/request", () => {
   it("saves every valid submission as PENDING for manual admin approval (never auto-grants)", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "verified-user", email: "a@b.c" } };
-    setAuditVerdict({ isValidReceipt: true, detectedAmount: 450, confidence: "high", reason: "genuine receipt" });
     const response = await POST(
       bearerRequest("jwt", { credits: 100, amountEgp: 450, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
@@ -277,44 +259,40 @@ describe("POST /api/topup/request", () => {
     expect(payload.error).toContain("too small");
   });
 
-  it("answers a fake/random image (fails the AI audit) with 422 and no credits", async () => {
+  it("accepts a non-receipt image (dark-mode, cropped, or bank-themed) into the pending queue — no AI gate", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict({ isValidReceipt: false, detectedAmount: 0, confidence: "low", reason: "nature photo" });
     const response = await POST(
       bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
-    expect(response.status).toBe(422);
-    const payload = (await response.json()) as { error?: string };
-    expect(payload.error).toContain("ليست إيصال تحويل InstaPay صالح");
+    // No vision audit gates the upload — ANY valid image lands in the
+    // pending queue for HUMAN review in /admin.
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { ok?: boolean; autoApproved?: boolean };
+    expect(payload.ok).toBe(true);
+    expect(payload.autoApproved).toBe(false);
+    expect(state.lastInsert?.status).toBe("pending");
+    expect(state.rpcCalls).not.toContain("approve_topup");
   });
 
-  it("rejects a low-confidence verdict even when isValidReceipt is true", async () => {
+  it("never consults the vision audit engine on submission", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "low", reason: "blurry" });
+    // The fetch stub returns garbage — if the route still called the audit,
+    // submission would fail; acceptance proves the call is gone.
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("no engine here", { status: 500 })));
+    vi.stubGlobal("fetch", fetchMock);
     const response = await POST(
       bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
-    expect(response.status).toBe(422);
-  });
-
-  it("rejects when the detected amount disagrees with the requested pack", async () => {
-    const { POST } = await import("../app/api/topup/request/route");
-    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict({ isValidReceipt: true, detectedAmount: 50, confidence: "high", reason: "genuine but different amount" });
-    const response = await POST(
-      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
-    );
-    expect(response.status).toBe(422);
-    const payload = (await response.json()) as { error?: string };
-    expect(payload.error).toContain("does not match the selected pack");
+    expect(response.status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state.lastInsert?.status).toBe("pending");
   });
 
   it("blocks a previously-used receipt with 409 and the replay notice", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "high", reason: "genuine receipt" });
     state.replayRows = [{ id: "older-request" }];
     const response = await POST(
       bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
@@ -324,30 +302,9 @@ describe("POST /api/topup/request", () => {
     expect(payload.error).toContain("تم استخدام هذا الإيصال من قبل");
   });
 
-  it("fails closed with 502 when the vision engine is unreachable", async () => {
-    const { POST } = await import("../app/api/topup/request/route");
-    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict(null, true);
-    const response = await POST(
-      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
-    );
-    expect(response.status).toBe(502);
-  });
-
-  it("fails closed with 502 when the engine answers non-JSON (no silent pass)", async () => {
-    const { POST } = await import("../app/api/topup/request/route");
-    state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict(null);
-    const response = await POST(
-      bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
-    );
-    expect(response.status).toBe(502);
-  });
-
   it("always returns the manual-review contract even on a perfect high-confidence receipt", async () => {
     const { POST } = await import("../app/api/topup/request/route");
     state.adminSession = { access_token: "t", user: { id: "u-1", email: "a@b.c" } };
-    setAuditVerdict({ isValidReceipt: true, detectedAmount: 250, confidence: "high", reason: "genuine receipt" });
     const response = await POST(
       bearerRequest("jwt", { credits: 50, amountEgp: 250, paymentMethod: "instapay", receiptDataUrl: validReceiptDataUrl() }),
     );
