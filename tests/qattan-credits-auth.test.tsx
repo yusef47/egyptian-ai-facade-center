@@ -68,9 +68,22 @@ vi.mock("@supabase/supabase-js", () => ({
         },
       },
       from: vi.fn(() => chain()),
-      rpc: vi.fn(() =>
-        Promise.resolve(state.rpcOk ? { data: 4, error: null } : { data: null, error: { code: "P0001" } }),
-      ),
+      rpc: vi.fn((fn: string) => {
+        // refresh_daily_credit is authoritative in lib/credits.ts: a numeric
+        // result is returned immediately by refreshDailyCredits and
+        // checkGenerationCredits. The mock must therefore echo the profile
+        // balance — a stale hardcoded 4 would hijack the gate tests below.
+        if (fn === "refresh_daily_credit") {
+          return Promise.resolve(
+            state.profile
+              ? { data: state.profile.credits, error: null }
+              : { data: null, error: { code: "PGRST202", message: "rpc not found" } },
+          );
+        }
+        // Every other RPC (admin stats, approve_topup, …) keeps its numeric
+        // placeholder so the existing admin-dashboard expectations hold.
+        return Promise.resolve(state.rpcOk ? { data: 4, error: null } : { data: null, error: { code: "P0001" } });
+      }),
     };
   }),
 }));

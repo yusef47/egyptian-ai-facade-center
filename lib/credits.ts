@@ -152,6 +152,11 @@ export function getCairoDateString(instant: Date): string {
  * balance is untouched.
  *
  * CRITICAL correctness rules (production bug fixes):
+ * - The atomic `refresh_daily_credit` RPC is tried FIRST: the database
+ *   function performs the whole refresh (Cairo calendar-day guard + floor
+ *   write) in ONE guarded UPDATE and returns the authoritative balance, which
+ *   is returned immediately when numeric. The JS path below is a fallback for
+ *   databases where the RPC is absent/failing — never a second grant.
  * - The reset writes `credits` AND `last_credit_reset` in the SAME update, so
  *   a null/legacy timestamp triggers the allowance exactly once — never on
  *   every call.
@@ -159,11 +164,45 @@ export function getCairoDateString(instant: Date): string {
  *   '2026-09-19'), not a rolling 24h window: generating at 23:59 Cairo and
  *   again at 00:01 means a fresh allowance, while generating twice in one
  *   afternoon never re-gifts.
+ * - When the fallback update itself fails, the OPTIMISTIC new balance is
+ *   returned instead of the stale read: a spent balance must never lock the
+ *   user out of the allowance they are entitled to on this new Cairo day.
  */
 export async function refreshDailyCredits(
   admin: SupabaseClient,
   userId: string,
 ): Promise<number | null> {
+  // ── 1) RPC-first: the atomic DB function is the primary authority ─────
+  try {
+    const { data, error } = (await admin.rpc("refresh_daily_credit", {
+      user_id: userId,
+    })) as { data: unknown; error: { code?: string; message?: string } | null };
+    if (!error) {
+      const refreshed = parseScalar(data);
+      if (Number.isFinite(refreshed)) {
+        console.log(`[REFRESH_RPC] ${JSON.stringify({ userId, refreshed })}`);
+        return refreshed;
+      }
+      console.log(
+        `[REFRESH_RPC_FALLBACK] ${JSON.stringify({ userId, reason: "non-numeric rpc result", data })}`,
+      );
+    } else {
+      console.log(
+        `[REFRESH_RPC_FALLBACK] ${JSON.stringify({
+          userId,
+          reason: "rpc error",
+          code: error.code ?? null,
+          message: (error.message ?? "").slice(0, 200),
+        })}`,
+      );
+    }
+  } catch (rpcError) {
+    console.log(
+      `[REFRESH_RPC_FALLBACK] ${JSON.stringify({ userId, reason: "rpc unavailable" })}`,
+    );
+  }
+
+  // ── 2) JS fallback: same Cairo calendar-day rule, applied read-then-write
   const { data, error } = await admin
     .from("profiles")
     .select("credits, last_credit_reset")
@@ -216,7 +255,13 @@ export async function refreshDailyCredits(
       stamp: nowISO,
     })}`);
 
-    if (updateError) return currentCredits;
+    if (updateError) {
+      // Never hand back the stale balance: the user is entitled to at least
+      // the floor on this new Cairo day, and reporting the old (possibly 0)
+      // balance would lock them out until the next call succeeds.
+      console.error("[REFRESH_UPDATE_ERROR]", updateError);
+      return newBalance;
+    }
     if (typeof updated?.credits === "number") return updated.credits;
     return newBalance;
   }
