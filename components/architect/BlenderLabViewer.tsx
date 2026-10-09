@@ -27,11 +27,12 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
       const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
-      scene.add(new THREE.AmbientLight(0xffffff, 2));
-      const sun = new THREE.DirectionalLight(0xffffff, 2.8);
+      scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+      const sun = new THREE.DirectionalLight(0xffffff, 2);
       sun.position.set(20, 30, 15);
       scene.add(sun);
       let model: import("three").Object3D | null = null;
+      let grid: import("three").GridHelper | null = null;
       let frame = 0;
       const resize = () => {
         const width = Math.max(host.clientWidth, 1);
@@ -53,6 +54,11 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
         cancelAnimationFrame(frame);
         observer.disconnect();
         controls.dispose();
+        grid?.geometry.dispose();
+        if (grid) {
+          const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
+          materials.forEach((material) => material.dispose());
+        }
         model?.traverse((object) => {
           if (object instanceof THREE.Mesh) {
             object.geometry.dispose();
@@ -71,7 +77,10 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
         if (box.isEmpty()) { setError("النموذج الناتج فارغ"); return; }
         const center = box.getCenter(new THREE.Vector3());
         const radius = Math.max(...box.getSize(new THREE.Vector3()).toArray(), 1);
-        camera.position.set(center.x + radius, center.y + radius * 0.9, center.z + radius);
+        grid = new THREE.GridHelper(Math.max(radius * 5, 10), 20, 0x7b8e99, 0x344751);
+        grid.position.y = box.min.y - 0.02;
+        scene.add(grid);
+        camera.position.set(center.x + radius * 2.2, center.y + radius * 1.8, center.z + radius * 2.2);
         camera.lookAt(center);
         camera.near = Math.max(radius / 1000, 0.01);
         camera.far = radius * 30;
