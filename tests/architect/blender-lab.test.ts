@@ -59,4 +59,26 @@ describe("isolated Blender execution", () => {
     await expect(runBlenderInSandbox("import bpy", async () => sandbox as never)).rejects.toThrow("Blender execution failed");
     expect(stop).toHaveBeenCalledOnce();
   });
+
+  it("installs the NumPy dependency required by the Blender GLB exporter", async () => {
+    const sandbox = {
+      runCommand: vi.fn(async (command: unknown) => ({
+        exitCode: command === "which" ? 1 : 0,
+        stderr: async () => "",
+      })),
+      writeFiles: vi.fn(async () => {}),
+      update: vi.fn(async () => {}),
+      readFileToBuffer: vi.fn(async () => fakeGlb()),
+      stop: vi.fn(async () => {}),
+    };
+    await runBlenderInSandbox("import bpy", async () => sandbox as never);
+    expect(sandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "apt-get",
+      args: ["install", "-y", "blender", "python3-numpy"],
+      sudo: true,
+      timeoutMs: 120_000,
+    });
+    expect(sandbox.update).toHaveBeenCalledWith({ networkPolicy: "deny-all" });
+    expect(sandbox.stop).toHaveBeenCalledOnce();
+  });
 });

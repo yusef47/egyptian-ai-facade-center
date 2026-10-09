@@ -104,7 +104,7 @@ export async function runBlenderInSandbox(script: string, create: () => Promise<
     if (probe.exitCode !== 0) {
       const update = await sandbox.runCommand({ cmd: "apt-get", args: ["update", "-qq"], sudo: true, timeoutMs: 90_000 });
       if (update.exitCode !== 0) throw new Error("Blender package setup failed");
-      const install = await sandbox.runCommand({ cmd: "apt-get", args: ["install", "-y", "blender"], sudo: true, timeoutMs: 120_000 });
+      const install = await sandbox.runCommand({ cmd: "apt-get", args: ["install", "-y", "blender", "python3-numpy"], sudo: true, timeoutMs: 120_000 });
       if (install.exitCode !== 0) throw new Error("Blender package installation failed");
     }
     await sandbox.writeFiles([
