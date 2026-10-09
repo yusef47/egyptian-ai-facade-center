@@ -119,7 +119,7 @@ export async function runBlenderInSandbox(script: string, create: () => Promise<
     }
     const glb = await sandbox.readFileToBuffer({ path: "/vercel/sandbox/result.glb" });
     if (!glb || glb.length < 20 || glb.toString("ascii", 0, 4) !== "glTF" || glb.readUInt32LE(8) !== glb.length) {
-      throw new Error("Blender did not export a valid GLB file");
+      throw new Error(`Blender did not export a valid GLB file (bytes=${glb?.length ?? 0}, header=${glb?.subarray(0, 12).toString("hex") ?? "missing"})`);
     }
     if (glb.length > BLENDER_LAB.maxGlbBytes) throw new Error("3D model exceeds the pilot download limit");
     return glb;
