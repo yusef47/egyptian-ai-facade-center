@@ -79,7 +79,7 @@ export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typ
         { role: "user", content: JSON.stringify(input) },
       ],
     }),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(model === "anthropic/claude-haiku-5.5" ? 110_000 : 45_000),
   });
   if (!response.ok) throw new Error(`Model request failed (${response.status})`);
   const raw = await response.text();
