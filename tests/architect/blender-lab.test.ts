@@ -12,7 +12,8 @@ describe("Blender Lab input and model contract", () => {
   it("accepts only a complete bounded script and reply", () => {
     expect(parseBlenderModelReply('{"script":"import bpy","reply":"جاهز"}')).toEqual({ script: "import bpy", reply: "جاهز" });
     expect(parseBlenderModelReply('{"script":"","reply":"جاهز"}')).toBeNull();
-    expect(parseBlenderModelReply('{"script":"print(1)","reply":""}')).toBeNull();
+    expect(parseBlenderModelReply('{"script":"print(1)","reply":""}')).toEqual({ script: "print(1)", reply: "تم إنشاء نموذج معماري مبدئي." });
+    expect(parseBlenderModelReply('{"script":"print(1)"}')).toEqual({ script: "print(1)", reply: "تم إنشاء نموذج معماري مبدئي." });
   });
 
   it("gives Haiku a larger output budget without spending it on reasoning", async () => {

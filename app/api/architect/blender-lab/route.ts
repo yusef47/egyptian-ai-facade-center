@@ -38,16 +38,19 @@ export async function POST(request: Request) {
   const input = parseBlenderLabInput(raw);
   if (!input) return NextResponse.json({ error: "Invalid site, message or previous script" }, { status: 400 });
 
+  let stage = "draft";
   try {
     const draft = await generateBlenderScript(input);
+    stage = "review";
     const reviewed = await reviewBlenderScript(input, draft);
+    stage = "blender";
     const glb = await runBlenderInSandbox(reviewed.script);
     return NextResponse.json({ ...reviewed, glbBase64: glb.toString("base64") }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
-    console.error("[BLENDER_LAB_FAILED]", message.slice(0, 1500));
+    console.error("[BLENDER_LAB_FAILED]", stage, message.slice(0, 1500));
     if (message.startsWith("Reviewed Blender script still has geometry errors")) {
       return NextResponse.json({ error: "النموذج لم يجتز مراجعة الأبعاد والفتحات، لذلك لم نعرضه. حاول مرة أخرى." }, { status: 422 });
     }

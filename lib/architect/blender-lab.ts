@@ -87,8 +87,10 @@ export function parseBlenderModelReply(text: string): { script: string; reply: s
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const data = parsed as Record<string, unknown>;
   if (typeof data.script !== "string" || !data.script.trim() || data.script.length > BLENDER_LAB.maxScript) return null;
-  if (typeof data.reply !== "string" || !data.reply.trim() || data.reply.length > BLENDER_LAB.maxReply) return null;
-  return { script: data.script, reply: data.reply.trim() };
+  const reply = typeof data.reply === "string" && data.reply.trim()
+    ? data.reply.trim().slice(0, BLENDER_LAB.maxReply)
+    : "تم إنشاء نموذج معماري مبدئي.";
+  return { script: data.script, reply };
 }
 
 async function requestBlenderScript(
