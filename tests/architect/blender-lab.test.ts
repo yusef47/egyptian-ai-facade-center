@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BLENDER_LAB, parseBlenderLabInput, parseBlenderModelReply, runBlenderInSandbox } from "../../lib/architect/blender-lab";
+import { BLENDER_LAB, generateBlenderScript, parseBlenderLabInput, parseBlenderModelReply, runBlenderInSandbox } from "../../lib/architect/blender-lab";
 
 describe("Blender Lab input and model contract", () => {
   it("requires finite realistic site dimensions and a bounded instruction", () => {
@@ -13,6 +13,24 @@ describe("Blender Lab input and model contract", () => {
     expect(parseBlenderModelReply('{"script":"import bpy","reply":"جاهز"}')).toEqual({ script: "import bpy", reply: "جاهز" });
     expect(parseBlenderModelReply('{"script":"","reply":"جاهز"}')).toBeNull();
     expect(parseBlenderModelReply('{"script":"print(1)","reply":""}')).toBeNull();
+  });
+
+  it("requests a strict script schema for Haiku", async () => {
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    try {
+      const fetchFn = vi.fn(async (_url: unknown, options: RequestInit) => {
+        const body = JSON.parse(options.body as string);
+        expect(body.model).toBe("anthropic/claude-haiku-5.5");
+        expect(body.provider.require_parameters).toBe(true);
+        expect(body.response_format.json_schema.schema.required).toEqual(["script", "reply"]);
+        return new Response(JSON.stringify({ choices: [{ message: { content: '{"script":"import bpy","reply":"جاهز"}' } }] }), { status: 200 });
+      });
+      await expect(generateBlenderScript({ instruction: "أربع أدوار", siteWidth: 12, siteDepth: 20 }, fetchFn as unknown as typeof fetch))
+        .resolves.toEqual({ script: "import bpy", reply: "جاهز" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

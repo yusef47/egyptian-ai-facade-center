@@ -73,6 +73,25 @@ export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typ
       model,
       temperature: 0.25,
       max_tokens: 8000,
+      ...(model === "anthropic/claude-haiku-5.5" ? {
+        provider: { require_parameters: true },
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "blender_lab_script",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                script: { type: "string", description: "Complete executable Blender Python script using bpy" },
+                reply: { type: "string", description: "Short explanation in Arabic" },
+              },
+              required: ["script", "reply"],
+              additionalProperties: false,
+            },
+          },
+        },
+      } : {}),
       messages: [
         { role: "system", content: `You are a concept architectural modeller controlling Blender 4.x through bpy. Return ONLY JSON with keys "script" (full executable Python script) and "reply" (short Arabic explanation). Site dimensions are in meters. Create real mesh geometry for spaces, walls, slab, stairs, columns and beams where requested; place objects coherently. On every turn write the COMPLETE scene script, incorporating edits into the previous script. Use bpy and Python standard library only. Never require downloads, external files, add-ons, or rendering. Do not write save/export commands: the host exports GLB. Never claim structural safety or Egyptian code approval; this is an unverified concept model. Keep the script under ${BLENDER_LAB.maxScript} characters.` },
         { role: "user", content: JSON.stringify(input) },
@@ -83,9 +102,16 @@ export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typ
   if (!response.ok) throw new Error(`Model request failed (${response.status})`);
   const raw = await response.text();
   if (raw.length > 100_000) throw new Error("Model response exceeds size limit");
-  const content = extractChatText(JSON.parse(raw));
+  const payload = JSON.parse(raw) as Record<string, unknown>;
+  const content = extractChatText(payload);
   const parsed = content && parseBlenderModelReply(content);
-  if (!parsed) throw new Error("Model did not return a usable Blender script");
+  if (!parsed) {
+    const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
+    const message = choice?.message as Record<string, unknown> | undefined;
+    const decoded = content ? extractJsonPayload(content) : null;
+    const fields = decoded && typeof decoded === "object" && !Array.isArray(decoded) ? decoded as Record<string, unknown> : null;
+    throw new Error(`Model did not return a usable Blender script (finish=${String(choice?.finish_reason ?? "missing")}, contentLength=${content?.length ?? 0}, contentType=${typeof message?.content}, scriptLength=${typeof fields?.script === "string" ? fields.script.length : "missing"}, replyLength=${typeof fields?.reply === "string" ? fields.reply.length : "missing"})`);
+  }
   return parsed;
 }
 
