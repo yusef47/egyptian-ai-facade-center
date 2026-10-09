@@ -2,13 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
+export function BlenderLabViewer({ glbBase64, showRoof = true }: { glbBase64: string | null; showRoof?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const modelRef = useRef<import("three").Object3D | null>(null);
+  const cameraStateRef = useRef<{ position: [number, number, number]; target: [number, number, number] } | null>(null);
+  const showRoofRef = useRef(showRoof);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    showRoofRef.current = showRoof;
+    modelRef.current?.traverse((object) => {
+      if (object.name.startsWith("Roof")) object.visible = showRoof;
+    });
+  }, [showRoof]);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !glbBase64) return;
+    setError(null);
     let cancelled = false;
     let cleanup = () => {};
     void Promise.all([
@@ -51,6 +62,8 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
       };
       render();
       cleanup = () => {
+        cameraStateRef.current = { position: camera.position.toArray() as [number, number, number], target: controls.target.toArray() as [number, number, number] };
+        modelRef.current = null;
         cancelAnimationFrame(frame);
         observer.disconnect();
         controls.dispose();
@@ -72,6 +85,8 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
       new GLTFLoader().parse(bytes.buffer, "", (gltf) => {
         if (cancelled) return;
         model = gltf.scene;
+        modelRef.current = model;
+        model.traverse((object) => { if (object.name.startsWith("Roof")) object.visible = showRoofRef.current; });
         scene.add(model);
         const box = new THREE.Box3().setFromObject(model);
         if (box.isEmpty()) { setError("النموذج الناتج فارغ"); return; }
@@ -80,12 +95,15 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
         grid = new THREE.GridHelper(Math.max(radius * 5, 10), 20, 0x7b8e99, 0x344751);
         grid.position.y = box.min.y - 0.02;
         scene.add(grid);
-        camera.position.set(center.x + radius * 2.2, center.y + radius * 1.8, center.z + radius * 2.2);
+        const saved = cameraStateRef.current;
+        if (saved) camera.position.fromArray(saved.position);
+        else camera.position.set(center.x + radius * 2.2, center.y + radius * 1.8, center.z + radius * 2.2);
         camera.lookAt(center);
         camera.near = Math.max(radius / 1000, 0.01);
         camera.far = radius * 30;
         camera.updateProjectionMatrix();
-        controls.target.copy(center);
+        if (saved) controls.target.fromArray(saved.target);
+        else controls.target.copy(center);
         controls.update();
       }, () => setError("تعذر فتح ملف GLB"));
     }).catch(() => setError("العرض الثلاثي الأبعاد غير متاح في هذا المتصفح"));
