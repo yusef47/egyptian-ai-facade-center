@@ -15,7 +15,7 @@ describe("Blender Lab input and model contract", () => {
     expect(parseBlenderModelReply('{"script":"print(1)","reply":""}')).toBeNull();
   });
 
-  it("gives Haiku a larger output budget and low reasoning effort", async () => {
+  it("gives Haiku a larger output budget without spending it on reasoning", async () => {
     vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     try {
@@ -23,7 +23,7 @@ describe("Blender Lab input and model contract", () => {
         const body = JSON.parse(options.body as string);
         expect(body.model).toBe("anthropic/claude-haiku-5.5");
         expect(body.max_tokens).toBe(12000);
-        expect(body.reasoning).toEqual({ effort: "low" });
+        expect(body.reasoning).toEqual({ enabled: false });
         expect(body.response_format).toBeUndefined();
         return new Response(JSON.stringify({ choices: [{ message: { content: '{"script":"import bpy","reply":"جاهز"}' } }] }), { status: 200 });
       });
