@@ -79,8 +79,8 @@ export function BlenderLabWorkspace() {
   return <main dir="rtl" className="min-h-screen bg-[#071014] p-4 text-white md:p-7">
     <div className="mx-auto max-w-[1600px]">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div><p className="text-sm font-bold tracking-[0.2em] text-[#d4af37]">QATTAN AI / BLENDER LAB</p><h1 className="mt-1 text-2xl font-bold md:text-3xl">ابنِ نموذجك بالكلام</h1><p className="mt-1 text-sm text-slate-400">تجربة للأدمن: المساعد يكتب مشروع Blender ويعرض النتيجة هنا.</p></div>
-        <a href="/ar/architect" className="rounded-xl border border-white/15 px-4 py-2 text-sm text-slate-200 hover:bg-white/10">العودة لمساحة العمل ←</a>
+        <div><p className="text-sm font-bold tracking-[0.2em] text-[#d4af37]">QATTAN AI / BLENDER LAB</p><h1 className="mt-1 text-2xl font-bold md:text-3xl">ابنِ نموذجك بالكلام</h1><p className="mt-1 text-sm text-slate-400">المساعد يكتب سكربت Blender، يشغّله في بيئة معزولة عند إرسال الطلب، ويعرض النموذج الناتج هنا.</p></div>
+        <a href="/ar/architect/planner" className="rounded-xl border border-white/15 px-4 py-2 text-sm text-slate-200 hover:bg-white/10">فتح المخطط السابق ←</a>
       </header>
       <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
         <section className="flex min-h-[650px] flex-col rounded-2xl border border-white/10 bg-[#101c21] p-4">

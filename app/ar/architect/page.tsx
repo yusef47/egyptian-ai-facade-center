@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import ArchitectWorkspace from "../../../components/architect/ArchitectWorkspace";
+import { BlenderLabWorkspace } from "../../../components/architect/BlenderLabWorkspace";
+import { isBlenderLabEnabled } from "../../../lib/architect/blender-lab";
 import { requireArchitectAdminPage } from "../../../lib/architect/private-page";
 
 export const metadata: Metadata = {
-  title: "مساحة العمل المعمارية | قطان AI",
+  title: "مساعد Blender المعماري | قطان AI",
   description:
-    "مساحة عمل مفاهيمية تفاعلية: عدّل المخطط السكني (حجم الموقع، نسبة التقاسم، جانب النواة) عبر المحادثة بجانب لوحة مخطط حيّة مع تصدير SVG وDXF.",
+    "محادثة معمارية تجريبية للأدمن تنفّذ نماذج Blender في بيئة معزولة وتعرض النتيجة ثلاثية الأبعاد.",
   alternates: {
     canonical: "/ar/architect",
     languages: { en: "/architect", ar: "/ar/architect", "x-default": "/architect" },
@@ -15,5 +16,12 @@ export const metadata: Metadata = {
 
 export default async function ArabicArchitectPage() {
   await requireArchitectAdminPage();
-  return <ArchitectWorkspace locale="ar" />;
+  if (!isBlenderLabEnabled()) {
+    return <main dir="rtl" className="min-h-screen bg-[#071014] p-8 text-white">
+      <h1 className="text-2xl font-bold">مساعد Blender غير مفعّل حاليًا</h1>
+      <p className="mt-3 text-slate-300">إعداد تشغيل النموذج أو بيئة Blender غير مكتمل على الخادم.</p>
+      <a href="/ar/architect/planner" className="mt-6 inline-block rounded-xl border border-white/20 px-4 py-2">افتح المخطط السابق</a>
+    </main>;
+  }
+  return <BlenderLabWorkspace />;
 }
