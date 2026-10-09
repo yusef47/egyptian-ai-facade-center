@@ -69,6 +69,35 @@ async function sendMessage(user: ReturnType<typeof userEvent.setup>, text: strin
 }
 
 describe("ArchitectWorkspace layout and canvas", () => {
+  it("really clears the current building when starting a new project", async () => {
+    const user = userEvent.setup();
+    render(<ArchitectWorkspace locale="ar" />);
+    await user.click(screen.getByRole("button", { name: "تجربة مبنى ٤ أدوار" }));
+    expect(await screen.findByText("فحص الحركة بين الأدوار")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "مشروع جديد" }));
+    expect(screen.queryByText("فحص الحركة بين الأدوار")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const saved = JSON.parse(window.localStorage.getItem("qattan:architect:draft:v1") ?? "{}");
+      expect(saved.conceptProposal).toBeNull();
+      expect(saved.activeMode).toBe("template");
+    });
+    expect(postCalls()).toHaveLength(0);
+  });
+
+  it("applies a combined new-project response while replacing the old building", async () => {
+    postResponses = [{ status: 200, body: { ok: true, outcome: {
+      type: "project", patch: { version: 1, siteWidth: 12, siteDepth: 20 },
+      proposal: sampleBuildingProposal(), reply: "Proposed a new project.",
+    }, creditsRemaining: 9, cost: 1 } }];
+    const user = userEvent.setup();
+    render(<ArchitectWorkspace locale="en" />);
+    await user.click(screen.getByRole("button", { name: "Try four-storey reference" }));
+    await sendMessage(user, "Start a new two-floor project");
+    expect(await screen.findByText("Proposed a new project.")).toBeInTheDocument();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem("qattan:architect:draft:v1") ?? "{}").conceptProposal.floors).toHaveLength(2));
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("New architectural project");
+  });
+
   it("loads the four-storey reference locally and saves its checked geometry", async () => {
     const user = userEvent.setup();
     render(<ArchitectWorkspace locale="ar" />);

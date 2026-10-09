@@ -34,6 +34,7 @@ import {
 } from "./architect/room-plan";
 import { parseConceptProposal } from "./architect/concept-proposal";
 import { parseBuildingProposal, type DesignProposal } from "./architect/building-proposal";
+import { expandTypicalFloor } from "./architect/typical-floor";
 
 /** Env var holding the dedicated chat model ID (e.g. "google/gemini-2.5-flash"). */
 export const ARCHITECT_TEXT_MODEL_ENV_NAME = "OPENROUTER_ARCHITECT_TEXT_MODEL";
@@ -45,6 +46,9 @@ export const ARCHITECT_TEXT_MODEL_UNAVAILABLE_BILINGUAL =
 /** Bilingual notice for upstream failures and invalid model output. */
 export const ARCHITECT_ASSISTANT_BUSY_BILINGUAL =
   "The architect assistant is temporarily unavailable. Please try again in a moment. | المساعد المعماري غير متاح مؤقتًا. حاول مرة أخرى بعد لحظات.";
+
+export const ARCHITECT_INVALID_OUTPUT_BILINGUAL =
+  "The model did not return a valid architectural plan. The current project was left unchanged. | النموذج لم يُرجع مخططًا معماريًا صالحًا. لم يتغير المشروع الحالي.";
 
 /** Cost of sending one chat message, in daily credits. */
 export const ARCHITECT_MESSAGE_CREDIT_COST = 1;
@@ -82,6 +86,8 @@ export type InterpretationOutcome =
   | { type: "patch"; patch: BriefPatch; reply: string }
   | { type: "room_actions"; actions: RoomAction[]; reply: string }
   | { type: "concept"; proposal: DesignProposal; reply: string }
+  | { type: "project"; patch: BriefPatch; proposal: DesignProposal; reply: string }
+  | { type: "reset"; reply: string }
   | { type: "clarify"; reply: string }
   | { type: "unsupported"; reply: string };
 
@@ -117,6 +123,10 @@ export const ARCHITECT_INTERPRETER_SYSTEM_PROMPT = `You are the text interpreter
 
 You translate ONE user chat message about a CONCEPT site layout into a strict JSON decision. You may propose space polygons for an original single-floor or multi-floor plan (up to five levels), and an optional structural COORDINATION grid for a building. You never produce final wall geometry, SVG, DXF, structural analysis, code compliance, or an engineering approval. A deterministic compiler creates walls and checks the proposal.
 
+If the user explicitly asks to erase the current project and start fresh without giving a complete new design brief, return type "reset". This really clears the current design in the workspace; never claim it has been erased in a "clarify" reply. If the user already provided enough details to design, produce the design instead of asking again. An area alone does not fix proportions, but if you suggested specific dimensions in RECENT CHAT and the user says to proceed, use those dimensions as a stated assumption. Do not ask for confirmation twice.
+
+For a new multi-floor project that changes the site AND proposes a design in one message, return type "project". Include patch {version:1,siteWidth,siteDepth}, floorCount 2..5, coreCellId, and one ORIGINAL typicalFloor version-2 plan. The deterministic engine repeats this authored typical floor across the requested floors and checks each. The ground-floor typicalFloor MUST have a core-to-outside entrance. Each apartment should connect to the core through its own door and have plausible living, kitchen, bathroom and bedroom cells as space allows. Use compact rectangular cells with exact shared edges, short IDs and no overlapping polygons. Only the ground floor keeps the outside entrance. The engine assumes 3.2 m floor-to-floor spacing for this preliminary concept; do not call this code compliance or an engineered stair. Do not claim rooms or luxury features are present unless they are explicit cells in the proposal. The site rectangle in typicalFloor MUST match the patched site dimensions, not CURRENT BRIEF. Use type "project" only for a new design that also changes site dimensions. If the new design keeps the site, use type "concept". If the user requests only an area with no dimensions previously proposed, you may choose reasonable dimensions, state the assumption in reply, and proceed when they ask you to execute.
+
 Editable site fields are:
 - siteWidth: number, meters, ${BRIEF_PATCH_BOUNDS.siteWidth.min}..${BRIEF_PATCH_BOUNDS.siteWidth.max}
 - siteDepth: number, meters, ${BRIEF_PATCH_BOUNDS.siteDepth.min}..${BRIEF_PATCH_BOUNDS.siteDepth.max}
@@ -149,6 +159,8 @@ Output EXACTLY ONE JSON object and nothing else (no markdown fences, no commenta
 {"type":"room_actions","actions":[{"op":"add","unit":"unit-a","kind":"bedroom"}],"reply":"short confirmation of the requested program change"}
 {"type":"concept","proposal":{"version":2,"site":[{"x":0,"y":0},{"x":12,"y":0},{"x":12,"y":20},{"x":0,"y":20}],"cells":[{"id":"living","name":"Living","kind":"living","points":[{"x":0,"y":0},{"x":6,"y":0},{"x":6,"y":6},{"x":0,"y":6}]}],"doors":[{"from":"living","to":"outside","width":1,"at":0.5}],"windows":[]},"reply":"short note that a concept was proposed"}
 {"type":"concept","proposal":{"kind":"building","version":1,"coreCellId":"core","floors":[{"id":"ground","name":"Ground","elevation":0,"plan":{"version":2,"site":[{"x":0,"y":0},{"x":12,"y":0},{"x":12,"y":20},{"x":0,"y":20}],"cells":[{"id":"core","name":"Stair core","kind":"core","points":[{"x":0,"y":0},{"x":3,"y":0},{"x":3,"y":8},{"x":0,"y":8}]}],"doors":[{"from":"core","to":"outside","width":1,"at":0.5}],"windows":[]}},{"id":"first","name":"First","elevation":3.2,"plan":{"version":2,"site":[{"x":0,"y":0},{"x":12,"y":0},{"x":12,"y":20},{"x":0,"y":20}],"cells":[{"id":"core","name":"Stair core","kind":"core","points":[{"x":0,"y":0},{"x":3,"y":0},{"x":3,"y":8},{"x":0,"y":8}]}],"doors":[],"windows":[]}}]},"reply":"short note that a building concept was proposed"}
+{"type":"project","patch":{"version":1,"siteWidth":10,"siteDepth":20},"floorCount":3,"coreCellId":"core","typicalFloor":{"version":2,"site":[{"x":0,"y":0},{"x":10,"y":0},{"x":10,"y":20},{"x":0,"y":20}],"cells":[{"id":"unit-a-living","name":"Unit A living","kind":"living","points":[{"x":0,"y":0},{"x":4,"y":0},{"x":4,"y":10},{"x":0,"y":10}]},{"id":"core","name":"Shared core","kind":"core","points":[{"x":4,"y":0},{"x":6,"y":0},{"x":6,"y":10},{"x":4,"y":10}]},{"id":"unit-b-living","name":"Unit B living","kind":"living","points":[{"x":6,"y":0},{"x":10,"y":0},{"x":10,"y":10},{"x":6,"y":10}]}],"doors":[{"from":"core","to":"outside","width":1,"at":0.5},{"from":"core","to":"unit-a-living","width":0.9,"at":0.5},{"from":"core","to":"unit-b-living","width":0.9,"at":0.5}],"windows":[]},"reply":"short note that a new project was proposed with the assumed site dimensions"}
+{"type":"reset","reply":"short confirmation that the current project was cleared"}
 {"type":"clarify","reply":"one short question when the request is ambiguous or misses a value"}
 {"type":"unsupported","reply":"short honest explanation that this is outside the concept slice"}
 
@@ -159,6 +171,8 @@ Rules:
 - A single message may change several fields at once.
 - A room_actions message changes only the requested room program; it never changes site fields.
 - A concept message carries a complete proposal; include no patch or room actions. When CURRENT CONCEPT PROPOSAL exists, revise it as requested and keep unaffected cells whenever practical.
+- A project message carries only patch, floorCount, coreCellId and typicalFloor, never a full proposal. Treat it as a fresh project even if CURRENT CONCEPT PROPOSAL exists.
+- A reset message has no patch, proposal, actions, or geometry. Never say a project was cleared unless you use type "reset".
 - Never claim an action succeeded until the engine accepts it. Say that you are proposing the change.
 - "clarify" never includes a patch and never changes the plan.
 - The current brief in the context is the source of truth for what exists today.`;
@@ -217,7 +231,7 @@ export function parseArchitectInterpretation(raw: unknown): InterpretationOutcom
   const payload = extractJsonPayload(raw);
   if (!isRecord(payload)) return null;
 
-  const allowedKeys = new Set(["type", "patch", "actions", "proposal", "reply"]);
+  const allowedKeys = new Set(["type", "patch", "actions", "proposal", "reply", "typicalFloor", "floorCount", "coreCellId"]);
   if (Object.keys(payload).some((key) => !allowedKeys.has(key))) return null;
 
   const { type, patch, actions, proposal, reply } = payload;
@@ -231,23 +245,34 @@ export function parseArchitectInterpretation(raw: unknown): InterpretationOutcom
   }
 
   if (type === "patch") {
-    if ("actions" in payload || "proposal" in payload) return null;
+    if ("actions" in payload || "proposal" in payload || "typicalFloor" in payload || "floorCount" in payload || "coreCellId" in payload) return null;
     const parsedPatch = parseBriefPatch(patch);
     if (!parsedPatch.ok) return null;
     return { type: "patch", patch: parsedPatch.patch, reply: trimmedReply };
   }
   if (type === "room_actions") {
-    if ("patch" in payload || "proposal" in payload) return null;
+    if ("patch" in payload || "proposal" in payload || "typicalFloor" in payload || "floorCount" in payload || "coreCellId" in payload) return null;
     const parsedActions = parseRoomActions(actions);
     return parsedActions ? { type: "room_actions", actions: parsedActions, reply: trimmedReply } : null;
   }
   if (type === "concept") {
-    if ("patch" in payload || "actions" in payload) return null;
+    if ("patch" in payload || "actions" in payload || "typicalFloor" in payload || "floorCount" in payload || "coreCellId" in payload) return null;
     const parsedProposal = parseBuildingProposal(proposal) ?? parseConceptProposal(proposal);
     return parsedProposal ? { type: "concept", proposal: parsedProposal, reply: trimmedReply } : null;
   }
+  if (type === "project") {
+    if ("actions" in payload || "proposal" in payload) return null;
+    const parsedPatch = parseBriefPatch(patch);
+    if (!parsedPatch.ok || parsedPatch.patch.siteWidth === undefined || parsedPatch.patch.siteDepth === undefined) return null;
+    const building = expandTypicalFloor(payload.typicalFloor, payload.coreCellId, payload.floorCount);
+    return building ? { type: "project", patch: parsedPatch.patch, proposal: building, reply: trimmedReply } : null;
+  }
+  if (type === "reset") {
+    if ("patch" in payload || "actions" in payload || "proposal" in payload || "typicalFloor" in payload || "floorCount" in payload || "coreCellId" in payload) return null;
+    return { type: "reset", reply: trimmedReply };
+  }
   if (type === "clarify" || type === "unsupported") {
-    if ("patch" in payload || "actions" in payload || "proposal" in payload) return null;
+    if ("patch" in payload || "actions" in payload || "proposal" in payload || "typicalFloor" in payload || "floorCount" in payload || "coreCellId" in payload) return null;
     return { type, reply: trimmedReply };
   }
   return null;
@@ -383,7 +408,7 @@ export async function executeInterpretation(
   const outcome = chatText === null ? null : parseArchitectInterpretation(chatText);
   if (!outcome) {
     console.log("[ARCHITECT_INTERPRET_INVALID_OUTPUT] schema violation in model reply");
-    return { ok: false, status: 502, message: ARCHITECT_ASSISTANT_BUSY_BILINGUAL };
+    return { ok: false, status: 502, message: ARCHITECT_INVALID_OUTPUT_BILINGUAL };
   }
   return { ok: true, outcome };
 }

@@ -46,12 +46,12 @@ export function parseProjectDraft(value: unknown): ProjectDraft | null {
   const briefResult = parseWorkspaceBrief(value.brief);
   const roomProgram = parseRoomProgram(value.roomProgram);
   if (!briefResult.ok || !briefResult.brief || !roomProgram) return null;
-  const layout = generateLayout(toLayoutBrief(briefResult.brief));
-  if (!layout.ok || layout.options.some((option) =>
-    !buildRoomPlan(option.geometry, roomProgram, option.coreSide).ok
-  )) return null;
   const activeMode = legacy ? "template" : value.activeMode;
   if (activeMode !== "template" && activeMode !== "concept") return null;
+  const layout = generateLayout(toLayoutBrief(briefResult.brief));
+  if (!layout.ok || (activeMode === "template" && layout.options.some((option) =>
+    !buildRoomPlan(option.geometry, roomProgram, option.coreSide).ok
+  ))) return null;
   const wallMeshPreset = current ? parseWallMeshPreset(value.wallMeshPreset) : { ...DEFAULT_WALL_MESH_PRESET };
   if (!wallMeshPreset) return null;
   const compiled = legacy || value.conceptProposal === null

@@ -37,7 +37,7 @@ export type ArchitectChatRequest = {
 };
 
 export type ArchitectChatOutcome = {
-  type: "patch" | "room_actions" | "concept" | "clarify" | "unsupported";
+  type: "patch" | "room_actions" | "concept" | "project" | "reset" | "clarify" | "unsupported";
   reply: string;
   patch?: BriefPatch;
   actions?: RoomAction[];

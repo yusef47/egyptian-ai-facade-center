@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ARCHITECT_ASSISTANT_BUSY_BILINGUAL,
   ARCHITECT_INTERPRETER,
+  ARCHITECT_INVALID_OUTPUT_BILINGUAL,
   ARCHITECT_INTERPRETER_SYSTEM_PROMPT,
   ARCHITECT_TEXT_MODEL_ENV_NAME,
   ARCHITECT_TEXT_MODEL_UNAVAILABLE_BILINGUAL,
@@ -21,6 +22,7 @@ import { compileConceptProposal } from "../lib/architect/concept-proposal";
 import { compileDesignProposal } from "../lib/architect/building-proposal";
 import { sampleBuildingProposal } from "./architect/building-fixture";
 import { sampleBuildingStructure } from "./architect/structure-fixture";
+import { readFileSync } from "node:fs";
 
 const BRIEF = {
   siteWidth: 12,
@@ -109,6 +111,24 @@ describe("system prompt", () => {
 });
 
 describe("parseArchitectInterpretation", () => {
+  it("accepts a real reset and rejects a clarification that pretends to reset", () => {
+    expect(parseArchitectInterpretation('{"type":"reset","reply":"بدأنا من جديد"}')).toEqual({ type: "reset", reply: "بدأنا من جديد" });
+    expect(parseArchitectInterpretation('{"type":"reset","patch":{"version":1,"siteWidth":10},"reply":"done"}')).toBeNull();
+  });
+
+  it("expands a new three-floor project on the patched site", () => {
+    const saved = JSON.parse(readFileSync("examples/architect-two-floor-demo.json", "utf8"));
+    const typicalFloor = saved.conceptProposal.floors[0].plan;
+    const outcome = parseArchitectInterpretation(JSON.stringify({
+      type: "project", patch: { version: 1, siteWidth: 12, siteDepth: 20 },
+      floorCount: 3, coreCellId: saved.conceptProposal.coreCellId, typicalFloor,
+      reply: "Proposed three floors.",
+    }));
+    expect(outcome?.type).toBe("project");
+    if (outcome?.type === "project") {
+      expect(compileDesignProposal(outcome.proposal).ok).toBe(true);
+    }
+  });
   it("accepts a free concept proposal only through the bounded schema", () => {
     const example = ARCHITECT_INTERPRETER_SYSTEM_PROMPT.match(/^\{"type":"concept".*\}$/m)?.[0];
     expect(example).toBeDefined();
@@ -332,7 +352,7 @@ describe("executeInterpretation", () => {
         apiKey: "k",
         fetchFn: vi.fn().mockResolvedValue(chatResponse(content)) as unknown as typeof fetch,
       });
-      expect(result).toEqual({ ok: false, status: 502, message: ARCHITECT_ASSISTANT_BUSY_BILINGUAL });
+      expect(result).toEqual({ ok: false, status: 502, message: ARCHITECT_INVALID_OUTPUT_BILINGUAL });
     }
   });
 

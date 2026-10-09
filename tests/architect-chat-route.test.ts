@@ -58,6 +58,22 @@ const VALID_CONCEPT = {
   windows: [{ space: "bedroom", edgeIndex: 1, width: 1.5, at: 0.5 }],
 };
 
+const TYPICAL_200 = {
+  version: 2,
+  site: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 20 }, { x: 0, y: 20 }],
+  cells: [
+    { id: "unit-a", name: "Unit A living", kind: "living", points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }] },
+    { id: "core", name: "Shared core", kind: "core", points: [{ x: 4, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 10 }, { x: 4, y: 10 }] },
+    { id: "unit-b", name: "Unit B living", kind: "living", points: [{ x: 6, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 6, y: 10 }] },
+  ],
+  doors: [
+    { from: "core", to: "outside", width: 1, at: 0.5 },
+    { from: "core", to: "unit-a", width: 0.9, at: 0.5 },
+    { from: "core", to: "unit-b", width: 0.9, at: 0.5 },
+  ],
+  windows: [],
+};
+
 function chatResponse(content: unknown): Response {
   return new Response(
     JSON.stringify({ choices: [{ message: { role: "assistant", content } }] }),
@@ -210,6 +226,20 @@ describe("POST /api/architect/interpret guards", () => {
 });
 
 describe("POST /api/architect/interpret outcomes", () => {
+  it("changes site and starts a three-floor project from an existing building in one validated action", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(chatResponse(JSON.stringify({
+      type: "project", patch: { version: 1, siteWidth: 10, siteDepth: 20 },
+      floorCount: 3, coreCellId: "core", typicalFloor: TYPICAL_200,
+      reply: "Proposed a new 200 m2 project.",
+    }))));
+    const response = await POST(postRequest({ ...VALID_PAYLOAD, conceptProposal: sampleBuildingProposal() }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { outcome: { type: string; proposal: { floors: unknown[] } } };
+    expect(body.outcome.type).toBe("project");
+    expect(body.outcome.proposal.floors).toHaveLength(3);
+    expect(credits.refundGenerationCredit).not.toHaveBeenCalled();
+  });
+
   it("accepts a new free concept only after server compilation, then carries it as edit context", async () => {
     const upstream = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => chatResponse(JSON.stringify({
       type: "concept", proposal: VALID_CONCEPT, reply: "Proposed a new plan.",

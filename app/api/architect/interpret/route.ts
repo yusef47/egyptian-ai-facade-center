@@ -155,9 +155,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Concept site differs from brief. | حدود المخطط تختلف عن أبعاد الأرض." }, { status: 400 });
   }
   const currentLayout = generateLayout(toLayoutBrief(briefCheck.brief));
-  if (!currentLayout.ok || currentLayout.options.some((option) =>
+  if (!currentLayout.ok || (!currentConcept && currentLayout.options.some((option) =>
     !buildRoomPlan(option.geometry, roomProgram, option.coreSide).ok
-  )) {
+  ))) {
     return NextResponse.json({ error: "Room program does not fit the current site. | برنامج الغرف لا يلائم الموقع الحالي." }, { status: 400 });
   }
   if (payload.history !== undefined && !Array.isArray(payload.history)) {
@@ -245,11 +245,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // 9) Server-side re-application gate: even a schema-valid patch must
   //    regenerate a valid layout here, or the client never sees it.
-  if (result.outcome.type === "patch") {
+  if (result.outcome.type === "patch" || result.outcome.type === "project") {
     const applied = applyBriefPatch(briefCheck.brief, result.outcome.patch);
-    if (!applied.ok || applied.result.options.some((option) =>
+    if (!applied.ok || (result.outcome.type === "patch" && applied.result.options.some((option) =>
       !buildRoomPlan(option.geometry, roomProgram, option.coreSide).ok
-    )) {
+    ))) {
       const balance = await refund();
       console.log(
         `[ARCHITECT_PATCH_INFEASIBLE] ${JSON.stringify({ userId, reason: applied.ok ? "room_program" : applied.errors.map((error) => error.code) })}`,
@@ -270,14 +270,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
   }
-  if (result.outcome.type === "concept") {
+  if (result.outcome.type === "concept" || result.outcome.type === "project") {
     const compiled = compileDesignProposal(result.outcome.proposal);
-    const dropsBuilding = compiled.ok && currentConcept?.ok
+    const dropsBuilding = result.outcome.type === "concept" && compiled.ok && currentConcept?.ok
       && currentConcept.kind === "building" && compiled.kind === "floor";
     const model = compiled.ok && compiled.kind === "building" && compiled.proposal.structure
       ? buildBuildingModelObj(compiled, wallMeshPreset) : null;
     const clashes = model && !model.ok ? model.errors.filter((error) => error.startsWith("BEAM_CROSSES_OPENING:")) : [];
-    if (!compiled.ok || dropsBuilding || clashes.length > 0 || !designMatchesSite(compiled.proposal, briefCheck.brief.siteWidth, briefCheck.brief.siteDepth)) {
+    const targetSite = result.outcome.type === "project"
+      ? applyBriefPatch(briefCheck.brief, result.outcome.patch)
+      : null;
+    const siteWidth = targetSite?.ok ? targetSite.brief.siteWidth : briefCheck.brief.siteWidth;
+    const siteDepth = targetSite?.ok ? targetSite.brief.siteDepth : briefCheck.brief.siteDepth;
+    if (!compiled.ok || dropsBuilding || clashes.length > 0 || !designMatchesSite(compiled.proposal, siteWidth, siteDepth)) {
       const balance = await refund();
       console.log(`[ARCHITECT_CONCEPT_INFEASIBLE] ${JSON.stringify({ userId, reason: !compiled.ok ? compiled.errors.slice(0, 8) : dropsBuilding ? "building_floors_dropped" : clashes.length ? clashes.slice(0, 8) : "site_shape_or_bounds" })}`);
       return NextResponse.json(

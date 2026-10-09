@@ -6,6 +6,7 @@ import {
 import { defaultRoomProgram } from "../../lib/architect/room-plan";
 import { sampleBuildingProposal } from "./building-fixture";
 import { DEFAULT_WALL_MESH_PRESET } from "../../lib/architect/wall-mesh";
+import { expandTypicalFloor } from "../../lib/architect/typical-floor";
 
 const brief = { siteWidth: 12, siteDepth: 20, unitBSharePercent: 50, coreSide: "east" as const };
 const concept = {
@@ -17,6 +18,29 @@ const concept = {
 };
 
 describe("portable project draft", () => {
+  it("saves an original project on a 200 m2 site even when the unrelated starter room program does not fit", () => {
+    const site = { ...brief, siteWidth: 10, siteDepth: 20 };
+    const plan = {
+      version: 2,
+      site: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 20 }, { x: 0, y: 20 }],
+      cells: [
+        { id: "unit-a", name: "Unit A", kind: "living", points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 10 }, { x: 0, y: 10 }] },
+        { id: "core", name: "Core", kind: "core", points: [{ x: 4, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 10 }, { x: 4, y: 10 }] },
+        { id: "unit-b", name: "Unit B", kind: "living", points: [{ x: 6, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 6, y: 10 }] },
+      ],
+      doors: [
+        { from: "core", to: "outside", width: 1, at: 0.5 },
+        { from: "core", to: "unit-a", width: 0.9, at: 0.5 },
+        { from: "core", to: "unit-b", width: 0.9, at: 0.5 },
+      ],
+      windows: [],
+    };
+    const building = expandTypicalFloor(plan, "core", 3)!;
+    const draft = createProjectDraft("200 m2 project", site, defaultRoomProgram(), 1, "concept", building);
+    expect(draft?.conceptProposal).toEqual(building);
+    expect(parseProjectDraft(JSON.parse(JSON.stringify(draft)))?.brief).toEqual(site);
+  });
+
   it("round trips a valid named project and regenerates its rooms", () => {
     const draft = createProjectDraft("بيت العائلة", brief, defaultRoomProgram(), 2);
     expect(draft).not.toBeNull();
