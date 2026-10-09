@@ -69,6 +69,20 @@ async function sendMessage(user: ReturnType<typeof userEvent.setup>, text: strin
 }
 
 describe("ArchitectWorkspace layout and canvas", () => {
+  it("loads the four-storey reference locally and saves its checked geometry", async () => {
+    const user = userEvent.setup();
+    render(<ArchitectWorkspace locale="ar" />);
+    await user.click(screen.getByRole("button", { name: "تجربة مبنى ٤ أدوار" }));
+    expect(await screen.findByText("فحص الحركة بين الأدوار")).toBeInTheDocument();
+    expect(screen.getByText(/لم يُولّده نموذج الذكاء الاصطناعي/)).toBeInTheDocument();
+    await waitFor(() => {
+      const draft = JSON.parse(window.localStorage.getItem("qattan:architect:draft:v1") ?? "{}");
+      expect(draft.conceptProposal.floors).toHaveLength(4);
+      expect(draft.conceptProposal.stairs).toHaveLength(3);
+    });
+    expect(postCalls()).toHaveLength(0);
+  });
+
   it("edits a stair locally, rejects a blocked core door and preserves it in the saved draft", async () => {
     const user = userEvent.setup();
     render(<ArchitectWorkspace locale="en" />);

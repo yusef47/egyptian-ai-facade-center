@@ -187,6 +187,8 @@ export function buildSvgPlan(geometry: ProjectGeometry, options: SvgPlanOptions 
   layers.push(`<g id="openings">${openingsSvg}</g>`);
 
   const dimensions = geometry.spaces
+    // The stair drawing already identifies the core; a centered label would sit on its treads.
+    .filter((space) => !(options.stairOverlay?.length && /(?:^|-)core$/.test(space.id)))
     .map((space) => {
       const xsSpace = space.polygon.points.map((point) => point.x);
       const ysSpace = space.polygon.points.map((point) => point.y);
