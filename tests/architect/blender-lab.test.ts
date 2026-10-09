@@ -15,15 +15,16 @@ describe("Blender Lab input and model contract", () => {
     expect(parseBlenderModelReply('{"script":"print(1)","reply":""}')).toBeNull();
   });
 
-  it("requests a strict script schema for Haiku", async () => {
+  it("gives Haiku a larger output budget and low reasoning effort", async () => {
     vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     try {
       const fetchFn = vi.fn(async (_url: unknown, options: RequestInit) => {
         const body = JSON.parse(options.body as string);
         expect(body.model).toBe("anthropic/claude-haiku-5.5");
-        expect(body.provider.require_parameters).toBe(true);
-        expect(body.response_format.json_schema.schema.required).toEqual(["script", "reply"]);
+        expect(body.max_tokens).toBe(12000);
+        expect(body.reasoning).toEqual({ effort: "low" });
+        expect(body.response_format).toBeUndefined();
         return new Response(JSON.stringify({ choices: [{ message: { content: '{"script":"import bpy","reply":"جاهز"}' } }] }), { status: 200 });
       });
       await expect(generateBlenderScript({ instruction: "أربع أدوار", siteWidth: 12, siteDepth: 20 }, fetchFn as unknown as typeof fetch))

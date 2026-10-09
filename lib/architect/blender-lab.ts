@@ -72,26 +72,8 @@ export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typ
     body: JSON.stringify({
       model,
       temperature: 0.25,
-      max_tokens: 8000,
-      ...(model === "anthropic/claude-haiku-5.5" ? {
-        provider: { require_parameters: true },
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "blender_lab_script",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                script: { type: "string", description: "Complete executable Blender Python script using bpy" },
-                reply: { type: "string", description: "Short explanation in Arabic" },
-              },
-              required: ["script", "reply"],
-              additionalProperties: false,
-            },
-          },
-        },
-      } : {}),
+      max_tokens: model === "anthropic/claude-haiku-5.5" ? 12000 : 8000,
+      ...(model === "anthropic/claude-haiku-5.5" ? { reasoning: { effort: "low" } } : {}),
       messages: [
         { role: "system", content: `You are a concept architectural modeller controlling Blender 4.x through bpy. Return ONLY JSON with keys "script" (full executable Python script) and "reply" (short Arabic explanation). Site dimensions are in meters. Create real mesh geometry for spaces, walls, slab, stairs, columns and beams where requested; place objects coherently. On every turn write the COMPLETE scene script, incorporating edits into the previous script. Use bpy and Python standard library only. Never require downloads, external files, add-ons, or rendering. Do not write save/export commands: the host exports GLB. Never claim structural safety or Egyptian code approval; this is an unverified concept model. Keep the script under ${BLENDER_LAB.maxScript} characters.` },
         { role: "user", content: JSON.stringify(input) },
