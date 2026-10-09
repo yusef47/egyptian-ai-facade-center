@@ -92,8 +92,8 @@ export function BlenderLabViewer({ glbBase64 }: { glbBase64: string | null }) {
     return () => { cancelled = true; cleanup(); };
   }, [glbBase64]);
 
-  return <div className="relative h-full min-h-[430px] overflow-hidden rounded-2xl border border-white/10 bg-[#0a1116]">
-    <div ref={hostRef} className="h-full min-h-[430px] w-full [&>canvas]:block" />
+  return <div className="relative h-[min(70vh,720px)] min-h-[430px] overflow-hidden rounded-2xl border border-white/10 bg-[#0a1116]">
+    <div ref={hostRef} className="absolute inset-0 h-full w-full [&>canvas]:block" />
     {!glbBase64 && <div className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-slate-400">النموذج هيظهر هنا بعد أول طلب</div>}
     {error && <p role="alert" className="absolute bottom-4 right-4 rounded-lg bg-rose-950 px-3 py-2 text-sm text-rose-200">{error}</p>}
   </div>;
