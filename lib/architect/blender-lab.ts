@@ -141,11 +141,12 @@ export async function reviewBlenderScript(
   input: BlenderLabInput,
   draft: { script: string; reply: string },
   fetchFn: typeof fetch = fetch,
+  executionError?: string,
 ): Promise<{ script: string; reply: string }> {
   const detectedIssues = inspectBlenderScript(draft.script);
   const reviewed = await requestBlenderScript([
-    { role: "system", content: `You are the independent architectural and Blender code reviewer. The draft has NOT been shown to the user. Review it against the user's brief and return ONLY JSON with keys "script" (the complete corrected executable bpy Python scene) and "reply" (a short Arabic description of what the final scene actually contains). Inspect coordinates numerically, not just comments: verify site bounds, actual Blender mesh dimensions and scaling, every wall opening against wall length, door access from each apartment entrance through halls to all required rooms, wall continuity, and required room count. Correct every issue in the full script. Do not claim you checked an image or engineering-code compliance. Use bpy and Python standard library only; no files, downloads, add-ons or save/export commands. Keep script under ${BLENDER_LAB.maxScript} characters.` },
-    { role: "user", content: JSON.stringify({ brief: input, draft, detectedIssues }) },
+    { role: "system", content: `You are the independent architectural and Blender code reviewer. The draft has NOT been shown to the user. Review it against the user's brief and return ONLY JSON with keys "script" (the complete corrected executable bpy Python scene) and "reply" (a short Arabic description of what the final scene actually contains). Inspect coordinates numerically, not just comments: verify site bounds, actual Blender mesh dimensions and scaling, every wall opening against wall length, door access from each apartment entrance through halls to all required rooms, wall continuity, and required room count. Correct every issue in the full script. If an execution error is supplied, fix that exact Python syntax or runtime error and keep the rest of the design coherent. Check indentation of every Python block before returning. Do not claim you checked an image or engineering-code compliance. Use bpy and Python standard library only; no files, downloads, add-ons or save/export commands. Keep script under ${BLENDER_LAB.maxScript} characters.` },
+    { role: "user", content: JSON.stringify({ brief: input, draft, detectedIssues, executionError: executionError?.slice(-1500) }) },
   ], fetchFn, 0, 75_000);
   const remainingIssues = inspectBlenderScript(reviewed.script);
   if (remainingIssues.length) throw new Error(`Reviewed Blender script still has geometry errors: ${remainingIssues.join(" ")}`);
@@ -159,7 +160,7 @@ export async function runBlenderInSandbox(script: string, create: () => Promise<
   resources: { vcpus: 4 },
   timeout: BLENDER_LAB.sandboxMs,
   persistent: false,
-})): Promise<Buffer> {
+}), repair?: (script: string, executionError: string) => Promise<string>): Promise<{ script: string; glb: Buffer }> {
   const sandbox = await create();
   try {
     // Setup runs with network access. The generated script never sees app secrets.
@@ -175,19 +176,27 @@ export async function runBlenderInSandbox(script: string, create: () => Promise<
       { path: "/vercel/sandbox/export.py", content: EXPORT_HARNESS },
     ]);
     await sandbox.update({ networkPolicy: "deny-all" });
-    const execution = await sandbox.runCommand("blender", ["--background", "--factory-startup", "--threads", "4", "--python-exit-code", "1", "--python", "/vercel/sandbox/export.py"], { timeoutMs: 90_000 });
-    if (execution.exitCode !== 0) {
-      const stderr = (await execution.stderr()).slice(-1200);
-      throw new Error(`Blender execution failed: ${stderr}`);
+    let currentScript = script;
+    for (let attempt = 0; attempt < (repair ? 2 : 1); attempt++) {
+      const execution = await sandbox.runCommand("blender", ["--background", "--factory-startup", "--threads", "4", "--python-exit-code", "1", "--python", "/vercel/sandbox/export.py"], { timeoutMs: 90_000 });
+      if (execution.exitCode !== 0) {
+        const stderr = (await execution.stderr()).slice(-1200);
+        if (!repair || attempt > 0) throw new Error(`Blender execution failed: ${stderr}`);
+        currentScript = await repair(currentScript, stderr);
+        if (!currentScript || currentScript.length > BLENDER_LAB.maxScript) throw new Error("Blender repair produced an invalid script");
+        await sandbox.writeFiles([{ path: "/vercel/sandbox/scene.py", content: currentScript }]);
+        continue;
+      }
+      const glb = await sandbox.readFileToBuffer({ path: "/vercel/sandbox/result.glb" });
+      if (!glb || glb.length < 20 || glb.toString("ascii", 0, 4) !== "glTF" || glb.readUInt32LE(8) !== glb.length) {
+        const stderr = (await execution.stderr()).slice(-800);
+        const stdout = (await execution.stdout()).slice(-800);
+        throw new Error(`Blender did not export a valid GLB file (bytes=${glb?.length ?? 0}, header=${glb?.subarray(0, 12).toString("hex") ?? "missing"}, stderr=${stderr}, stdout=${stdout})`);
+      }
+      if (glb.length > BLENDER_LAB.maxGlbBytes) throw new Error("3D model exceeds the pilot download limit");
+      return { script: currentScript, glb };
     }
-    const glb = await sandbox.readFileToBuffer({ path: "/vercel/sandbox/result.glb" });
-    if (!glb || glb.length < 20 || glb.toString("ascii", 0, 4) !== "glTF" || glb.readUInt32LE(8) !== glb.length) {
-      const stderr = (await execution.stderr()).slice(-800);
-      const stdout = (await execution.stdout()).slice(-800);
-      throw new Error(`Blender did not export a valid GLB file (bytes=${glb?.length ?? 0}, header=${glb?.subarray(0, 12).toString("hex") ?? "missing"}, stderr=${stderr}, stdout=${stdout})`);
-    }
-    if (glb.length > BLENDER_LAB.maxGlbBytes) throw new Error("3D model exceeds the pilot download limit");
-    return glb;
+    throw new Error("Blender repair attempts exhausted");
   } finally {
     await sandbox.stop().catch(() => {});
   }

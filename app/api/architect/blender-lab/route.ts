@@ -44,8 +44,13 @@ export async function POST(request: Request) {
     stage = "review";
     const reviewed = await reviewBlenderScript(input, draft);
     stage = "blender";
-    const glb = await runBlenderInSandbox(reviewed.script);
-    return NextResponse.json({ ...reviewed, glbBase64: glb.toString("base64") }, {
+    let finalReply = reviewed.reply;
+    const built = await runBlenderInSandbox(reviewed.script, undefined, async (failedScript, executionError) => {
+      const repaired = await reviewBlenderScript(input, { script: failedScript, reply: finalReply }, undefined, executionError);
+      finalReply = repaired.reply;
+      return repaired.script;
+    });
+    return NextResponse.json({ script: built.script, reply: finalReply, glbBase64: built.glb.toString("base64") }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
@@ -54,6 +59,6 @@ export async function POST(request: Request) {
     if (message.startsWith("Reviewed Blender script still has geometry errors")) {
       return NextResponse.json({ error: "النموذج لم يجتز مراجعة الأبعاد والفتحات، لذلك لم نعرضه. حاول مرة أخرى." }, { status: 422 });
     }
-    return NextResponse.json({ error: "Blender could not build this concept. Try a simpler request." }, { status: 502 });
+    return NextResponse.json({ error: "تعذر بناء نموذج صالح بعد المراجعة ومحاولة الإصلاح. لم يتم عرض نتيجة غير مكتملة؛ حاول مرة أخرى." }, { status: 502 });
   }
 }

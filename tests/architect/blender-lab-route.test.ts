@@ -33,7 +33,7 @@ beforeEach(() => {
   vi.mocked(parseBlenderLabInput).mockReturnValue({ instruction: "building", siteWidth: 12, siteDepth: 20 });
   vi.mocked(generateBlenderScript).mockResolvedValue({ script: "import bpy", reply: "تم" });
   vi.mocked(reviewBlenderScript).mockResolvedValue({ script: "import bpy\n# reviewed", reply: "تمت المراجعة" });
-  vi.mocked(runBlenderInSandbox).mockResolvedValue(Buffer.from("glTF"));
+  vi.mocked(runBlenderInSandbox).mockResolvedValue({ script: "import bpy\n# reviewed", glb: Buffer.from("glTF") });
 });
 
 describe("Blender Lab route cost gates", () => {
@@ -60,7 +60,7 @@ describe("Blender Lab route cost gates", () => {
     expect(response.status).toBe(200);
     expect(generateBlenderScript).toHaveBeenCalledOnce();
     expect(reviewBlenderScript).toHaveBeenCalledWith({ instruction: "building", siteWidth: 12, siteDepth: 20 }, { script: "import bpy", reply: "تم" });
-    expect(runBlenderInSandbox).toHaveBeenCalledWith("import bpy\n# reviewed");
+    expect(runBlenderInSandbox).toHaveBeenCalledWith("import bpy\n# reviewed", undefined, expect.any(Function));
     expect((await response.json()).glbBase64).toBe(Buffer.from("glTF").toString("base64"));
   });
 
@@ -70,5 +70,23 @@ describe("Blender Lab route cost gates", () => {
     expect(response.status).toBe(422);
     expect((await response.json()).error).toContain("لم يجتز مراجعة");
     expect(runBlenderInSandbox).not.toHaveBeenCalled();
+  });
+
+  it("returns the repaired script when Blender reports a Python error", async () => {
+    vi.mocked(runBlenderInSandbox).mockImplementation(async (_script, _create, repair) => {
+      const script = await repair!("import bpy\n# reviewed", "IndentationError: expected an indented block");
+      return { script, glb: Buffer.from("glTF") };
+    });
+    vi.mocked(reviewBlenderScript).mockResolvedValueOnce({ script: "import bpy\n# reviewed", reply: "مراجعة أولى" })
+      .mockResolvedValueOnce({ script: "import bpy\n# fixed", reply: "تم الإصلاح" });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(reviewBlenderScript).toHaveBeenLastCalledWith(
+      { instruction: "building", siteWidth: 12, siteDepth: 20 },
+      { script: "import bpy\n# reviewed", reply: "مراجعة أولى" },
+      undefined,
+      "IndentationError: expected an indented block",
+    );
+    expect(await response.json()).toMatchObject({ script: "import bpy\n# fixed", reply: "تم الإصلاح" });
   });
 });

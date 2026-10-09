@@ -93,7 +93,7 @@ describe("isolated Blender execution", () => {
       stop: vi.fn(async () => { calls.push("stop"); }),
     };
     const result = await runBlenderInSandbox("import bpy", async () => sandbox as never);
-    expect(result).toEqual(fakeGlb());
+    expect(result).toEqual({ script: "import bpy", glb: fakeGlb() });
     expect(calls).toEqual(["which", "write", "deny", "blender", "stop"]);
     expect(sandbox.runCommand).toHaveBeenCalledWith("blender", expect.arrayContaining(["--python-exit-code", "1"]), expect.any(Object));
     expect(sandbox.update).toHaveBeenCalledWith({ networkPolicy: "deny-all" });
@@ -113,6 +113,31 @@ describe("isolated Blender execution", () => {
     };
     await expect(runBlenderInSandbox("import bpy", async () => sandbox as never)).rejects.toThrow("Blender execution failed");
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("feeds a Blender syntax error back for one repair in the same sandbox", async () => {
+    const glb = fakeGlb();
+    let runs = 0;
+    const sandbox = {
+      runCommand: vi.fn(async (command: unknown) => {
+        if (command === "blender") {
+          runs++;
+          return { exitCode: runs === 1 ? 1 : 0, stderr: async () => "IndentationError: expected an indented block" };
+        }
+        return { exitCode: 0, stderr: async () => "" };
+      }),
+      writeFiles: vi.fn(async () => {}),
+      update: vi.fn(async () => {}),
+      readFileToBuffer: vi.fn(async () => glb),
+      stop: vi.fn(async () => {}),
+    };
+    const repair = vi.fn(async () => "import bpy\n# repaired");
+    await expect(runBlenderInSandbox("import bpy\n# broken", async () => sandbox as never, repair))
+      .resolves.toEqual({ script: "import bpy\n# repaired", glb });
+    expect(repair).toHaveBeenCalledWith("import bpy\n# broken", expect.stringContaining("IndentationError"));
+    expect(sandbox.writeFiles).toHaveBeenCalledTimes(2);
+    expect(sandbox.update).toHaveBeenCalledOnce();
+    expect(sandbox.stop).toHaveBeenCalledOnce();
   });
 
   it("installs the NumPy dependency required by the Blender GLB exporter", async () => {
