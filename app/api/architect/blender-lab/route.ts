@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
-    console.error("[BLENDER_LAB_FAILED]", error instanceof Error ? error.message.slice(0, 300) : "unknown");
+    console.error("[BLENDER_LAB_FAILED]", error instanceof Error ? error.message.slice(0, 1500) : "unknown");
     return NextResponse.json({ error: "Blender could not build this concept. Try a simpler request." }, { status: 502 });
   }
 }
