@@ -1,0 +1,654 @@
+{
+  "schemaVersion": 3,
+  "name": "معاينة مبنى دورين",
+  "brief": {
+    "siteWidth": 12,
+    "siteDepth": 20,
+    "unitBSharePercent": 50,
+    "coreSide": "east"
+  },
+  "roomProgram": {
+    "unit-a": [
+      {
+        "id": "living-1",
+        "kind": "living",
+        "preferredArea": 24
+      },
+      {
+        "id": "bedroom-1",
+        "kind": "bedroom",
+        "preferredArea": 16
+      },
+      {
+        "id": "bedroom-2",
+        "kind": "bedroom",
+        "preferredArea": 16
+      },
+      {
+        "id": "kitchen-1",
+        "kind": "kitchen",
+        "preferredArea": 12
+      },
+      {
+        "id": "bathroom-1",
+        "kind": "bathroom",
+        "preferredArea": 7
+      }
+    ],
+    "unit-b": [
+      {
+        "id": "living-1",
+        "kind": "living",
+        "preferredArea": 24
+      },
+      {
+        "id": "bedroom-1",
+        "kind": "bedroom",
+        "preferredArea": 16
+      },
+      {
+        "id": "bedroom-2",
+        "kind": "bedroom",
+        "preferredArea": 16
+      },
+      {
+        "id": "kitchen-1",
+        "kind": "kitchen",
+        "preferredArea": 12
+      },
+      {
+        "id": "bathroom-1",
+        "kind": "bathroom",
+        "preferredArea": 7
+      }
+    ]
+  },
+  "selectedOption": 1,
+  "activeMode": "concept",
+  "conceptProposal": {
+    "kind": "building",
+    "version": 1,
+    "coreCellId": "core",
+    "floors": [
+      {
+        "id": "ground",
+        "name": "الدور الأرضي",
+        "elevation": 0,
+        "plan": {
+          "version": 2,
+          "site": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 12,
+              "y": 0
+            },
+            {
+              "x": 12,
+              "y": 20
+            },
+            {
+              "x": 0,
+              "y": 20
+            }
+          ],
+          "cells": [
+            {
+              "id": "core",
+              "name": "نواة الحركة الرأسية",
+              "kind": "core",
+              "points": [
+                {
+                  "x": 0,
+                  "y": 0
+                },
+                {
+                  "x": 3,
+                  "y": 0
+                },
+                {
+                  "x": 3,
+                  "y": 8
+                },
+                {
+                  "x": 0,
+                  "y": 8
+                }
+              ]
+            },
+            {
+              "id": "living",
+              "name": "معيشة",
+              "kind": "living",
+              "points": [
+                {
+                  "x": 3,
+                  "y": 0
+                },
+                {
+                  "x": 12,
+                  "y": 0
+                },
+                {
+                  "x": 12,
+                  "y": 8
+                },
+                {
+                  "x": 3,
+                  "y": 8
+                }
+              ]
+            },
+            {
+              "id": "kitchen",
+              "name": "مطبخ",
+              "kind": "kitchen",
+              "points": [
+                {
+                  "x": 0,
+                  "y": 8
+                },
+                {
+                  "x": 5,
+                  "y": 8
+                },
+                {
+                  "x": 5,
+                  "y": 12
+                },
+                {
+                  "x": 0,
+                  "y": 12
+                }
+              ]
+            },
+            {
+              "id": "dining",
+              "name": "منطقة طعام",
+              "kind": "living",
+              "points": [
+                {
+                  "x": 5,
+                  "y": 8
+                },
+                {
+                  "x": 12,
+                  "y": 8
+                },
+                {
+                  "x": 12,
+                  "y": 12
+                },
+                {
+                  "x": 5,
+                  "y": 12
+                }
+              ]
+            },
+            {
+              "id": "office",
+              "name": "مكتب",
+              "kind": "office",
+              "points": [
+                {
+                  "x": 0,
+                  "y": 12
+                },
+                {
+                  "x": 5,
+                  "y": 12
+                },
+                {
+                  "x": 5,
+                  "y": 20
+                },
+                {
+                  "x": 0,
+                  "y": 20
+                }
+              ]
+            },
+            {
+              "id": "balcony",
+              "name": "شرفة",
+              "kind": "balcony",
+              "points": [
+                {
+                  "x": 5,
+                  "y": 12
+                },
+                {
+                  "x": 12,
+                  "y": 12
+                },
+                {
+                  "x": 12,
+                  "y": 20
+                },
+                {
+                  "x": 5,
+                  "y": 20
+                }
+              ]
+            }
+          ],
+          "doors": [
+            {
+              "from": "core",
+              "to": "outside",
+              "width": 1,
+              "at": 0.5
+            },
+            {
+              "from": "core",
+              "to": "living",
+              "width": 0.9,
+              "at": 0.5
+            },
+            {
+              "from": "core",
+              "to": "kitchen",
+              "width": 0.9,
+              "at": 0.5
+            },
+            {
+              "from": "living",
+              "to": "dining",
+              "width": 1.2,
+              "at": 0.5
+            },
+            {
+              "from": "kitchen",
+              "to": "office",
+              "width": 0.9,
+              "at": 0.5
+            },
+            {
+              "from": "dining",
+              "to": "balcony",
+              "width": 1.2,
+              "at": 0.5
+            }
+          ],
+          "windows": [
+            {
+              "space": "living",
+              "edgeIndex": 1,
+              "width": 1.5,
+              "at": 0.5
+            },
+            {
+              "space": "office",
+              "edgeIndex": 3,
+              "width": 1.5,
+              "at": 0.5
+            },
+            {
+              "space": "balcony",
+              "edgeIndex": 2,
+              "width": 2,
+              "at": 0.5
+            }
+          ]
+        }
+      },
+      {
+        "id": "first",
+        "name": "الدور الأول",
+        "elevation": 3.2,
+        "plan": {
+          "version": 2,
+          "site": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 12,
+              "y": 0
+            },
+            {
+              "x": 12,
+              "y": 20
+            },
+            {
+              "x": 0,
+              "y": 20
+            }
+          ],
+          "cells": [
+            {
+              "id": "core",
+              "name": "نواة الحركة الرأسية",
+              "kind": "core",
+              "points": [
+                {
+                  "x": 0,
+                  "y": 0
+                },
+                {
+                  "x": 3,
+                  "y": 0
+                },
+                {
+                  "x": 3,
+                  "y": 8
+                },
+                {
+                  "x": 0,
+                  "y": 8
+                }
+              ]
+            },
+            {
+              "id": "corridor",
+              "name": "ممر",
+              "kind": "corridor",
+              "points": [
+                {
+                  "x": 3,
+                  "y": 0
+                },
+                {
+                  "x": 5,
+                  "y": 0
+                },
+                {
+                  "x": 5,
+                  "y": 20
+                },
+                {
+                  "x": 3,
+                  "y": 20
+                }
+              ]
+            },
+            {
+              "id": "bedroom-one",
+              "name": "غرفة نوم ١",
+              "kind": "bedroom",
+              "points": [
+                {
+                  "x": 5,
+                  "y": 0
+                },
+                {
+                  "x": 12,
+                  "y": 0
+                },
+                {
+                  "x": 12,
+                  "y": 8
+                },
+                {
+                  "x": 5,
+                  "y": 8
+                }
+              ]
+            },
+            {
+              "id": "bathroom",
+              "name": "حمام",
+              "kind": "bathroom",
+              "points": [
+                {
+                  "x": 5,
+                  "y": 8
+                },
+                {
+                  "x": 8,
+                  "y": 8
+                },
+                {
+                  "x": 8,
+                  "y": 12
+                },
+                {
+                  "x": 5,
+                  "y": 12
+                }
+              ]
+            },
+            {
+              "id": "storage",
+              "name": "مخزن",
+              "kind": "storage",
+              "points": [
+                {
+                  "x": 8,
+                  "y": 8
+                },
+                {
+                  "x": 12,
+                  "y": 8
+                },
+                {
+                  "x": 12,
+                  "y": 12
+                },
+                {
+                  "x": 8,
+                  "y": 12
+                }
+              ]
+            },
+            {
+              "id": "bedroom-two",
+              "name": "غرفة نوم ٢",
+              "kind": "bedroom",
+              "points": [
+                {
+                  "x": 5,
+                  "y": 12
+                },
+                {
+                  "x": 12,
+                  "y": 12
+                },
+                {
+                  "x": 12,
+                  "y": 20
+                },
+                {
+                  "x": 5,
+                  "y": 20
+                }
+              ]
+            }
+          ],
+          "doors": [
+            {
+              "from": "core",
+              "to": "corridor",
+              "width": 0.9,
+              "at": 0.5
+            },
+            {
+              "from": "corridor",
+              "to": "bedroom-one",
+              "width": 0.9,
+              "at": 0.5
+            },
+            {
+              "from": "corridor",
+              "to": "bathroom",
+              "width": 0.8,
+              "at": 0.5
+            },
+            {
+              "from": "bathroom",
+              "to": "storage",
+              "width": 0.8,
+              "at": 0.5
+            },
+            {
+              "from": "corridor",
+              "to": "bedroom-two",
+              "width": 0.9,
+              "at": 0.5
+            }
+          ],
+          "windows": [
+            {
+              "space": "bedroom-one",
+              "edgeIndex": 1,
+              "width": 1.5,
+              "at": 0.5
+            },
+            {
+              "space": "bedroom-two",
+              "edgeIndex": 1,
+              "width": 1.5,
+              "at": 0.5
+            },
+            {
+              "space": "storage",
+              "edgeIndex": 1,
+              "width": 1,
+              "at": 0.5
+            }
+          ]
+        }
+      }
+    ],
+    "stairs": [
+      {
+        "id": "s1",
+        "lowerFloorId": "ground",
+        "upperFloorId": "first",
+        "start": { "x": 1.5, "y": 1.1 },
+        "end": { "x": 1.5, "y": 6.3 },
+        "width": 1.2,
+        "risers": 19,
+        "landingLength": 0.8
+      }
+    ],
+    "structure": {
+      "version": 1,
+      "status": "coordination-only",
+      "columns": [
+        {
+          "id": "c1",
+          "position": {
+            "x": 4,
+            "y": 2
+          },
+          "width": 0.3,
+          "depth": 0.3
+        },
+        {
+          "id": "c2",
+          "position": {
+            "x": 10,
+            "y": 2
+          },
+          "width": 0.3,
+          "depth": 0.3
+        },
+        {
+          "id": "c3",
+          "position": {
+            "x": 4,
+            "y": 10
+          },
+          "width": 0.3,
+          "depth": 0.3
+        },
+        {
+          "id": "c4",
+          "position": {
+            "x": 10,
+            "y": 10
+          },
+          "width": 0.3,
+          "depth": 0.3
+        },
+        {
+          "id": "c5",
+          "position": {
+            "x": 4,
+            "y": 18
+          },
+          "width": 0.3,
+          "depth": 0.3
+        },
+        {
+          "id": "c6",
+          "position": {
+            "x": 10,
+            "y": 18
+          },
+          "width": 0.3,
+          "depth": 0.3
+        }
+      ],
+      "beams": [
+        {
+          "id": "b1",
+          "floorId": "first",
+          "fromColumnId": "c1",
+          "toColumnId": "c2",
+          "width": 0.25,
+          "depth": 0.45
+        },
+        {
+          "id": "b2",
+          "floorId": "first",
+          "fromColumnId": "c3",
+          "toColumnId": "c4",
+          "width": 0.25,
+          "depth": 0.45
+        },
+        {
+          "id": "b3",
+          "floorId": "first",
+          "fromColumnId": "c5",
+          "toColumnId": "c6",
+          "width": 0.25,
+          "depth": 0.45
+        },
+        {
+          "id": "b4",
+          "floorId": "first",
+          "fromColumnId": "c1",
+          "toColumnId": "c3",
+          "width": 0.25,
+          "depth": 0.45
+        },
+        {
+          "id": "b5",
+          "floorId": "first",
+          "fromColumnId": "c3",
+          "toColumnId": "c5",
+          "width": 0.25,
+          "depth": 0.45
+        },
+        {
+          "id": "b6",
+          "floorId": "first",
+          "fromColumnId": "c2",
+          "toColumnId": "c4",
+          "width": 0.25,
+          "depth": 0.45
+        },
+        {
+          "id": "b7",
+          "floorId": "first",
+          "fromColumnId": "c4",
+          "toColumnId": "c6",
+          "width": 0.25,
+          "depth": 0.45
+        }
+      ]
+    }
+  },
+  "wallMeshPreset": {
+    "roofRise": 3.2,
+    "doorHeadHeight": 2.1,
+    "windowSillHeight": 0.9,
+    "windowHeadHeight": 2.1,
+    "slabThickness": 0.2
+  }
+}

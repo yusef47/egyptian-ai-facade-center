@@ -26,6 +26,12 @@ function isAdminEmail(email: string | null | undefined): boolean {
   return authorizedAdminEmails().includes(email.trim().toLowerCase());
 }
 
+function isArchitectPilotEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  return normalized === OWNER_ADMIN_EMAIL || normalized === CO_ADMIN_EMAIL;
+}
+
 /** Look up the profile email for a verified user id via the service role. */
 async function getProfileEmail(admin: SupabaseClient, userId: string): Promise<string | null> {
   const { data } = await admin.from("profiles").select("email").eq("id", userId).maybeSingle();
@@ -48,12 +54,32 @@ export async function authorizeAdmin(
   const userId = await verifySupabaseUser(request);
   if (!userId) return { authorized: false, reason: "unauthenticated" };
 
+  if (await isAuthorizedAdminUser(admin, userId)) return { authorized: true, userId };
+
+  return { authorized: false, reason: "forbidden" };
+}
+
+/** Check an already verified user id without repeating Supabase token verification. */
+export async function isAuthorizedAdminUser(admin: SupabaseClient, userId: string): Promise<boolean> {
   // Prefer the authoritative auth email, falling back to the profile row.
   const emailFromAuth = await getAuthEmail(admin, userId);
   const email = emailFromAuth ?? (await getProfileEmail(admin, userId));
-  if (isAdminEmail(email)) return { authorized: true, userId };
+  return isAdminEmail(email);
+}
 
-  return { authorized: false, reason: "forbidden" };
+/** Restrict the unfinished Architect/Blender pilot to the two named owners. */
+export async function isArchitectPilotUser(admin: SupabaseClient, userId: string): Promise<boolean> {
+  const emailFromAuth = await getAuthEmail(admin, userId);
+  const email = emailFromAuth ?? (await getProfileEmail(admin, userId));
+  return isArchitectPilotEmail(email);
+}
+
+export async function authorizeArchitectPilot(request: Request, admin: SupabaseClient): Promise<AdminGate> {
+  const userId = await verifySupabaseUser(request);
+  if (!userId) return { authorized: false, reason: "unauthenticated" };
+  return await isArchitectPilotUser(admin, userId)
+    ? { authorized: true, userId }
+    : { authorized: false, reason: "forbidden" };
 }
 
 async function getAuthEmail(admin: SupabaseClient, userId: string): Promise<string | null> {
