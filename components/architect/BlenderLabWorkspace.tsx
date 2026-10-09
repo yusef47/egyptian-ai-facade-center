@@ -176,7 +176,7 @@ export function BlenderLabWorkspace() {
           </div>
           {error && <p role="alert" className="my-2 rounded-xl bg-rose-950/80 p-3 text-sm text-rose-200">{error}</p>}
           <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={1500} rows={4} placeholder="اوصف المبنى أو التعديل اللي عايزه..." className="mt-3 w-full resize-none rounded-xl border border-white/15 bg-[#17282e] p-3 text-sm text-white placeholder:text-slate-500 focus:border-[#d4af37] focus:outline-none" />
-          <button type="button" disabled={pending || villaPending || !available || !instruction.trim()} onClick={() => void submit()} className="mt-3 rounded-xl bg-[#d4af37] px-4 py-3 font-bold text-[#121a1e] disabled:cursor-not-allowed disabled:opacity-45">{pending ? "Blender بيبني النموذج..." : script ? "نفّذ التعديل" : "ابنِ النموذج"}</button>
+          <button type="button" disabled={pending || villaPending || !available || !instruction.trim()} onClick={() => void submit()} className="mt-3 rounded-xl bg-[#d4af37] px-4 py-3 font-bold text-[#121a1e] disabled:cursor-not-allowed disabled:opacity-45">{pending ? "المساعد بيبني وبيراجع النموذج..." : script ? "نفّذ التعديل" : "ابنِ النموذج"}</button>
         </section>
         <section className="space-y-3">
           <BlenderLabViewer glbBase64={villaGlb ?? result?.glbBase64 ?? null} showRoof={showRoof} />

@@ -7,6 +7,7 @@ import {
   generateBlenderScript,
   isBlenderLabEnabled,
   parseBlenderLabInput,
+  reviewBlenderScript,
   runBlenderInSandbox,
 } from "../../../../lib/architect/blender-lab";
 
@@ -38,13 +39,18 @@ export async function POST(request: Request) {
   if (!input) return NextResponse.json({ error: "Invalid site, message or previous script" }, { status: 400 });
 
   try {
-    const generated = await generateBlenderScript(input);
-    const glb = await runBlenderInSandbox(generated.script);
-    return NextResponse.json({ ...generated, glbBase64: glb.toString("base64") }, {
+    const draft = await generateBlenderScript(input);
+    const reviewed = await reviewBlenderScript(input, draft);
+    const glb = await runBlenderInSandbox(reviewed.script);
+    return NextResponse.json({ ...reviewed, glbBase64: glb.toString("base64") }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
-    console.error("[BLENDER_LAB_FAILED]", error instanceof Error ? error.message.slice(0, 1500) : "unknown");
+    const message = error instanceof Error ? error.message : "unknown";
+    console.error("[BLENDER_LAB_FAILED]", message.slice(0, 1500));
+    if (message.startsWith("Reviewed Blender script still has geometry errors")) {
+      return NextResponse.json({ error: "النموذج لم يجتز مراجعة الأبعاد والفتحات، لذلك لم نعرضه. حاول مرة أخرى." }, { status: 422 });
+    }
     return NextResponse.json({ error: "Blender could not build this concept. Try a simpler request." }, { status: 502 });
   }
 }

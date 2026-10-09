@@ -22,3 +22,7 @@ For local live Sandbox testing, the Vercel CLI must be authenticated and the pro
 - Geometry is an unverified concept. No Egyptian code compliance, structural analysis, or construction approval is implied.
 
 The existing deterministic Architect Workspace remains independent. This lab is a separate path for checking whether model-authored Blender scenes are useful before connecting them to the project's structured geometry and validation pipeline.
+
+## Review gate
+
+The general chat now generates a draft, asks the text model for a separate full-script architectural/code review and correction, and checks the returned script for known deterministic geometry mistakes before Blender executes it. The checker catches the exact failures found in the live 20×20 m two-apartment test: halving dimensions when scaling a unit cube and literal door/window offsets beyond a wall's length. If the corrected script still has either error, the route rejects the result instead of displaying a broken GLB. A successful Blender export is still only a technical execution check; this review does not certify circulation, daylight, structure, local code, or design quality. Broader geometry validation needs a structured scene/room representation rather than unrestricted Python alone.

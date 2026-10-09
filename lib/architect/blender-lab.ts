@@ -20,6 +20,35 @@ export type BlenderLabInput = {
 
 export type BlenderLabResult = { script: string; reply: string; glbBase64: string };
 
+export function inspectBlenderScript(script: string): string[] {
+  const issues: string[] = [];
+  // A Blender unit cube is one metre wide. Halving the intended dimensions
+  // here made every wall in the live two-apartment test half its intended size.
+  if (/primitive_cube_add\s*\(\s*size\s*=\s*1\b/.test(script) &&
+      /\.scale\s*=\s*\(\s*w\s*\/\s*2\s*,\s*d\s*\/\s*2\s*,\s*h\s*\/\s*2\s*\)/.test(script)) {
+    issues.push("Unit-cube scale halves the requested wall and slab dimensions; use (w, d, h).");
+  }
+
+  // Some scripts express wall openings as offsets from the wall start. Check
+  // literal wall calls when this convention is visible; dynamic calls remain
+  // the review model's responsibility.
+  if (/c0\s*=\s*pos\s*-\s*width\s*\/\s*2/.test(script)) {
+    const walls = /wall_segment\(\s*['"]([^'"]+)['"]\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*['"][^'"]+['"]\s*,\s*openings\s*=\s*\[([^\]]*)\]/g;
+    for (const match of script.matchAll(walls)) {
+      const length = Math.hypot(Number(match[4]) - Number(match[2]), Number(match[5]) - Number(match[3]));
+      const openings = /\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(?:([A-Za-z_]\w*)|(-?\d+(?:\.\d+)?))\s*,\s*['"](?:door|window)['"]\s*\)/g;
+      for (const opening of match[6].matchAll(openings)) {
+        const center = Number(opening[1]);
+        const width = opening[3] ? Number(opening[3]) : undefined;
+        if (center < 0 || center > length || (width !== undefined && (center - width / 2 < 0 || center + width / 2 > length))) {
+          issues.push(`Opening on ${match[1]} lies outside its ${length.toFixed(2)} m wall.`);
+        }
+      }
+    }
+  }
+  return [...new Set(issues)];
+}
+
 const EXPORT_HARNESS = `import bpy
 import runpy
 
@@ -62,7 +91,12 @@ export function parseBlenderModelReply(text: string): { script: string; reply: s
   return { script: data.script, reply: data.reply.trim() };
 }
 
-export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typeof fetch = fetch): Promise<{ script: string; reply: string }> {
+async function requestBlenderScript(
+  messages: { role: "system" | "user"; content: string }[],
+  fetchFn: typeof fetch,
+  temperature: number,
+  timeoutMs: number,
+): Promise<{ script: string; reply: string }> {
   const model = resolveArchitectTextModel();
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!model || !apiKey) throw new Error("Text model unavailable");
@@ -71,15 +105,12 @@ export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typ
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
-      temperature: 0.25,
+      temperature,
       max_tokens: model === "anthropic/claude-haiku-5.5" ? 12000 : 8000,
       ...(model === "anthropic/claude-haiku-5.5" ? { reasoning: { enabled: false } } : {}),
-      messages: [
-        { role: "system", content: `You are a concept architectural modeller controlling Blender 4.x through bpy. Return ONLY JSON with keys "script" (full executable Python script) and "reply" (short Arabic explanation). Site dimensions are in meters. Create real mesh geometry for spaces, walls, slab, stairs, columns and beams where requested; place objects coherently. On every turn write the COMPLETE scene script, incorporating edits into the previous script. Use bpy and Python standard library only. Never require downloads, external files, add-ons, or rendering. Do not write save/export commands: the host exports GLB. Never claim structural safety or Egyptian code approval; this is an unverified concept model. Keep the script under ${BLENDER_LAB.maxScript} characters.` },
-        { role: "user", content: JSON.stringify(input) },
-      ],
+      messages,
     }),
-    signal: AbortSignal.timeout(model === "anthropic/claude-haiku-5.5" ? 110_000 : 45_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`Model request failed (${response.status})`);
   const raw = await response.text();
@@ -95,6 +126,28 @@ export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typ
     throw new Error(`Model did not return a usable Blender script (finish=${String(choice?.finish_reason ?? "missing")}, contentLength=${content?.length ?? 0}, contentType=${typeof message?.content}, scriptLength=${typeof fields?.script === "string" ? fields.script.length : "missing"}, replyLength=${typeof fields?.reply === "string" ? fields.reply.length : "missing"})`);
   }
   return parsed;
+}
+
+export async function generateBlenderScript(input: BlenderLabInput, fetchFn: typeof fetch = fetch): Promise<{ script: string; reply: string }> {
+  return requestBlenderScript([
+    { role: "system", content: `You are a concept architectural modeller controlling Blender 4.x through bpy. Return ONLY JSON with keys "script" (full executable Python script) and "reply" (short Arabic explanation). Site dimensions are in meters. Create real mesh geometry for spaces, walls, slab, stairs, columns and beams where requested; place objects coherently. On every turn write the COMPLETE scene script, incorporating edits into the previous script. Use bpy and Python standard library only. Never require downloads, external files, add-ons, or rendering. Do not write save/export commands: the host exports GLB. Before answering, check the actual cube dimensions, that every door/window lies within its wall, that each required room is enclosed and reachable from its apartment entrance, and that the layout fits the site. A script that merely names rooms or prints a success message is insufficient. Never claim structural safety or Egyptian code approval; this is an unverified concept model. Keep the script under ${BLENDER_LAB.maxScript} characters.` },
+    { role: "user", content: JSON.stringify(input) },
+  ], fetchFn, 0.25, 110_000);
+}
+
+export async function reviewBlenderScript(
+  input: BlenderLabInput,
+  draft: { script: string; reply: string },
+  fetchFn: typeof fetch = fetch,
+): Promise<{ script: string; reply: string }> {
+  const detectedIssues = inspectBlenderScript(draft.script);
+  const reviewed = await requestBlenderScript([
+    { role: "system", content: `You are the independent architectural and Blender code reviewer. The draft has NOT been shown to the user. Review it against the user's brief and return ONLY JSON with keys "script" (the complete corrected executable bpy Python scene) and "reply" (a short Arabic description of what the final scene actually contains). Inspect coordinates numerically, not just comments: verify site bounds, actual Blender mesh dimensions and scaling, every wall opening against wall length, door access from each apartment entrance through halls to all required rooms, wall continuity, and required room count. Correct every issue in the full script. Do not claim you checked an image or engineering-code compliance. Use bpy and Python standard library only; no files, downloads, add-ons or save/export commands. Keep script under ${BLENDER_LAB.maxScript} characters.` },
+    { role: "user", content: JSON.stringify({ brief: input, draft, detectedIssues }) },
+  ], fetchFn, 0, 75_000);
+  const remainingIssues = inspectBlenderScript(reviewed.script);
+  if (remainingIssues.length) throw new Error(`Reviewed Blender script still has geometry errors: ${remainingIssues.join(" ")}`);
+  return reviewed;
 }
 
 type SandboxRunner = Pick<Sandbox, "runCommand" | "writeFiles" | "readFileToBuffer" | "update" | "stop">;
