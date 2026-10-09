@@ -112,14 +112,16 @@ export async function runBlenderInSandbox(script: string, create: () => Promise<
       { path: "/vercel/sandbox/export.py", content: EXPORT_HARNESS },
     ]);
     await sandbox.update({ networkPolicy: "deny-all" });
-    const execution = await sandbox.runCommand("blender", ["--background", "--factory-startup", "--threads", "4", "--python", "/vercel/sandbox/export.py"], { timeoutMs: 90_000 });
+    const execution = await sandbox.runCommand("blender", ["--background", "--factory-startup", "--threads", "4", "--python-exit-code", "1", "--python", "/vercel/sandbox/export.py"], { timeoutMs: 90_000 });
     if (execution.exitCode !== 0) {
       const stderr = (await execution.stderr()).slice(-1200);
       throw new Error(`Blender execution failed: ${stderr}`);
     }
     const glb = await sandbox.readFileToBuffer({ path: "/vercel/sandbox/result.glb" });
     if (!glb || glb.length < 20 || glb.toString("ascii", 0, 4) !== "glTF" || glb.readUInt32LE(8) !== glb.length) {
-      throw new Error(`Blender did not export a valid GLB file (bytes=${glb?.length ?? 0}, header=${glb?.subarray(0, 12).toString("hex") ?? "missing"})`);
+      const stderr = (await execution.stderr()).slice(-800);
+      const stdout = (await execution.stdout()).slice(-800);
+      throw new Error(`Blender did not export a valid GLB file (bytes=${glb?.length ?? 0}, header=${glb?.subarray(0, 12).toString("hex") ?? "missing"}, stderr=${stderr}, stdout=${stdout})`);
     }
     if (glb.length > BLENDER_LAB.maxGlbBytes) throw new Error("3D model exceeds the pilot download limit");
     return glb;

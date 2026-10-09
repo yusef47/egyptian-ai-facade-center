@@ -40,6 +40,7 @@ describe("isolated Blender execution", () => {
     const result = await runBlenderInSandbox("import bpy", async () => sandbox as never);
     expect(result).toEqual(fakeGlb());
     expect(calls).toEqual(["which", "write", "deny", "blender", "stop"]);
+    expect(sandbox.runCommand).toHaveBeenCalledWith("blender", expect.arrayContaining(["--python-exit-code", "1"]), expect.any(Object));
     expect(sandbox.update).toHaveBeenCalledWith({ networkPolicy: "deny-all" });
     expect(sandbox.writeFiles.mock.calls.length).toBe(1);
   });
