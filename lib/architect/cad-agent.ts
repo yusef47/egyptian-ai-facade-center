@@ -135,11 +135,11 @@ export async function proposeCadAction(input: CadInput, inspection: CadInspectio
   }
   const response = await fetchFn(OPENROUTER_ENDPOINT, {
     method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model, temperature: 0.2, max_tokens: 6500, messages: [
+    body: JSON.stringify({ model, temperature: 0.2, max_tokens: 12000, reasoning: { enabled: false }, messages: [
       { role: "system", content: `You are an autonomous architectural CAD operator. You control a REAL FreeCAD 1.1 document through an incremental Python tool call. Return ONLY JSON: {"python":"full Python action for THIS step","summary":"brief Arabic description of completed intended work","done":boolean}. The host opens the existing FCStd as variable doc; App, Part, Vector, add_label(text-name, text, x_mm, y_mm), SITE_WIDTH_MM and SITE_DEPTH_MM are available. All coordinates are MILLIMETERS: a 20m lot is 20000mm. Use doc.addObject('Part::Feature', 'WALL_Name') and set Shape to Part.makePolygon([Vector(x,y,0),...]); set Label prefixes SITE_, WALL_, DOOR_, WINDOW_, STAIR_, FURNITURE_, DIMENSION_, COLUMN_ so CAD layers can be inspected. You may use the broader FreeCAD and Part Python APIs to create/edit any geometry. If currentDrawing exists, EDIT and enrich the existing document; never duplicate its site or existing walls. Otherwise create the site and coherent spatial partitions first. On later steps use the supplied actual document inspection and CAD preview IMAGE to correct and enrich doors, windows, furniture, stairs and annotations. Draw actual geometry, not fake labels. Do not erase the whole document unless the user explicitly requested a new project. Do not write files, make network calls, or export: the host saves FCStd and exports editable DXF. Before returning, inspect your coordinates: site bounds, wall gaps, reachable doors, room sizes, collisions. Prefer small coherent additions over a single huge script. Set done=true only when the brief is satisfied and the drawing has architectural detail. A successful Python run is not proof of architectural compliance. Never claim Egyptian code approval. No Markdown.` },
       { role: "user", content },
     ] }),
-    signal: AbortSignal.timeout(40_000),
+    signal: AbortSignal.timeout(75_000),
   });
   if (!response.ok) throw new Error(`CAD model request failed (${response.status})`);
   const raw = await response.text();
@@ -147,7 +147,13 @@ export async function proposeCadAction(input: CadInput, inspection: CadInspectio
   const payload = JSON.parse(raw) as Record<string, unknown>;
   const answer = extractChatText(payload);
   const action = answer && parseCadAction(answer);
-  if (!action) throw new Error("CAD model returned no executable action");
+  if (!action) {
+    const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
+    const message = choice?.message as Record<string, unknown> | undefined;
+    const decoded = answer ? extractJsonPayload(answer) : null;
+    const fields = decoded && typeof decoded === "object" && !Array.isArray(decoded) ? decoded as Record<string, unknown> : null;
+    throw new Error(`CAD model returned no executable action (finish=${String(choice?.finish_reason ?? "missing")}, contentLength=${answer?.length ?? 0}, contentType=${typeof message?.content}, pythonLength=${typeof fields?.python === "string" ? fields.python.length : "missing"}, summaryLength=${typeof fields?.summary === "string" ? fields.summary.length : "missing"}, doneType=${typeof fields?.done})`);
+  }
   return action;
 }
 
