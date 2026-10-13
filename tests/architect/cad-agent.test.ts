@@ -42,9 +42,13 @@ describe("CAD agent input and execution contracts", () => {
     expect(compiled).toContain("CadAgentId");
     expect(compiled).toContain("Part.makePolygon");
     expect(compiled).toContain("BEAM_beam-a");
-    expect(compiled).toContain("_n=_n.multiply(125)");
+    expect(compiled).toContain("_nx=-_dy/_length*125");
     expect(compiled).toContain("_wall_shape(_host)");
     expect(compiled).toContain("CadOpenings=json.dumps(_preserved)");
+    expect(compiled).toContain("for _existing_wall in list(doc.Objects):");
+    expect(compiled).toContain("ux=dx/length; uy=dy/length; nx=-uy; ny=ux; half=float(obj.CadWallThickness)/2");
+    expect(compiled).toContain("x0=a.x+ux*lo; y0=a.y+uy*lo; x1=a.x+ux*hi; y1=a.y+uy*hi");
+    expect(compiled).not.toContain("p=a.add(u.multiply(lo))");
     expect(compiled).toContain("%0.0f mm");
     expect(compiled).toContain("Part.makeCompound(_edges)");
     expect(compiled).toContain("_i in range(1,13)");
@@ -237,8 +241,9 @@ describe("CAD agent input and execution contracts", () => {
     const parsed = parseCadCommandAction(reversedSouthWall, 20, 20);
     expect(parsed?.commands.find((command) => command.op === "opening")).toMatchObject({ swingSide: -1 });
     const compiled = compileCadCommands(parsed!);
-    expect(compiled).toContain("_toward=_center.sub(_mid)");
-    expect(compiled).toContain("if _toward.x*_n.x+_toward.y*_n.y<0: _n=_n.multiply(-1)");
+    expect(compiled).toContain("_mx=(_x1+_x2)/2; _my=(_y1+_y2)/2; _toward_x=SITE_WIDTH_MM/2-_mx; _toward_y=SITE_DEPTH_MM/2-_my");
+    expect(compiled).toContain("if _toward_x*_nx+_toward_y*_ny<0: _nx=-_nx; _ny=-_ny");
+    expect(compiled).toContain("Position'); obj.Position=Vector((_ax+_bx)/2+_ox,(_ay+_by)/2+_oy,0)");
     expect(compiled).toContain("_nx=-_uy*-1; _ny=_ux*-1");
     expect(compiled).toContain("_arc_points=[Vector(_p0.x+_ux*900*math.cos(i*math.pi/32)");
     expect(compiled).not.toContain("Part.Arc(_closed,_mid,_open)");

@@ -61,7 +61,54 @@ def wall_band(start, end, half_width):
     ]
 
 
+def wall_polygons(start, end, thickness, openings=()):
+    """Rebuild wall strips from semantic endpoints and opening intervals."""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    length = math.hypot(dx, dy)
+    ux, uy = dx / length, dy / length
+    nx, ny, half = -uy, ux, thickness / 2.0
+    pieces, cursor = [], 0.0
+    for offset, width in sorted(openings):
+        if offset - cursor >= 50:
+            pieces.append((cursor, offset))
+        cursor = offset + width
+    if length - cursor >= 50:
+        pieces.append((cursor, length))
+    polygons = []
+    for lo, hi in pieces:
+        x0, y0 = start[0] + ux * lo, start[1] + uy * lo
+        x1, y1 = start[0] + ux * hi, start[1] + uy * hi
+        polygons.append([
+            (x0 + nx * half, y0 + ny * half),
+            (x1 + nx * half, y1 + ny * half),
+            (x1 - nx * half, y1 - ny * half),
+            (x0 - nx * half, y0 - ny * half),
+        ])
+    return polygons
+
+
 class HatchAlgorithmTests(unittest.TestCase):
+    def test_rebuilt_wall_bounds_are_stable_for_axis_and_rotated_walls(self):
+        cases = [
+            ((2000, 2000), (18000, 2000), (2000, 1900, 18000, 2100)),
+            ((2000, 2000), (2000, 18000), (1900, 2000, 2100, 18000)),
+            ((2000, 2000), (10000, 10000), (2000 - 100 / math.sqrt(2), 2000 - 100 / math.sqrt(2), 10000 + 100 / math.sqrt(2), 10000 + 100 / math.sqrt(2))),
+        ]
+        for start, end, expected in cases:
+            with self.subTest(start=start, end=end):
+                points = wall_polygons(start, end, 200)[0]
+                actual = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
+                for found, wanted in zip(actual, expected):
+                    self.assertAlmostEqual(found, wanted, places=6)
+
+    def test_rebuilt_wall_preserves_opening_gap_and_remaining_segments(self):
+        polygons = wall_polygons((2000, 2000), (18000, 2000), 200, [(5000, 900), (12000, 1200)])
+        self.assertEqual(len(polygons), 3)
+        self.assertAlmostEqual(max(p[0] for p in polygons[0]), 7000)
+        self.assertAlmostEqual(min(p[0] for p in polygons[1]), 7900)
+        self.assertAlmostEqual(max(p[0] for p in polygons[1]), 14000)
+        self.assertAlmostEqual(min(p[0] for p in polygons[2]), 15200)
+
     def test_thin_wall_band_gets_interior_stroke_for_parallel_hatch(self):
         # Exactly the production failure shape: y=100 +/- 100, spacing 500.
         segments = hatch_segments(wall_band((100, 100), (9900, 100), 100), 500, 0)
