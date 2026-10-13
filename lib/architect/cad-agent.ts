@@ -42,7 +42,7 @@ export type CadRequirementReview = { requirement: string; status: "met" | "unres
 export type CadCommandAction = { commands: CadCommand[]; summary: string; selfReview: string[]; requiredElements: CadRequirementReview[]; unresolvedItems: string[]; done: boolean };
 export type CadCommandRejection = { category: string; commandIndex?: number; op?: string };
 export type CadInspection = { ok: boolean; error?: string; objects: { id?: string; label: string; type: string; layer: string; semantic?: string; kind?: string; text?: string; positionMm?: number[]; boundsMm?: number[]; wallStartMm?: number[]; wallEndMm?: number[]; wallThicknessMm?: number; wallOpenings?: string[]; hostWallId?: string; openingOffsetMm?: number; openingWidthMm?: number; lineStartMm?: number[]; lineEndMm?: number[]; polylinePointsMm?: number[][]; closed?: boolean; hatchHostId?: string }[]; objectIds?: string[]; counts: Record<string, number>; warnings: string[]; unverifiedChecks?: string[]; segments: number; siteMm: number[] };
-export type CadBoundsViolation = { code: "OUTSIDE_SITE"; id: string; label: string; boundsMm: [number, number, number, number]; siteMm: [number, number] };
+export type CadBoundsViolation = { code: "OUTSIDE_SITE"; id: string; label: string; boundsMm: [number, number, number, number]; siteMm: [number, number]; extremeBounds?: boolean };
 
 export function parseCadBoundsFailure(error: string): CadBoundsViolation[] | null {
   const prefix = "CAD_BOUNDS_ERROR:";
@@ -55,10 +55,12 @@ export function parseCadBoundsFailure(error: string): CadBoundsViolation[] | nul
   for (const item of raw) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;
     const record = item as Record<string, unknown>;
-    if (record.code !== "OUTSIDE_SITE" || typeof record.id !== "string" || !CAD_ID.test(record.id) || typeof record.label !== "string" || !layers.has(record.label.slice(0, record.label.indexOf("_"))) || !record.label.endsWith(`_${record.id}`) || !Array.isArray(record.boundsMm) || record.boundsMm.length !== 4 || !record.boundsMm.every((value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 200_000) || !Array.isArray(record.siteMm) || record.siteMm.length !== 2 || !record.siteMm.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 3_000 && value <= 100_000)) return null;
-    const bounds = record.boundsMm as number[];
+    if (record.code !== "OUTSIDE_SITE" || typeof record.id !== "string" || !CAD_ID.test(record.id) || typeof record.label !== "string" || !layers.has(record.label.slice(0, record.label.indexOf("_"))) || !record.label.endsWith(`_${record.id}`) || !Array.isArray(record.boundsMm) || record.boundsMm.length !== 4 || !record.boundsMm.every((value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e300) || (record.extremeBounds !== undefined && typeof record.extremeBounds !== "boolean") || !Array.isArray(record.siteMm) || record.siteMm.length !== 2 || !record.siteMm.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 3_000 && value <= 100_000)) return null;
+    const rawBounds = record.boundsMm as number[];
+    const extremeBounds = record.extremeBounds === true || rawBounds.some((value) => Math.abs(value) > 1_000_000);
+    const bounds = rawBounds.map((value) => Math.max(-1_000_000, Math.min(1_000_000, value)));
     if (bounds[0] >= bounds[2] || bounds[1] >= bounds[3]) return null;
-    violations.push({ code: "OUTSIDE_SITE", id: record.id, label: record.label, boundsMm: bounds as CadBoundsViolation["boundsMm"], siteMm: record.siteMm as CadBoundsViolation["siteMm"] });
+    violations.push({ code: "OUTSIDE_SITE", id: record.id, label: record.label, boundsMm: bounds as CadBoundsViolation["boundsMm"], siteMm: record.siteMm as CadBoundsViolation["siteMm"], ...(extremeBounds ? { extremeBounds: true } : {}) });
   }
   return violations;
 }
@@ -66,7 +68,8 @@ export function parseCadBoundsFailure(error: string): CadBoundsViolation[] | nul
 export class CadGeometryBoundsError extends Error {
   constructor(readonly violations: CadBoundsViolation[]) {
     const details = violations.map((item) => `${item.label} (id=${item.id}, boundsMm=[${item.boundsMm.join(",")}], siteMm=[0,0,${item.siteMm.join(",")}])`).join("; ");
-    super(`CAD validation failed: geometry outside the site boundary: ${details}. Keep the full geometry inside the site, including wall thicknesses, door swing arcs, dimensions, and rotated symbols.`);
+    const unstable = violations.some((item) => item.extremeBounds) ? " At least one object's bounds are numerically extreme; delete and recreate that ID with simple geometry instead of reusing or transforming it." : "";
+    super(`CAD validation failed: geometry outside the site boundary: ${details}. Keep the full geometry inside the site, including wall thicknesses, door swing arcs, dimensions, and rotated symbols.${unstable}`);
     this.name = "CadGeometryBoundsError";
   }
 }
@@ -100,6 +103,35 @@ export function parseCadAction(text: string): CadAction | null {
 const CAD_LAYERS = new Set<CadLayer>(["SITE", "WALL", "BEAM", "DOOR", "WINDOW", "STAIR", "FURNITURE", "DIMENSION", "COLUMN", "TEXT", "HATCH", "OTHER"]);
 const CAD_FURNITURE_KINDS = new Set<CadFurnitureKind>(["bed", "bed-single", "bed-double", "sofa", "sofa-2-seat", "sofa-3-seat", "armchair", "dining-table", "dining-table-4", "dining-table-6", "desk", "wardrobe", "kitchen-counter", "kitchen-island", "refrigerator", "cooker", "kitchen-sink", "sink", "bath-vanity", "toilet", "bathtub", "shower", "chair", "car-compact", "car-sedan", "car-suv", "generic-block"]);
 function point(value: unknown): value is [number, number] { return Array.isArray(value) && value.length === 2 && value.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 100_000); }
+function transformFitsSite(objects: CadInspection["objects"], id: string, maxX: number, maxY: number, transform: { delta: [number, number] } | { center: [number, number]; angle: number }): boolean {
+  const angle = "angle" in transform ? transform.angle * Math.PI / 180 : 0;
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const targets = objects.filter((object) => object.id === id || object.hostWallId === id || object.hatchHostId === id);
+  if (!targets.some((object) => object.id === id)) return false;
+  for (const object of targets) {
+    let points: [number, number][];
+    const bounds = object.boundsMm;
+    if (bounds && bounds.length === 4 && bounds.every((n) => Number.isFinite(n)) && bounds[0] <= bounds[2] && bounds[1] <= bounds[3]) {
+      points = [[bounds[0], bounds[1]], [bounds[0], bounds[3]], [bounds[2], bounds[1]], [bounds[2], bounds[3]]];
+    } else if (object.polylinePointsMm?.length && object.polylinePointsMm.every((point) => point.length >= 2 && point.slice(0, 2).every((n) => Number.isFinite(n)))) {
+      points = object.polylinePointsMm.map((point) => [point[0], point[1]]);
+    } else if (object.wallStartMm?.length === 2 && object.wallEndMm?.length === 2 && [...object.wallStartMm, ...object.wallEndMm].every((n) => Number.isFinite(n))) {
+      const pad = (object.wallThicknessMm ?? 0) / 2;
+      points = [[Math.min(object.wallStartMm[0], object.wallEndMm[0]) - pad, Math.min(object.wallStartMm[1], object.wallEndMm[1]) - pad], [Math.min(object.wallStartMm[0], object.wallEndMm[0]) - pad, Math.max(object.wallStartMm[1], object.wallEndMm[1]) + pad], [Math.max(object.wallStartMm[0], object.wallEndMm[0]) + pad, Math.min(object.wallStartMm[1], object.wallEndMm[1]) - pad], [Math.max(object.wallStartMm[0], object.wallEndMm[0]) + pad, Math.max(object.wallStartMm[1], object.wallEndMm[1]) + pad]];
+    } else if (object.lineStartMm?.length === 2 && object.lineEndMm?.length === 2 && [...object.lineStartMm, ...object.lineEndMm].every((n) => Number.isFinite(n))) {
+      points = [[object.lineStartMm[0], object.lineStartMm[1]], [object.lineEndMm[0], object.lineEndMm[1]]];
+    } else if (object.positionMm && object.positionMm.length >= 2 && object.positionMm.slice(0, 2).every((n) => Number.isFinite(n))) {
+      points = [[object.positionMm[0], object.positionMm[1]]];
+    } else return false;
+    const transformed = points.map(([x, y]) => {
+      if ("delta" in transform) return [x + transform.delta[0], y + transform.delta[1]] as [number, number];
+      const dx = x - transform.center[0], dy = y - transform.center[1];
+      return [transform.center[0] + dx * cos - dy * sin, transform.center[1] + dx * sin + dy * cos] as [number, number];
+    });
+    if (transformed.some(([x, y]) => x < -1 || x > maxX + 1 || y < -1 || y > maxY + 1)) return false;
+  }
+  return true;
+}
 export function parseCadCommandAction(text: string, siteWidth: number, siteDepth: number, inspection: CadInspection | null = null, rejection?: CadCommandRejection): CadCommandAction | null {
   if (rejection) { rejection.category = "invalid_json"; delete rejection.commandIndex; delete rejection.op; }
   const parsed = extractJsonPayload(text);
@@ -151,10 +183,12 @@ export function parseCadCommandAction(text: string, siteWidth: number, siteDepth
     }
     if (c.op === "move") {
       if (!knownIds.has(c.id) || objectById.get(c.id)?.hostWallId || !point(c.delta) || Math.hypot(c.delta[0],c.delta[1]) > Math.hypot(maxX,maxY)) return null;
+      if (!transformFitsSite(inspectedObjects, c.id, maxX, maxY, { delta: c.delta })) { if (rejection) rejection.category = "transform_outside_site"; return null; }
       commands.push({ op: "move", id: c.id, delta: c.delta }); continue;
     }
     if (c.op === "rotate") {
       if (!knownIds.has(c.id) || objectById.get(c.id)?.hostWallId || !point(c.center) || c.center[0] < 0 || c.center[0] > maxX || c.center[1] < 0 || c.center[1] > maxY || typeof c.angle !== "number" || !Number.isFinite(c.angle) || Math.abs(c.angle) > 36_000) return null;
+      if (!transformFitsSite(inspectedObjects, c.id, maxX, maxY, { center: c.center, angle: c.angle })) { if (rejection) rejection.category = "transform_outside_site"; return null; }
       commands.push({ op: "rotate", id: c.id, center: c.center, angle: c.angle }); continue;
     }
     if (c.op === "copy") {
@@ -297,10 +331,10 @@ export function compileCadCommands(action: CadCommandAction): string {
     else if (c.op === "beam") lines.push(`_a=Vector(${c.from[0]},${c.from[1]},0); _b=Vector(${c.to[0]},${c.to[1]},0)`, "_d=_b.sub(_a); _n=Vector(-_d.y,_d.x,0); _n.normalize(); _n=_n.multiply(" + c.width / 2 + ")", "obj.Shape=Part.makePolygon([_a.add(_n),_b.add(_n),_b.sub(_n),_a.sub(_n),_a.add(_n)])");
     else if (c.op === "dimension") lines.push(`_a=Vector(${c.from[0]},${c.from[1]},0); _b=Vector(${c.to[0]},${c.to[1]},0)`, "_d=_b.sub(_a); _length=_d.Length; _u=_d; _u.normalize(); _n=Vector(-_u.y,_u.x,0); _mid=_a.add(_b).multiply(0.5); _center=Vector(SITE_WIDTH_MM/2,SITE_DEPTH_MM/2,0); _toward=_center.sub(_mid)", "if _toward.x*_n.x+_toward.y*_n.y<0: _n=_n.multiply(-1)", `_shift=_n.multiply(${c.offset}); _a2=_a.add(_shift); _b2=_b.add(_shift); _out=_n.multiply(100)`, "_v=_b2.sub(_a2); _v.normalize(); _tick=_n.multiply(70)", "obj.Shape=Part.makeCompound([Part.makeLine(_a,_a2.add(_out)),Part.makeLine(_b,_b2.add(_out)),Part.makeLine(_a2,_b2),Part.makeLine(_a2.sub(_tick),_a2.add(_tick)),Part.makeLine(_b2.sub(_tick),_b2.add(_tick))])", "obj.addProperty('App::PropertyString','Text'); obj.Text=('%0.0f mm' % _length)", "obj.addProperty('App::PropertyVector','Position'); obj.Position=_a2.add(_b2).multiply(0.5).add(_out)");
     else if (c.op === "opening") {
-      lines.push(`_host=_find(${q(c.wallId)})`, "if not _host: raise RuntimeError('Opening host wall not found')", "_openings=json.loads(_host.CadOpenings)", `_openings=[o for o in _openings if o['id']!=${q(c.id)}]`, `_openings.append({'id':${q(c.id)},'offset':${c.offset},'width':${c.width},'kind':${q(c.kind)}})`, "_host.CadOpenings=json.dumps(_openings)", "_wall_shape(_host)", "for _child in list(doc.Objects):", "    if getattr(_child,'CadHatchHost','') == getattr(_host,'CadAgentId',''):", "        doc.removeObject(_child.Name)", `obj.addProperty('App::PropertyString','CadHostWall'); obj.CadHostWall=${q(c.wallId)}`, `obj.addProperty('App::PropertyLength','CadOpeningOffset'); obj.CadOpeningOffset=${c.offset}`, `obj.addProperty('App::PropertyLength','CadOpeningWidth'); obj.CadOpeningWidth=${c.width}`, `obj.addProperty('App::PropertyString','Text'); obj.Text=${q(c.kind)}`, `obj.addProperty('App::PropertyVector','Position')`, `_d=_host.CadWallEnd.sub(_host.CadWallStart); _d.normalize(); _n=Vector(-_d.y,_d.x,0)`, `_p0=_host.CadWallStart.add(_d.multiply(${c.offset})); _p1=_p0.add(_d.multiply(${c.width}))`);
-      if (c.kind === "DOOR") lines.push(`_hinge=_p0; _normal=_n.multiply(${c.swingSide ?? 1}); _open=_hinge.add(_normal.multiply(${c.width})); _closed=_p1`, `_mid=_hinge.add(_d.multiply(${c.width / Math.sqrt(2)})).add(_normal.multiply(${c.width / Math.sqrt(2)}))`, "obj.Shape=Part.makeCompound([Part.makeLine(_hinge,_open),Part.Arc(_closed,_mid,_open).toShape()])");
-      else lines.push("_offset=_n.multiply(40)", "obj.Shape=Part.makeCompound([Part.makeLine(_p0.add(_offset),_p1.add(_offset)),Part.makeLine(_p0.sub(_offset),_p1.sub(_offset)),Part.makeLine(_p0.add(_offset),_p0.sub(_offset)),Part.makeLine(_p1.add(_offset),_p1.sub(_offset))])");
-      lines.push(`obj.Position=_p0.add(_p1).multiply(0.5)`);
+      lines.push(`_host=_find(${q(c.wallId)})`, "if not _host: raise RuntimeError('Opening host wall not found')", "_openings=json.loads(_host.CadOpenings)", `_openings=[o for o in _openings if o['id']!=${q(c.id)}]`, `_openings.append({'id':${q(c.id)},'offset':${c.offset},'width':${c.width},'kind':${q(c.kind)}})`, "_host.CadOpenings=json.dumps(_openings)", "_wall_shape(_host)", "for _child in list(doc.Objects):", "    if getattr(_child,'CadHatchHost','') == getattr(_host,'CadAgentId',''):", "        doc.removeObject(_child.Name)", `obj.addProperty('App::PropertyString','CadHostWall'); obj.CadHostWall=${q(c.wallId)}`, `obj.addProperty('App::PropertyLength','CadOpeningOffset'); obj.CadOpeningOffset=${c.offset}`, `obj.addProperty('App::PropertyLength','CadOpeningWidth'); obj.CadOpeningWidth=${c.width}`, `obj.addProperty('App::PropertyString','Text'); obj.Text=${q(c.kind)}`, `obj.addProperty('App::PropertyVector','Position')`, "_dx=_host.CadWallEnd.x-_host.CadWallStart.x; _dy=_host.CadWallEnd.y-_host.CadWallStart.y; _length=math.hypot(_dx,_dy)", "if _length<1: raise RuntimeError('Opening host wall has invalid length')", "_ux=_dx/_length; _uy=_dy/_length", `_p0=Vector(_host.CadWallStart.x+_ux*${c.offset},_host.CadWallStart.y+_uy*${c.offset},0); _p1=Vector(_p0.x+_ux*${c.width},_p0.y+_uy*${c.width},0)`);
+      if (c.kind === "DOOR") lines.push(`_hinge=_p0; _nx=-_uy*${c.swingSide ?? 1}; _ny=_ux*${c.swingSide ?? 1}; _open=Vector(_hinge.x+_nx*${c.width},_hinge.y+_ny*${c.width},0)`, `_arc_points=[Vector(_p0.x+_ux*${c.width}*math.cos(i*math.pi/32)+_nx*${c.width}*math.sin(i*math.pi/32),_p0.y+_uy*${c.width}*math.cos(i*math.pi/32)+_ny*${c.width}*math.sin(i*math.pi/32),0) for i in range(17)]`, "obj.Shape=Part.makeCompound([Part.makeLine(_hinge,_open),Part.makePolygon(_arc_points)])");
+      else lines.push(`_nx=-_uy*40; _ny=_ux*40`, "obj.Shape=Part.makeCompound([Part.makeLine(Vector(_p0.x+_nx,_p0.y+_ny,0),Vector(_p1.x+_nx,_p1.y+_ny,0)),Part.makeLine(Vector(_p0.x-_nx,_p0.y-_ny,0),Vector(_p1.x-_nx,_p1.y-_ny,0)),Part.makeLine(Vector(_p0.x+_nx,_p0.y+_ny,0),Vector(_p0.x-_nx,_p0.y-_ny,0)),Part.makeLine(Vector(_p1.x+_nx,_p1.y+_ny,0),Vector(_p1.x-_nx,_p1.y-_ny,0))])");
+      lines.push("obj.Position=Vector((_p0.x+_p1.x)/2,(_p0.y+_p1.y)/2,0)");
     }
     else if (c.op === "room") lines.push(`obj.addProperty('App::PropertyString','Text'); obj.Text=${q(c.name)}`, `obj.addProperty('App::PropertyVector','Position'); obj.Position=Vector(${c.at[0]},${c.at[1]},0)`);
     else if (c.op === "stair") lines.push(`_x=${c.at[0]}; _y=${c.at[1]}; _w=${c.width}; _h=${c.depth}; _a=math.radians(${c.angle ?? 0}); _cx=_x+_w/2; _cy=_y+_h/2`, "_edges=[Part.makePolygon([_rp(_x,_y,_cx,_cy,_a),_rp(_x+_w,_y,_cx,_cy,_a),_rp(_x+_w,_y+_h,_cx,_cy,_a),_rp(_x,_y+_h,_cx,_cy,_a),_rp(_x,_y,_cx,_cy,_a)])]", `for _i in range(1,${c.treads + 1}):`, "    _yy=_y+_h*_i/" + (c.treads + 1), "    _edges.append(Part.makeLine(_rp(_x+_w*.08,_yy,_cx,_cy,_a),_rp(_x+_w*.92,_yy,_cx,_cy,_a)))", "_edges.extend([Part.makeLine(_rp(_cx,_y+_h*.2,_cx,_cy,_a),_rp(_cx,_y+_h*.82,_cx,_cy,_a)),Part.makeLine(_rp(_cx,_y+_h*.82,_cx,_cy,_a),_rp(_cx-_w*.08,_y+_h*.70,_cx,_cy,_a)),Part.makeLine(_rp(_cx,_y+_h*.82,_cx,_cy,_a),_rp(_cx+_w*.08,_y+_h*.70,_cx,_cy,_a))])", "obj.Shape=Part.makeCompound(_edges)");

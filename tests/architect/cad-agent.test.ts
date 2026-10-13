@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAD_AGENT, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -136,9 +136,16 @@ describe("CAD agent input and execution contracts", () => {
     const encoded = JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-120, 2500, 900, 3400], siteMm: [20_000, 20_000] }]);
     expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${encoded}`)).toEqual([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-120, 2500, 900, 3400], siteMm: [20_000, 20_000] }]);
     expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "<script>secret</script>", boundsMm: [-120, 2500, 900, 3400], siteMm: [20_000, 20_000] }])}`)).toBeNull();
-    expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-300_000, 2500, 900, 3400], siteMm: [20_000, 20_000] }])}`)).toBeNull();
+    expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-572_045_069_455.7, -69079.3, 572_619_157_977.5, 1_144_662_415_835.8], siteMm: [20_000, 20_000] }])}`)).toEqual([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-1_000_000, -69079.3, 1_000_000, 1_000_000], siteMm: [20_000, 20_000], extremeBounds: true }]);
+    const normalized = parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-572_045_069_455.7, -69079.3, 572_619_157_977.5, 1_144_662_415_835.8], siteMm: [20_000, 20_000] }])}`)!;
+    const repairMessage = new CadGeometryBoundsError(normalized).message;
+    expect(repairMessage).toContain("id=door-west");
+    expect(repairMessage).toContain("numerically extreme");
+    expect(repairMessage).not.toContain("572045069455");
     expect(FREECAD_HARNESS).toContain("CAD_BOUNDS_ERROR:");
     expect(FREECAD_HARNESS).toContain("'boundsMm'");
+    expect(FREECAD_HARNESS).toContain("'extremeBounds':extreme_bounds");
+    expect(FREECAD_HARNESS).toContain("math.isfinite(v)");
     expect(FREECAD_HARNESS).toContain("geometry_errors[:8]");
   });
 
@@ -208,7 +215,20 @@ describe("CAD agent input and execution contracts", () => {
     const compiled = compileCadCommands(parsed!);
     expect(compiled).toContain("_toward=_center.sub(_mid)");
     expect(compiled).toContain("if _toward.x*_n.x+_toward.y*_n.y<0: _n=_n.multiply(-1)");
-    expect(compiled).toContain("_normal=_n.multiply(-1)");
+    expect(compiled).toContain("_nx=-_uy*-1; _ny=_ux*-1");
+    expect(compiled).toContain("_arc_points=[Vector(_p0.x+_ux*900*math.cos(i*math.pi/32)");
+    expect(compiled).not.toContain("Part.Arc(_closed,_mid,_open)");
+  });
+
+  it("rejects existing-object transforms that would move geometry outside the site", () => {
+    const inspection = { ok: true, objects: [
+      { id: "north-wall", label: "WALL_north-wall", type: "Part::Feature", layer: "WALL", boundsMm: [100, 100, 1000, 1000], wallStartMm: [100, 100], wallEndMm: [1000, 100] },
+    ], counts: {}, warnings: [], segments: 4, siteMm: [3000, 3000] } as const;
+    const rejection: { category: string } = { category: "" };
+    const move = parseCadCommandAction(JSON.stringify({ commands: [{ op: "move", id: "north-wall", delta: [2200, 0] }], summary: "move", selfReview: [], done: false }), 3, 3, inspection as never, rejection);
+    expect(move).toBeNull();
+    expect(rejection.category).toBe("transform_outside_site");
+    expect(parseCadCommandAction(JSON.stringify({ commands: [{ op: "rotate", id: "north-wall", center: [3000, 1500], angle: 180 }], summary: "rotate", selfReview: [], done: false }), 3, 3, inspection as never)).toBeNull();
   });
 
   it("reserves output tokens for the CAD action with the production text model", async () => {

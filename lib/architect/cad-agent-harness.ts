@@ -73,15 +73,18 @@ def emit_preview(doc):
             entry['positionMm'] = [round(obj.Position.x, 2), round(obj.Position.y, 2)]
         if hasattr(obj, 'Shape') and not obj.Shape.isNull():
             bb = obj.Shape.BoundBox
-            entry['boundsMm'] = [round(bb.XMin, 1), round(bb.YMin, 1), round(bb.XMax, 1), round(bb.YMax, 1)]
-            limits[0] = min(limits[0], bb.XMin)
-            limits[1] = min(limits[1], bb.YMin)
-            limits[2] = max(limits[2], bb.XMax)
-            limits[3] = max(limits[3], bb.YMax)
-            if bb.XMin < -1 or bb.YMin < -1 or bb.XMax > max_x + 1 or bb.YMax > max_y + 1:
+            raw_bounds = [float(bb.XMin), float(bb.YMin), float(bb.XMax), float(bb.YMax)]
+            extreme_bounds = any((not math.isfinite(v)) or abs(v) > 1000000 for v in raw_bounds)
+            safe_bounds = [max(-1000000.0, min(1000000.0, v)) if math.isfinite(v) else (-1000000.0 if i < 2 else 1000000.0) for i,v in enumerate(raw_bounds)]
+            entry['boundsMm'] = [round(v, 1) for v in safe_bounds]
+            limits[0] = min(limits[0], safe_bounds[0])
+            limits[1] = min(limits[1], safe_bounds[1])
+            limits[2] = max(limits[2], safe_bounds[2])
+            limits[3] = max(limits[3], safe_bounds[3])
+            if extreme_bounds or safe_bounds[0] < -1 or safe_bounds[1] < -1 or safe_bounds[2] > max_x + 1 or safe_bounds[3] > max_y + 1:
                 raw_id = str(getattr(obj, 'CadAgentId', ''))
                 safe_id = raw_id if raw_id and len(raw_id) <= 40 and raw_id[0].isalpha() and all(ch.isascii() and (ch.isalnum() or ch in '_-') for ch in raw_id) else 'unknown'
-                geometry_errors.append({'code':'OUTSIDE_SITE','id':safe_id,'label':kind+'_'+safe_id,'boundsMm':[round(bb.XMin,1),round(bb.YMin,1),round(bb.XMax,1),round(bb.YMax,1)],'siteMm':[max_x,max_y]})
+                geometry_errors.append({'code':'OUTSIDE_SITE','id':safe_id,'label':kind+'_'+safe_id,'boundsMm':[round(v,1) for v in safe_bounds],'siteMm':[max_x,max_y],'extremeBounds':extreme_bounds})
                 warnings.append(kind+'_'+safe_id+' extends outside the site')
             for edge in obj.Shape.Edges:
                 try:
