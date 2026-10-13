@@ -708,17 +708,81 @@ export function compactCadCommandContext(inspection: CadInspection, topologyPhas
   };
 }
 
+const CAD_REVIEW_DIMENSIONS = ["program", "room_logic", "circulation", "stair", "privacy", "daylight_ventilation", "clearance", "usability"] as const;
+
+/** Keeps sound reviewer findings even if one optional rubric item is malformed; gaps always force revise. */
+export function parseCadArchitectureReview(text: string, inspection: CadInspection): CadArchitectureReview | null {
+  const parsed = extractJsonPayload(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const value = parsed as Record<string, unknown>;
+  const ids = new Set(inspection.objects.map((object) => object.id).filter((id): id is string => !!id));
+  let incomplete = value.verdict !== "ready" && value.verdict !== "revise";
+  const summary = typeof value.summary === "string" && value.summary.trim()
+    ? value.summary.trim().slice(0, 400)
+    : "The post-execution review was incomplete; another review is required.";
+  if (typeof value.summary !== "string" || !value.summary.trim()) incomplete = true;
+  const normalizeDimension = (raw: unknown): CadArchitectureReview["issues"][number]["dimension"] | null => {
+    if (typeof raw !== "string") return null;
+    const normalized = raw.trim().toLowerCase().replace(/[ -]+/g, "_");
+    const aliases: Record<string, CadArchitectureReview["issues"][number]["dimension"]> = { roomlogic: "room_logic", daylightventilation: "daylight_ventilation", daylight_and_ventilation: "daylight_ventilation" };
+    const dimension = aliases[normalized] ?? normalized;
+    return (CAD_REVIEW_DIMENSIONS as readonly string[]).includes(dimension) ? dimension as CadArchitectureReview["issues"][number]["dimension"] : null;
+  };
+  const rawIssues = Array.isArray(value.issues) ? value.issues : [];
+  if (!Array.isArray(value.issues) || rawIssues.length > 8) incomplete = true;
+  const issues: CadArchitectureReview["issues"] = [];
+  for (const raw of rawIssues.slice(0, 8)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) { incomplete = true; continue; }
+    const item = raw as Record<string, unknown>;
+    const dimension = normalizeDimension(item.dimension);
+    const severity = item.severity === "blocking" || item.severity === "improvement" ? item.severity : null;
+    const finding = typeof item.finding === "string" ? item.finding.trim().slice(0, 280) : "";
+    const proposedEdit = typeof item.proposedEdit === "string" ? item.proposedEdit.trim().slice(0, 280) : typeof item.edit === "string" ? item.edit.trim().slice(0, 280) : "";
+    const rawIds = Array.isArray(item.objectIds) ? item.objectIds : Array.isArray(item.ids) ? item.ids : [];
+    const objectIds = rawIds.filter((id): id is string => typeof id === "string" && ids.has(id)).slice(0, 8);
+    if (!dimension || !severity || !finding || !proposedEdit || !Array.isArray(rawIds) || objectIds.length !== rawIds.length || rawIds.length > 8) { incomplete = true; continue; }
+    issues.push({ dimension, severity, objectIds, finding, proposedEdit });
+  }
+  const rawRubric = Array.isArray(value.rubric) ? value.rubric : [];
+  if (!Array.isArray(value.rubric) || rawRubric.length !== CAD_REVIEW_DIMENSIONS.length) incomplete = true;
+  const byDimension = new Map<string, CadArchitectureReview["rubric"][number]>();
+  for (const raw of rawRubric.slice(0, 16)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) { incomplete = true; continue; }
+    const item = raw as Record<string, unknown>;
+    const dimension = normalizeDimension(item.dimension);
+    const status = item.status === "reviewed" || item.status === "unresolved" ? item.status : null;
+    const note = typeof item.note === "string" ? item.note.trim().slice(0, 220) : "";
+    const rawIds = Array.isArray(item.evidenceIds) ? item.evidenceIds : Array.isArray(item.ids) ? item.ids : [];
+    const evidenceIds = rawIds.filter((id): id is string => typeof id === "string" && ids.has(id)).slice(0, 8);
+    if (!dimension || !status || !note || !Array.isArray(rawIds) || evidenceIds.length !== rawIds.length || rawIds.length > 8 || byDimension.has(dimension)) { incomplete = true; continue; }
+    const validStatus = status === "reviewed" && evidenceIds.length > 0 ? "reviewed" : "unresolved";
+    if (validStatus !== status) incomplete = true;
+    byDimension.set(dimension, { dimension, status: validStatus, evidenceIds: validStatus === "reviewed" ? evidenceIds : [], note });
+  }
+  const rubric: CadArchitectureReview["rubric"] = CAD_REVIEW_DIMENSIONS.map((dimension) => byDimension.get(dimension) ?? {
+    dimension, status: "unresolved", evidenceIds: [], note: "This review dimension was missing or could not be validated; review it again.",
+  });
+  if (rubric.some((item) => item.status === "unresolved")) incomplete = true;
+  const ready = value.verdict === "ready" && !incomplete && issues.length === 0;
+  return {
+    verdict: ready ? "ready" : "revise",
+    summary: incomplete ? `${summary} Review is incomplete; unresolved dimensions need another review.`.slice(0, 400) : summary,
+    issues, rubric,
+  };
+}
+
 export async function critiqueCadPlan(input: CadInput, inspection: CadInspection, preview: string, fetchFn: typeof fetch = fetch): Promise<CadArchitectureReview | null> {
   const model = input.selectedConcept ? CONCEPT_BOARD_MODELS.text : resolveArchitectTextModel();
   const key = process.env.OPENROUTER_API_KEY?.trim();
-  if (!model || !key) return null;
-  const context = compactCadInspection(inspection, 100);
-  const ids = new Set(inspection.objects.map((o) => o.id).filter((id): id is string => !!id));
-  const rubric = ["program", "room_logic", "circulation", "stair", "privacy", "daylight_ventilation", "clearance", "usability"];
+  const logFailure = (category: string, details: Record<string, unknown> = {}) => console.warn("[CAD_REVIEW_FAILED]", JSON.stringify({ category, ...details }));
+  if (!model || !key) { logFailure("model_unavailable", { hasModel: Boolean(model), hasKey: Boolean(key) }); return null; }
+  const context = compactCadInspection(inspection, 72);
+  const rubric = [...CAD_REVIEW_DIMENSIONS];
   let png: Buffer;
-  try { png = await sharp(Buffer.from(preview)).resize({ width: 1100, height: 900, fit: "inside" }).png().toBuffer(); } catch { return null; }
+  try { png = await sharp(Buffer.from(preview)).resize({ width: 1100, height: 900, fit: "inside" }).png().toBuffer(); }
+  catch (error) { logFailure("preview_conversion_failed", { errorName: error instanceof Error ? error.name.slice(0, 40) : "unknown", previewBytes: Buffer.byteLength(preview) }); return null; }
   const payload = {
-    model, temperature: 0, max_tokens: 5_000, reasoning: { effort: "medium" },
+    model, temperature: 0, max_tokens: 7_000, reasoning: { effort: "medium" }, response_format: { type: "json_object" },
     messages: [
         { role: "system", content: `You are the final architectural plan reviewer for a concept the user selected. Inspect the ACTUAL post-execution preview image and complete semantic geometry metadata, not the previous design intent or the generator's pre-execution selfReview. Return only JSON: {"verdict":"ready"|"revise","summary":"...","issues":[{"dimension":"program|room_logic|circulation|stair|privacy|daylight_ventilation|clearance|usability","severity":"blocking|improvement","objectIds":["existing ID"],"finding":"...","proposedEdit":"a targeted change"}],"rubric":[{"dimension":"...","status":"reviewed|unresolved","evidenceIds":["existing ID"],"note":"..."}]}. Review each dimension: program means requested number/functions; room_logic means adjacencies/proportions; circulation means legible paths and access; stair means plausible connected placement; privacy means separation of public/private areas; daylight_ventilation means visible exterior windows or real shaft symbols; clearance means doors/windows/furniture relationships; usability means usable space without excessive fragmentation. For every reviewed dimension, cite at least one existing object ID as evidence; mark unresolved when the drawing cannot support a judgment. Keep the user's requested room counts and selected spatial concept. Look for duplicated/overcompartmentalized rooms, stairs disconnected from access, beds obstructing door swings or windows, missing exterior daylight, missing wet-room ventilation shaft/window, privacy and wasted/circulation area. Be concrete and cite inspected IDs. Do not invent code, structural, or Egyptian-regulation compliance. The room-access heuristic is not an egress certification. Mark revise for any serious program/spatial issue or unresolved rubric item; ready only if no issues remain. Limit issues to 8 and rubric to 8. Never output Python or CAD commands.` },
       { role: "user", content: [
@@ -727,35 +791,28 @@ export async function critiqueCadPlan(input: CadInput, inspection: CadInspection
       ] },
     ],
   };
-  const response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) return null;
-  const raw = await response.text(); if (raw.length > 24_000) return null;
-  let envelope: Record<string, unknown>; try { envelope = JSON.parse(raw) as Record<string, unknown>; } catch { return null; }
+  let response: Response;
+  try { response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(45_000) }); }
+  catch (error) { logFailure(error instanceof Error && error.name === "TimeoutError" ? "timeout" : "request_failed", { errorName: error instanceof Error ? error.name.slice(0, 40) : "unknown" }); return null; }
+  if (!response.ok) { logFailure("http_error", { status: response.status }); return null; }
+  let raw: string;
+  try { raw = await response.text(); } catch (error) { logFailure("response_read_failed", { errorName: error instanceof Error ? error.name.slice(0, 40) : "unknown" }); return null; }
+  if (raw.length > 48_000) { logFailure("response_too_large", { responseContentLength: raw.length }); return null; }
+  let envelope: Record<string, unknown>; try { envelope = JSON.parse(raw) as Record<string, unknown>; } catch { logFailure("invalid_envelope_json", { responseContentLength: raw.length }); return null; }
   const choice = Array.isArray(envelope.choices) ? envelope.choices[0] as Record<string, unknown> | undefined : undefined;
-  if (choice?.finish_reason === "length") return null;
-  const answer = extractChatText(envelope); if (!answer) return null;
-  const parsed = extractJsonPayload(answer) as Record<string, unknown> | null;
-  if (!parsed || (parsed.verdict !== "ready" && parsed.verdict !== "revise") || typeof parsed.summary !== "string" || parsed.summary.length > 400 || !Array.isArray(parsed.issues) || parsed.issues.length > 8 || !Array.isArray(parsed.rubric) || parsed.rubric.length !== rubric.length) return null;
-  const dimensions = new Set(["program","room_logic","circulation","stair","privacy","daylight_ventilation","clearance","usability"]);
-  const issues: CadArchitectureReview["issues"]=[];
-  for(const rawIssue of parsed.issues){
-    if(!rawIssue||typeof rawIssue!=="object"||Array.isArray(rawIssue))return null;
-    const item=rawIssue as Record<string,unknown>;
-    if(typeof item.dimension!=="string"||!dimensions.has(item.dimension)|| (item.severity!=="blocking"&&item.severity!=="improvement")||typeof item.finding!=="string"||!item.finding.trim()||item.finding.length>280||typeof item.proposedEdit!=="string"||!item.proposedEdit.trim()||item.proposedEdit.length>280||!Array.isArray(item.objectIds)||item.objectIds.length>8||item.objectIds.some((id)=>typeof id!=="string"||!ids.has(id)))return null;
-    issues.push({dimension:item.dimension as CadArchitectureReview["issues"][number]["dimension"],severity:item.severity,objectIds:item.objectIds as string[],finding:item.finding.trim(),proposedEdit:item.proposedEdit.trim()});
-  }
-  const reviewRubric:CadArchitectureReview["rubric"]=[];
-  for(const rawItem of parsed.rubric){
-    if(!rawItem||typeof rawItem!=="object"||Array.isArray(rawItem))return null;
-    const item=rawItem as Record<string,unknown>;
-    if(typeof item.dimension!=="string"||item.dimension.length>80||(item.status!=="reviewed"&&item.status!=="unresolved")||typeof item.note!=="string"||item.note.length>220||!Array.isArray(item.evidenceIds)||item.evidenceIds.length>8||item.evidenceIds.some((id)=>typeof id!=="string"||!ids.has(id))||(item.status==="reviewed"&&item.evidenceIds.length===0))return null;
-    reviewRubric.push({dimension:item.dimension,status:item.status,evidenceIds:item.evidenceIds as string[],note:item.note.trim()});
-  }
-  if(new Set(reviewRubric.map((item)=>item.dimension)).size!==rubric.length||rubric.some((dimension)=>!reviewRubric.some((item)=>item.dimension===dimension)))return null;
-  const unresolved=reviewRubric.some((item)=>item.status==="unresolved");
-  const blocking=issues.some((item)=>item.severity==="blocking");
-  const verdict=parsed.verdict==="ready"&&!unresolved&&!blocking&&issues.length===0?"ready":"revise";
-  return {verdict,summary:parsed.summary.trim(),issues,rubric:reviewRubric};
+  const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason.slice(0, 32) : "missing";
+  const usage = envelope.usage && typeof envelope.usage === "object" ? envelope.usage as Record<string, unknown> : {};
+  const detail = usage.completion_tokens_details && typeof usage.completion_tokens_details === "object" ? usage.completion_tokens_details as Record<string, unknown> : {};
+  const count = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : undefined;
+  const usageSummary = { promptTokens: count(usage.prompt_tokens), completionTokens: count(usage.completion_tokens), reasoningTokens: count(detail.reasoning_tokens) };
+  const message = choice?.message && typeof choice.message === "object" ? choice.message as Record<string, unknown> : {};
+  const contentLength = typeof message.content === "string" ? message.content.length : 0;
+  if (finishReason === "length") { logFailure("response_truncated", { finishReason, responseContentLength: contentLength, usage: usageSummary }); return null; }
+  const answer = extractChatText(envelope); if (!answer) { logFailure("missing_content", { finishReason, usage: usageSummary }); return null; }
+  const review = parseCadArchitectureReview(answer, inspection);
+  if (!review) { logFailure("invalid_review_json", { finishReason, responseContentLength: answer.length, usage: usageSummary }); return null; }
+  if (review.summary.includes("Review is incomplete")) logFailure("partial_review_normalized", { finishReason, responseContentLength: answer.length, usage: usageSummary, unresolvedDimensions: review.rubric.filter((item) => item.status === "unresolved").map((item) => item.dimension) });
+  return review;
 }
 
 export async function proposeCadCommands(input: CadInput, inspection: CadInspection | null, preview: string | null, fetchFn: typeof fetch = fetch, attempt = 0): Promise<CadCommandAction> {

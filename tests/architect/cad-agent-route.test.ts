@@ -89,6 +89,21 @@ describe("CAD agent route", () => {
     expect(body.unresolvedItems).toContain("Post-execution visual critique did not return a validated review; architectural status remains unverified");
   });
 
+  it("logs an unexpected critic exception without forwarding its message", async () => {
+    const concept = { id: "A", title: "Court", strategy: "court", idea: "Court", circulation: "Core", siteWidthM: 20, siteDepthM: 20, program: [], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] };
+    vi.mocked(parseCadInput).mockReturnValue({ ...input, selectedConcept: concept } as never);
+    vi.mocked(critiqueCadPlan).mockRejectedValueOnce(new TypeError("private raw provider response"));
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const response = await POST(request());
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.architectureReview.verdict).toBe("revise");
+      expect(warning).toHaveBeenCalledWith("[CAD_REVIEW_FAILED]", JSON.stringify({ category: "unexpected_exception", errorName: "TypeError" }));
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("private raw provider response");
+    } finally { warning.mockRestore(); }
+  });
+
   it("returns actionable bounded geometry details so the admin retry can correct the offending ID", async () => {
     const violation = { code: "OUTSIDE_SITE" as const, id: "door-west", label: "DOOR_door-west", boundsMm: [-120, 2500, 900, 3400] as [number, number, number, number], siteMm: [20_000, 20_000] as [number, number] };
     vi.mocked(runCadAction).mockRejectedValueOnce(new CadGeometryBoundsError([violation]));

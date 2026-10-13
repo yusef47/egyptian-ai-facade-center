@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compactCadInspection, compileCadCommands, critiqueCadPlan, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compactCadInspection, compileCadCommands, critiqueCadPlan, parseCadArchitectureReview, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -131,8 +131,9 @@ describe("CAD agent input and execution contracts", () => {
     const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("anthropic/claude-sonnet-5.5");
-      expect(body.max_tokens).toBe(5_000);
+      expect(body.max_tokens).toBe(7_000);
       expect(body.reasoning).toEqual({ effort: "medium" });
+      expect(body.response_format).toEqual({ type: "json_object" });
       expect(JSON.stringify(body.messages)).toContain("object-85");
       expect(JSON.stringify(body.messages)).toContain("data:image/png;base64,");
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(review) } }] }), { status: 200 });
@@ -142,6 +143,32 @@ describe("CAD agent input and execution contracts", () => {
       expect(result).toMatchObject({ verdict: "ready", rubric: expect.arrayContaining([{ dimension: "program", status: "reviewed", evidenceIds: ["object-0"], note: "Reviewed against preview and metadata" }]) });
       expect(fetchFn).toHaveBeenCalledOnce();
     } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("preserves valid reviewer findings and marks missing rubric dimensions unresolved", () => {
+    const inspection = { ok: true, objects: [{ id: "wall-a", label: "WALL_wall-a", type: "Part::Feature", layer: "WALL", semantic: "wall" }], counts: {}, warnings: [], segments: 1, siteMm: [20_000, 20_000] };
+    const partial = JSON.stringify({
+      verdict: "ready", summary: "The plan is reviewed.",
+      issues: [{ dimension: "stair", severity: "blocking", ids: ["wall-a"], finding: "The stair is not accessible.", edit: "Move the stair near the shared entry." }],
+      rubric: [{ dimension: "program", status: "reviewed", ids: ["wall-a"], note: "Wall geometry inspected." }],
+    });
+    const review = parseCadArchitectureReview(partial, inspection);
+    expect(review?.verdict).toBe("revise");
+    expect(review?.issues).toEqual([{ dimension: "stair", severity: "blocking", objectIds: ["wall-a"], finding: "The stair is not accessible.", proposedEdit: "Move the stair near the shared entry." }]);
+    expect(review?.rubric.filter((item) => item.status === "unresolved")).toHaveLength(7);
+    expect(review?.summary).toContain("Review is incomplete");
+  });
+
+  it("logs preview conversion failures by safe category before any critic API call", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchFn = vi.fn();
+    try {
+      const result = await critiqueCadPlan({ ...valid, selectedConcept: { id: "A", title: "Court", strategy: "courtyard", idea: "Court", circulation: "Core", siteWidthM: 20, siteDepthM: 20, program: [], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] } }, { ok: true, objects: [], counts: {}, warnings: [], segments: 0, siteMm: [20_000, 20_000] }, "not a valid svg preview", fetchFn as unknown as typeof fetch);
+      expect(result).toBeNull();
+      expect(fetchFn).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith("[CAD_REVIEW_FAILED]", expect.stringContaining('"category":"preview_conversion_failed"'));
+    } finally { warning.mockRestore(); vi.unstubAllEnvs(); }
   });
 
   it("accepts a bounded project and rejects a forged or oversized request", () => {

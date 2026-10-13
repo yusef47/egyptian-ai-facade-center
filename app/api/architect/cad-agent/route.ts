@@ -111,7 +111,10 @@ export async function POST(request: Request) {
     let review: Awaited<ReturnType<typeof critiqueCadPlan>> = null;
     const finalReviewRequired = selectedPilot;
     if (finalReviewRequired) {
-      review = await critiqueCadPlan(input, inspected, result.preview).catch(() => null);
+      review = await critiqueCadPlan(input, inspected, result.preview).catch((error) => {
+        console.warn("[CAD_REVIEW_FAILED]", JSON.stringify({ category: "unexpected_exception", errorName: error instanceof Error ? error.name.slice(0, 40) : "unknown" }));
+        return null;
+      });
     }
     await sandbox.stop();
     const reviewReady = !finalReviewRequired || review?.verdict === "ready";
