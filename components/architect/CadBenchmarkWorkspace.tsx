@@ -23,22 +23,54 @@ const MODELS = [
 export function CadBenchmarkWorkspace() {
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, Result>>({});
+  const [progress, setProgress] = useState<Record<string, { elapsedMs: number; contentChars?: number; phase?: string }>>({});
 
   async function run(model: string) {
     if (busy) return;
     setBusy(model);
+    setProgress((previous) => ({ ...previous, [model]: { elapsedMs: 0, phase: "connecting" } }));
     try {
       const session = await getSupabaseBrowserClient()?.auth.getSession();
       const token = session?.data.session?.access_token;
       if (!token) throw new Error("سجّل دخولك بحساب الأدمن أولًا.");
       const response = await fetch("/api/architect/cad-benchmark", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ model }),
         cache: "no-store",
       });
-      const data = await response.json() as Result;
-      setResults((previous) => ({ ...previous, [model]: data }));
+      if (!response.ok) {
+        const data = await response.json() as Result;
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
+      if (!response.body) throw new Error("الاتصال لم يبدأ");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completed = false;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
+        let end: number;
+        while ((end = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const event = frame.split("\n").find((line) => line.startsWith("event:"))?.slice(6).trim();
+          const dataText = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+          if (!event || !dataText) continue;
+          const data = JSON.parse(dataText) as Result & { phase?: string; contentChars?: number };
+          if (event === "progress" || event === "status") {
+            setProgress((previous) => ({ ...previous, [model]: { elapsedMs: data.elapsedMs ?? 0, contentChars: data.contentChars, phase: data.phase } }));
+          } else if (event === "result") {
+            setResults((previous) => ({ ...previous, [model]: data }));
+            completed = true;
+          } else if (event === "error") {
+            throw new Error(data.error ?? "فشل اتصال الموديل");
+          }
+        }
+      }
+      if (!completed) throw new Error("انقطع الاتصال قبل اكتمال النتيجة");
     } catch (error) {
       setResults((previous) => ({ ...previous, [model]: { model, error: error instanceof Error ? error.message : "تعذر الاتصال" } }));
     } finally {
@@ -71,6 +103,7 @@ export function CadBenchmarkWorkspace() {
             <h2 className="text-xl font-semibold text-[#f1d985]">{label}</h2>
             <p dir="ltr" className="mt-1 text-xs text-slate-400">{id}</p>
             <button type="button" disabled={Boolean(busy)} onClick={() => void run(id)} className="mt-5 w-full rounded-xl bg-[#d4af37] px-4 py-3 font-bold text-[#102027] disabled:opacity-40">{busy === id ? "الموديل بيخطط وبيجهز العفش..." : result ? "أعد التجربة" : "جرّب الموديل"}</button>
+            {busy === id && <p className="mt-3 text-xs text-cyan-200" aria-live="polite">اتصال مباشر · {((progress[id]?.elapsedMs ?? 0) / 1000).toFixed(0)} ثانية · {progress[id]?.contentChars ? `${progress[id].contentChars} حرف من المخطط` : "الموديل بيفكر"}</p>}
             {result && <div className="mt-5 space-y-2 text-sm leading-6">
               <p className={result.error || !result.validJson ? "text-rose-300" : "text-emerald-300"}>{result.error ?? (result.validJson ? "رجّع مواصفات JSON قابلة للفحص" : "الرد لم يكن مواصفات JSON صالحة")}</p>
               {result.elapsedMs !== undefined && <p>المدة: {(result.elapsedMs / 1000).toFixed(1)} ثانية</p>}

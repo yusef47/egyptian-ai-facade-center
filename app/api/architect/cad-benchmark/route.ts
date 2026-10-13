@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeArchitectPilot } from "../../../../lib/admin";
-import { extractChatText, extractJsonPayload } from "../../../../lib/architect-interpreter";
+import { extractJsonPayload } from "../../../../lib/architect-interpreter";
 import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { OPENROUTER_ENDPOINT } from "../../../../lib/openrouter-engine";
 import { isAllowedOrigin } from "../../../../lib/origin";
@@ -42,56 +42,111 @@ export async function POST(request: Request) {
   }
 
   const started = Date.now();
-  try {
-    const upstream = await fetch(OPENROUTER_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!.trim()}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://www.qattan-ai.com",
-        "X-Title": "Qattan CAD Benchmark",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.25,
-        max_tokens: 16000,
-        reasoning: { effort: "low" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: "Produce your best furnished architectural CAD plan now. Check every requested room and the hosted opening offsets before you answer." },
-        ],
-      }),
-      signal: AbortSignal.timeout(240_000),
-      cache: "no-store",
-    });
-    if (!upstream.ok) {
-      console.error("[CAD_BENCHMARK_UPSTREAM]", model, upstream.status);
-      return NextResponse.json({ error: `Model request failed (${upstream.status})`, model }, { status: 502 });
-    }
-    const text = await upstream.text();
-    if (text.length > 400_000) return NextResponse.json({ error: "Model response too large", model }, { status: 502 });
-    const data = JSON.parse(text) as Record<string, unknown>;
-    const answer = extractChatText(data);
-    const parsed = answer ? extractJsonPayload(answer) : null;
-    const choice = Array.isArray(data.choices) ? data.choices[0] as Record<string, unknown> | undefined : undefined;
-    const spec = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>).spec : null;
-    const valid = spec && typeof spec === "object" && !Array.isArray(spec)
-      && Array.isArray((spec as Record<string, unknown>).walls)
-      && Array.isArray((spec as Record<string, unknown>).openings)
-      && Array.isArray((spec as Record<string, unknown>).rooms)
-      && Array.isArray((parsed as Record<string, unknown>).furniture);
-    return NextResponse.json({
-      model,
-      elapsedMs: Date.now() - started,
-      finishReason: choice?.finish_reason ?? null,
-      usage: data.usage ?? null,
-      validJson: Boolean(valid),
-      output: valid ? parsed : null,
-      responseExcerpt: valid ? null : answer?.slice(0, 2000) ?? null,
-    }, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    console.error("[CAD_BENCHMARK_FAILED]", model, error instanceof Error ? error.message.slice(0, 500) : "unknown");
-    return NextResponse.json({ error: "Model request timed out or failed", model, elapsedMs: Date.now() - started }, { status: 502 });
-  }
+  const encoder = new TextEncoder();
+  const upstreamAbort = new AbortController();
+  const upstreamTimeout = setTimeout(() => upstreamAbort.abort(), 275_000);
+  request.signal.addEventListener("abort", () => upstreamAbort.abort(), { once: true });
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (event: string, value: unknown) => {
+        if (!cancelled) controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`));
+      };
+      const keepAlive = setInterval(() => {
+        send("progress", { elapsedMs: Date.now() - started, phase: "thinking" });
+      }, 12_000);
+      void (async () => {
+        let answer = "";
+        let finishReason: string | null = null;
+        let usage: unknown = null;
+        try {
+          send("status", { phase: "connecting", elapsedMs: 0 });
+          const upstream = await fetch(OPENROUTER_ENDPOINT, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.OPENROUTER_API_KEY!.trim()}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://www.qattan-ai.com",
+              "X-Title": "Qattan CAD Benchmark",
+            },
+            body: JSON.stringify({
+              model,
+              temperature: 0.25,
+              max_tokens: 26000,
+              reasoning: { effort: "medium" },
+              stream: true,
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: "Produce your best furnished architectural CAD plan now. Check every requested room and the hosted opening offsets before you answer." },
+              ],
+            }),
+            signal: upstreamAbort.signal,
+            cache: "no-store",
+          });
+          if (!upstream.ok || !upstream.body) {
+            console.error("[CAD_BENCHMARK_UPSTREAM]", model, upstream.status);
+            send("error", { model, error: `Model request failed (${upstream.status})`, elapsedMs: Date.now() - started });
+            return;
+          }
+          send("status", { phase: "streaming", elapsedMs: Date.now() - started });
+          const reader = upstream.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let lastProgress = 0;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
+            let end: number;
+            while ((end = buffer.indexOf("\n\n")) !== -1) {
+              const frame = buffer.slice(0, end);
+              buffer = buffer.slice(end + 2);
+              const dataText = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+              if (!dataText || dataText === "[DONE]") continue;
+              let chunk: Record<string, unknown>;
+              try { chunk = JSON.parse(dataText) as Record<string, unknown>; } catch { continue; }
+              if (chunk.error) throw new Error("OpenRouter stream returned an error");
+              if (chunk.usage) usage = chunk.usage;
+              const choice = Array.isArray(chunk.choices) ? chunk.choices[0] as Record<string, unknown> | undefined : undefined;
+              const delta = choice?.delta as Record<string, unknown> | undefined;
+              if (typeof delta?.content === "string") answer += delta.content;
+              if (typeof choice?.finish_reason === "string") finishReason = choice.finish_reason;
+              if (answer.length > 400_000) throw new Error("Model response too large");
+              if (Date.now() - lastProgress > 4000) {
+                send("progress", { elapsedMs: Date.now() - started, contentChars: answer.length });
+                lastProgress = Date.now();
+              }
+            }
+          }
+          const parsed = answer ? extractJsonPayload(answer) : null;
+          const spec = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>).spec : null;
+          const valid = spec && typeof spec === "object" && !Array.isArray(spec)
+            && Array.isArray((spec as Record<string, unknown>).walls)
+            && Array.isArray((spec as Record<string, unknown>).openings)
+            && Array.isArray((spec as Record<string, unknown>).rooms)
+            && Array.isArray((parsed as Record<string, unknown>).furniture);
+          send("result", {
+            model, elapsedMs: Date.now() - started, finishReason, usage,
+            validJson: Boolean(valid), output: valid ? parsed : null,
+            responseExcerpt: valid ? null : answer.slice(0, 2000),
+          });
+        } catch (error) {
+          console.error("[CAD_BENCHMARK_FAILED]", model, error instanceof Error ? error.message.slice(0, 500) : "unknown");
+          send("error", { model, error: "Model request timed out or failed", elapsedMs: Date.now() - started });
+        } finally {
+          clearInterval(keepAlive);
+          clearTimeout(upstreamTimeout);
+          if (!cancelled) controller.close();
+        }
+      })();
+    },
+    cancel() { cancelled = true; upstreamAbort.abort(); clearTimeout(upstreamTimeout); },
+  });
+  return new Response(stream, { headers: {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  } });
 }
