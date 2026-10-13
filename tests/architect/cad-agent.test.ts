@@ -68,6 +68,8 @@ describe("CAD agent input and execution contracts", () => {
     expect(compiled).toContain("CadPattern");
     expect(compiled).toContain("HATCH_zone-hatch");
     expect(compiled).toContain("Hatch stroke limit exceeded");
+    expect(compiled).toContain("phase=pmin+spacing/2.0");
+    expect(compiled).toContain("if phase>=pmax: phase=(pmin+pmax)/2.0");
     expect(compiled).toContain("_x+_w*.18"); // recognizable vehicle silhouette
     expect(compiled).toContain("_x+_w*.22"); // cabin outline
     expect(compiled).toContain("bed-double");
@@ -96,6 +98,19 @@ describe("CAD agent input and execution contracts", () => {
     ], summary: "invalid", done: false }), 20, 20)).toBeNull();
     expect(FREECAD_HARNESS).toContain("'HATCH':'#6ca6a3'");
     expect(FREECAD_HARNESS).toContain("pair(0,'LINE',8,kind");
+  });
+
+  it("centers hatch strokes inside narrow wall bands instead of aligning them to an edge", () => {
+    const narrowWall = parseCadCommandAction(JSON.stringify({ commands: [
+      { op: "wall", id: "south-edge-wall", from: [100, 100], to: [9900, 100], thickness: 200 },
+      { op: "hatch", id: "south-wall-hatch", targetId: "south-edge-wall", pattern: "diagonal", spacing: 500, angle: 0 },
+    ], summary: "wall hatch", selfReview: [], requiredElements: [], unresolvedItems: [], done: false }), 10, 10);
+    expect(narrowWall).not.toBeNull();
+    const python = compileCadCommands(narrowWall!);
+    expect(python).toContain("projections=[p.x*nx+p.y*ny for p in points]; pmin=min(projections); pmax=max(projections); span=pmax-pmin");
+    expect(python).toContain("phase=pmin+spacing/2.0");
+    expect(python).toContain("if phase>=pmax: phase=(pmin+pmax)/2.0");
+    expect(python).toContain("t=phase+k*spacing; hits=[]");
   });
 
   it("rejects moving or rotating attached opening symbols independently of their host wall", () => {
