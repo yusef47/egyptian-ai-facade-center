@@ -5,7 +5,8 @@ import { getSupabaseBrowserClient } from "../../lib/supabase";
 import type { ArchitecturalConcept } from "../../lib/architect/concept-board";
 import { verifyCadProgressSnapshot } from "../../lib/architect/cad-agent-progress";
 
-type Inspection = { counts: Record<string, number>; warnings: string[]; unverifiedChecks?: string[]; objects: number; segments: number };
+type Inspection = { counts: Record<string, number>; warnings: string[]; qualityChecksEvaluated?: boolean; qualityIssues?: { code: string; severity: "blocking" | "improvement"; ids: string[]; message: string }[]; unverifiedChecks?: string[]; objects: number; segments: number };
+const MAX_STAGES = 6;
 type Turn = { role: "user" | "assistant"; text: string };
 const STORAGE = "qattan:cad-agent-project-v1";
 const EXAMPLE = "على أرض 20 × 20 متر ارسم مخطط طابق فيه شقتين مستقلتين. كل شقة فيها 3 غرف نوم وحمام ومطبخ وريسبشن. وزّع الفراغات بنفسك، وارسم الحوائط والأبواب والشبابيك والأثاث الأساسي والسلم والمداخل بأبعاد واضحة.";
@@ -35,6 +36,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
   const [error, setError] = useState("");
   const [completedSteps, setCompletedSteps] = useState(0);
   const [resumableBrief, setResumableBrief] = useState<string | null>(null);
+  const [qualityFeedback, setQualityFeedback] = useState("");
   const [setupAttempt, setSetupAttempt] = useState(0);
 
   useEffect(() => {
@@ -69,9 +71,10 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
               if (checkpoint) {
                 setCompletedSteps(checkpoint.completedSteps);
                 setResumableBrief(checkpoint.brief);
+                setQualityFeedback(checkpoint.qualityFeedback ?? "");
                 setInstruction((current) => current === selectedBrief ? checkpoint.brief : current);
               } else {
-                setCompletedSteps(0); setResumableBrief(null);
+                setCompletedSteps(0); setResumableBrief(null); setQualityFeedback("");
                 if (saved) localStorage.removeItem(progressKey);
               }
             } catch { localStorage.removeItem(progressKey); }
@@ -118,16 +121,17 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
     let token = session?.data.session?.access_token;
     if (!token) { setError("سجّل دخولك بحساب الأدمن أولًا."); return; }
     const brief = instruction.trim();
-    const startStep = resumableBrief === brief && completedSteps < 4 ? completedSteps : 0;
+    const startStep = resumableBrief === brief && completedSteps > 0 ? Math.min(completedSteps, MAX_STAGES - 1) : 0;
     setBusy(true); setError(""); setCompletedSteps(startStep);
     if (startStep === 0) { setResumableBrief(null); localStorage.removeItem(progressKey); }
     let completed = false;
+    let feedbackForNextStage = qualityFeedback;
     setTurns((previous) => [...previous, { role: "user", text: brief }]);
     try {
-      for (let step = startStep; step < 4; step++) {
-        setStatus(`المساعد بيفحص المشروع ويرسم المرحلة ${step + 1} من 4 داخل FreeCAD...`);
-        let executionError: string | undefined;
-        let data: { previewSvg?: string; inspection?: Inspection; summary?: string; selfReview?: string[]; requiredElements?: { requirement: string; status: "met" | "unresolved"; evidenceIds: string[]; evidence: string }[]; unresolvedItems?: string[]; modelDone?: boolean; done?: boolean; error?: string; state?: string } | null = null;
+      for (let step = startStep; step < MAX_STAGES; step++) {
+        setStatus(`المساعد بيراجع اللوحة ويرسم المرحلة ${step + 1} من ${MAX_STAGES} داخل FreeCAD...`);
+        let executionError: string | undefined = feedbackForNextStage || undefined;
+        let data: { previewSvg?: string; inspection?: Inspection; summary?: string; selfReview?: string[]; requiredElements?: { requirement: string; status: "met" | "unresolved"; evidenceIds: string[]; evidence: string }[]; unresolvedItems?: string[]; modelDone?: boolean; done?: boolean; error?: string; state?: string; architectureReview?: { verdict: "ready" | "revise"; summary: string; issues: { dimension: string; severity: string; objectIds: string[]; finding: string; proposedEdit: string }[]; rubric: { dimension: string; status: string; evidenceIds: string[]; note: string }[] } | null } | null = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await fetch("/api/architect/cad-agent", {
             method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -144,13 +148,16 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
         }
         if (!data?.previewSvg || !data.inspection) throw new Error("FreeCAD لم يُرجع لوحة رسم صالحة");
         setPreview(data.previewSvg); setInspection(data.inspection); setCompletedSteps(step + 1); setResumableBrief(brief);
-        try { localStorage.setItem(progressKey, JSON.stringify({ projectId, brief, siteWidth, siteDepth, completedSteps: step + 1, counts: data.inspection.counts, objects: data.inspection.objects, segments: data.inspection.segments })); } catch { /* Keep the in-memory resume cursor when browser storage is unavailable. */ }
-        setTurns((previous) => [...previous, { role: "assistant", text: `${data?.summary ?? `اكتملت المرحلة ${step + 1}`}${data?.selfReview?.length ? `\nمراجعة الرسم: ${data.selfReview.join(" · ")}` : ""}${data?.requiredElements?.length ? `\nمتطلبات الطلب: ${data.requiredElements.map((item) => `${item.status === "met" ? "متحقق" : "غير متحقق"}: ${item.requirement} (${item.evidenceIds.join(", ")})`).join(" · ")}` : ""}${data?.unresolvedItems?.length ? `\nنقاط ما زالت مفتوحة: ${data.unresolvedItems.join(" · ")}` : ""}${data?.modelDone && !data?.done ? "\nالموديل اقترح اكتمال الطلب، لكن فحوص الرسم لم تسمح بتأكيده." : ""}` }]);
+        const reviewFeedback = data.architectureReview?.verdict === "revise" ? [data.architectureReview.summary, ...data.architectureReview.issues.map((issue) => `${issue.dimension}: ${issue.finding} التعديل المقترح: ${issue.proposedEdit}`), ...(data.inspection.qualityIssues ?? []).map((issue) => issue.message)].join("\n").slice(0, 1450) : "";
+        if (reviewFeedback) { feedbackForNextStage = reviewFeedback; setQualityFeedback(reviewFeedback); }
+        else if (data.architectureReview?.verdict === "ready") { feedbackForNextStage = ""; setQualityFeedback(""); }
+        try { localStorage.setItem(progressKey, JSON.stringify({ projectId, brief, siteWidth, siteDepth, completedSteps: step + 1, counts: data.inspection.counts, objects: data.inspection.objects, segments: data.inspection.segments, qualityFeedback: feedbackForNextStage })); } catch { /* Keep the in-memory resume cursor when browser storage is unavailable. */ }
+        setTurns((previous) => [...previous, { role: "assistant", text: `${data?.summary ?? `اكتملت المرحلة ${step + 1}`}${data?.selfReview?.length ? `\nمراجعة الرسم قبل التنفيذ: ${data.selfReview.join(" · ")}` : ""}${data?.architectureReview ? `\nالمراجعة المعمارية بعد التنفيذ (${data.architectureReview.verdict === "ready" ? "مستعدة للمراجعة البشرية" : "تحتاج تعديلًا"}): ${data.architectureReview.summary}${data.architectureReview.issues.length ? ` · ${data.architectureReview.issues.map((issue) => `${issue.finding} → ${issue.proposedEdit}`).join(" · ")}` : ""}` : ""}${data?.inspection?.qualityIssues?.length ? `\nفحوص هندسية تخطيطية: ${data.inspection.qualityIssues.map((issue) => issue.message).join(" · ")}` : ""}${data?.requiredElements?.length ? `\nمتطلبات الطلب: ${data.requiredElements.map((item) => `${item.status === "met" ? "متحقق" : "غير متحقق"}: ${item.requirement} (${item.evidenceIds.join(", ")})`).join(" · ")}` : ""}${data?.unresolvedItems?.length ? `\nنقاط ما زالت مفتوحة: ${data.unresolvedItems.join(" · ")}` : ""}${data?.modelDone && !data?.done ? "\nالموديل اقترح اكتمال الطلب، لكن المراجعة بعد التنفيذ أو فحوص الرسم لم تسمح بتأكيده." : ""}` }]);
         if (data.done) { completed = true; break; }
       }
       setStatus(completed
-        ? "الموديل يقول إن متطلبات الطلب اكتملت وفحوص الهندسة المحددة نجحت. راجع المخطط بنفسك؛ إغلاق الغرف ومسارات الوصول والإنشاء والكود غير مفحوصة آليًا."
-        : "انتهت أربع مراحل محفوظة دون اكتمال مؤكد. راجع الملاحظات ثم أعد تشغيل نفس الطلب لمتابعة الرسم على المشروع الحالي.");
+        ? "الموديل يقول إن متطلبات الطلب اكتملت وفحوص الهندسة التخطيطية نجحت. راجع المخطط بنفسك؛ فحص الوصول تقريبي ولا يثبت الإخلاء أو إمكانية الوصول، والإنشاء والكود غير معتمدين."
+        : `انتهت ${MAX_STAGES} مراحل محفوظة دون اكتمال مؤكد. راجع ملاحظات المراجعة ثم ابدأ جولة محدودة أخرى على المشروع الحالي.`);
       if (completed) setInstruction("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "حدث خطأ غير متوقع");
@@ -191,7 +198,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
     const id = newProjectId();
     localStorage.setItem(storageKey, id); setProjectId(id); setState("checking");
     localStorage.removeItem(progressKey);
-    setPreview(null); setInspection(null); setTurns([]); setCompletedSteps(0); setResumableBrief(null); setError(""); setInstruction(selectedConcept ? selectedBrief : EXAMPLE);
+    setPreview(null); setInspection(null); setTurns([]); setCompletedSteps(0); setResumableBrief(null); setQualityFeedback(""); setError(""); setInstruction(selectedConcept ? selectedBrief : EXAMPLE);
   }
 
   return <main dir="rtl" className="min-h-screen bg-[#071014] px-4 py-6 text-white md:px-7">
@@ -215,7 +222,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
           </div>
           {error && <p role="alert" className="mt-3 rounded-xl bg-rose-950 p-3 text-sm text-rose-200">{error}</p>}
           <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={5} maxLength={1500} placeholder="اوصف المخطط أو التعديل اللي عايزه..." className="mt-4 w-full resize-none rounded-xl border border-white/15 bg-[#17282e] p-3 text-sm leading-7 text-white focus:border-[#d4af37] focus:outline-none" />
-          <button type="button" disabled={state !== "ready" || busy || !instruction.trim()} onClick={() => void run()} className="mt-3 rounded-xl bg-[#d4af37] p-3 font-bold text-[#121a1e] disabled:opacity-40">{busy ? `بيشتغل على المرحلة ${Math.min(completedSteps + 1, 4)}...` : preview ? "نفّذ التعديل في CAD" : "ابدأ الرسم في CAD"}</button>
+          <button type="button" disabled={state !== "ready" || busy || !instruction.trim()} onClick={() => void run()} className="mt-3 rounded-xl bg-[#d4af37] p-3 font-bold text-[#121a1e] disabled:opacity-40">{busy ? `بيشتغل على المرحلة ${Math.min(completedSteps + 1, MAX_STAGES)}...` : preview ? qualityFeedback ? "تابع التعديلات المعمارية" : "نفّذ التعديل في CAD" : "ابدأ الرسم في CAD"}</button>
         </section>
         <section className="space-y-3">
           <div className="relative grid min-h-[580px] place-items-center overflow-hidden rounded-2xl border border-white/10 bg-[#09151d] p-4" style={{ backgroundImage: "linear-gradient(#142935 1px,transparent 1px),linear-gradient(90deg,#142935 1px,transparent 1px)", backgroundSize: "32px 32px" }}>
@@ -230,6 +237,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
             {inspection && <span className="text-xs text-slate-400">{inspection.segments} خط/قوس في الرسم · {inspection.counts.WALL ?? 0} حائط · {inspection.counts.BEAM ?? 0} كمرة تخطيطية · {inspection.counts.COLUMN ?? 0} عمود تخطيطي · {inspection.counts.DOOR ?? 0} باب · {inspection.counts.HATCH ?? 0} تهشير</span>}
           </div>
           {inspection?.warnings?.length ? <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 p-4 text-xs leading-6 text-amber-100"><strong>ملاحظات الفحص:</strong> {inspection.warnings.slice(0, 5).join(" · ")}</div> : null}
+          {selectedConcept && inspection && inspection.qualityChecksEvaluated === false ? <div className="rounded-2xl border border-sky-500/20 bg-sky-950/20 p-4 text-xs leading-6 text-sky-100">سيُعاد فحص المسقط هندسيًا ومعماريًا بعد خطوة الرسم التالية؛ الحالة المحفوظة وحدها لا تعني اجتياز الفحوص.</div> : null}
           {inspection?.unverifiedChecks?.length ? <div className="rounded-2xl border border-sky-500/20 bg-sky-950/20 p-4 text-xs leading-6 text-sky-100"><strong>فحوص غير متاحة آليًا:</strong> {inspection.unverifiedChecks.join(" · ")}</div> : null}
           <p className="text-xs leading-6 text-slate-500">الكمرات والأعمدة والسلالم والأثاث عناصر تخطيطية فقط؛ والتهشير خطوط CAD مستقلة وليست Hatch مرتبطًا بحدوده. لا يوجد تصميم أو تحقق إنشائي. راجع المخطط مع مهندس مختص قبل أي استخدام تنفيذي أو قانوني.</p>
         </section>

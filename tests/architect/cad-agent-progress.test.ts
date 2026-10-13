@@ -14,7 +14,7 @@ describe("CAD stage resume checkpoint", () => {
   });
 
   it("rejects malformed, out-of-range, and empty-project checkpoints", () => {
-    expect(verifyCadProgressSnapshot({ ...saved, completedSteps: 5 }, current)).toBeNull();
+    expect(verifyCadProgressSnapshot({ ...saved, completedSteps: 7 }, current)).toBeNull();
     expect(verifyCadProgressSnapshot({ ...saved, brief: "" }, current)).toBeNull();
     expect(verifyCadProgressSnapshot(saved, { ...current, inspection: null })).toBeNull();
   });

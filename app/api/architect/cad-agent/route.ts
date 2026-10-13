@@ -4,9 +4,10 @@ import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { isAllowedOrigin } from "../../../../lib/origin";
 import { rateLimit } from "../../../../lib/request-guards";
 import {
-  CadCommandValidationError, CadGeometryBoundsError, cadAgentAvailable, cadCompletionReady, compileCadCommands, getCadSandbox, parseCadInput, proposeCadCommands,
+  CAD_AGENT, CadCommandValidationError, CadGeometryBoundsError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
   readCadDownload, readCadInspection, retryCadSetup, rollbackCadProject, runCadAction, setupCadSandbox,
 } from "../../../../lib/architect/cad-agent";
+import { evaluateCadPlanQuality } from "../../../../lib/architect/cad-plan-quality";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -17,6 +18,12 @@ async function authorize(request: Request) {
   if (!admin) return null;
   const gate = await authorizeArchitectPilot(request, admin);
   return gate.authorized ? gate.userId : null;
+}
+
+function withQualityChecks<T extends { objects: { id?: string; semantic?: string; text?: string; kind?: string; boundsMm?: number[]; positionMm?: number[]; wallStartMm?: number[]; wallEndMm?: number[]; wallThicknessMm?: number; hostWallId?: string; openingOffsetMm?: number; openingWidthMm?: number }[]; siteMm: number[]; warnings: string[] }>(inspection: T, instruction: string, program: string[] = [], enabled = false) {
+  if (!enabled) return inspection;
+  const qualityIssues = evaluateCadPlanQuality(inspection, `${instruction} ${program.join(" ")}`);
+  return { ...inspection, qualityIssues, warnings: [...inspection.warnings, ...qualityIssues.map((issue) => issue.message)].slice(0, 60) };
 }
 
 export async function GET(request: Request) {
@@ -42,7 +49,7 @@ export async function GET(request: Request) {
     const drawing = state === "ready" ? await readCadInspection(sandbox, projectId) : null;
     if (drawing) await sandbox.stop();
     return NextResponse.json({ state, previewSvg: drawing?.preview ?? null, inspection: drawing?.inspection ? {
-      counts: drawing.inspection.counts, warnings: drawing.inspection.warnings, unverifiedChecks: drawing.inspection.unverifiedChecks ?? [],
+      counts: drawing.inspection.counts, warnings: drawing.inspection.warnings, qualityChecksEvaluated: false, unverifiedChecks: drawing.inspection.unverifiedChecks ?? [],
       objects: drawing.inspection.objects.length, segments: drawing.inspection.segments,
     } : null }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -95,15 +102,27 @@ export async function POST(request: Request) {
     const state = await setupCadSandbox(sandbox);
     if (state !== "ready") return NextResponse.json({ state }, { status: state === "error" ? 503 : 202 });
     const previous = await readCadInspection(sandbox, input.projectId);
-    const action = await proposeCadCommands(input, previous.inspection, previous.preview);
-    const result = await runCadAction(sandbox, input, { python: compileCadCommands(action), summary: action.summary, done: action.done });
+    const selectedProgram = input.selectedConcept?.program ?? [];
+    const selectedPilot = Boolean(input.selectedConcept);
+    const previousInspection = previous.inspection ? withQualityChecks(previous.inspection, input.instruction, selectedProgram, selectedPilot) : null;
+    let action = await proposeCadCommands(input, previousInspection, previous.preview);
+    let result = await runCadAction(sandbox, input, { python: compileCadCommands(action), summary: action.summary, done: action.done });
+    let inspected = withQualityChecks(result.inspection, input.instruction, selectedProgram, selectedPilot);
+    let review: Awaited<ReturnType<typeof critiqueCadPlan>> = null;
+    const finalReviewRequired = selectedPilot && (action.done || input.step === CAD_AGENT.maxSteps - 1);
+    if (finalReviewRequired) {
+      review = await critiqueCadPlan(input, inspected, result.preview).catch(() => null);
+    }
     await sandbox.stop();
+    const reviewReady = !finalReviewRequired || review?.verdict === "ready";
+    const reviewCandidate = { ...action, done: action.done || (finalReviewRequired && review?.verdict === "ready") };
     return NextResponse.json({
-      summary: action.summary, selfReview: action.selfReview, requiredElements: action.requiredElements, unresolvedItems: action.unresolvedItems,
-      modelDone: action.done, done: cadCompletionReady(action, result.inspection), step: input.step + 1,
+      summary: action.summary, selfReview: action.selfReview, requiredElements: action.requiredElements, unresolvedItems: [...action.unresolvedItems, ...(!reviewReady ? ["Post-execution architectural review still requires revision or could not be completed"] : [])],
+      modelDone: action.done, done: reviewReady && cadCompletionReady(reviewCandidate, inspected), step: input.step + 1,
+      architectureReview: review ? { verdict: review.verdict, summary: review.summary, issues: review.issues, rubric: review.rubric } : finalReviewRequired ? { verdict: "revise", summary: "Post-execution review could not be completed", issues: [], rubric: [] } : null,
       previewSvg: result.preview, inspection: {
-        counts: result.inspection.counts, warnings: result.inspection.warnings, unverifiedChecks: result.inspection.unverifiedChecks ?? [], wallBaselineReady: result.inspection.wallBaselineReady ?? false, wallBaselineIds: result.inspection.wallBaselineIds ?? [], wallCurrentIds: result.inspection.wallCurrentIds ?? [], wallBaselineCount: result.inspection.wallBaselineCount ?? 0, wallCurrentCount: result.inspection.wallCurrentCount ?? 0, wallChanges: result.inspection.wallChanges ?? [],
-        objects: result.inspection.objects.length, segments: result.inspection.segments,
+        counts: inspected.counts, warnings: inspected.warnings, qualityChecksEvaluated: selectedPilot, qualityIssues: inspected.qualityIssues, unverifiedChecks: inspected.unverifiedChecks ?? [], wallBaselineReady: inspected.wallBaselineReady ?? false, wallBaselineIds: inspected.wallBaselineIds ?? [], wallCurrentIds: inspected.wallCurrentIds ?? [], wallBaselineCount: inspected.wallBaselineCount ?? 0, wallCurrentCount: inspected.wallCurrentCount ?? 0, wallChanges: inspected.wallChanges ?? [],
+        objects: inspected.objects.length, segments: inspected.segments,
       },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

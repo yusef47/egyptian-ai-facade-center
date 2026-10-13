@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, critiqueCadPlan, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -12,6 +12,25 @@ const valid = {
 };
 
 describe("CAD agent input and execution contracts", () => {
+  it("runs Sonnet post-execution review with the actual preview and full inspected object set", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const dimensions = ["program", "room_logic", "circulation", "stair", "privacy", "daylight_ventilation", "clearance", "usability"];
+    const objects = Array.from({ length: 86 }, (_, i) => ({ id: `object-${i}`, label: `OBJECT_${i}`, type: "Part::Feature", layer: "OTHER" }));
+    const review = { verdict: "ready", summary: "المخطط واضح ويحتاج مراجعة بشرية", issues: [], rubric: dimensions.map((dimension) => ({ dimension, status: "reviewed", evidenceIds: ["object-0"], note: "Reviewed against preview and metadata" })) };
+    const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.model).toBe("anthropic/claude-sonnet-5.5");
+      expect(JSON.stringify(body.messages)).toContain("object-85");
+      expect(JSON.stringify(body.messages)).toContain("data:image/png;base64,");
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(review) } }] }), { status: 200 });
+    });
+    try {
+      const result = await critiqueCadPlan({ ...valid, selectedConcept: { id: "A", title: "Courtyard", strategy: "courtyard", idea: "Court", circulation: "Loop", siteWidthM: 20, siteDepthM: 20, program: ["two homes"], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] } }, { ok: true, objects, counts: {}, warnings: [], segments: 80, siteMm: [20_000, 20_000] }, '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="white"/></svg>', fetchFn as unknown as typeof fetch);
+      expect(result).toMatchObject({ verdict: "ready", rubric: expect.arrayContaining([{ dimension: "program", status: "reviewed", evidenceIds: ["object-0"], note: "Reviewed against preview and metadata" }]) });
+      expect(fetchFn).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("accepts a bounded project and rejects a forged or oversized request", () => {
     expect(parseCadInput(valid)).toEqual(valid);
     expect(parseCadInput({ ...valid, projectId: "../../other" })).toBeNull();
@@ -66,6 +85,20 @@ describe("CAD agent input and execution contracts", () => {
     expect(compiled).toContain("_h*.82");
     expect(compiled).not.toContain("Part.makeCompound([])");
     expect(compiled).not.toContain("import os");
+  });
+
+  it("accepts a bounded semantic ventilation shaft and compiles a real plan symbol", () => {
+    const parsed = parseCadCommandAction(JSON.stringify({ commands: [
+      { op: "shaft", id: "bath-vent", kind: "ventilation", at: [5000, 5000], width: 900, depth: 900 },
+    ], summary: "ventilation shaft", selfReview: [], requiredElements: [], unresolvedItems: [], done: false }), 20, 20);
+    expect(parsed?.commands).toHaveLength(1);
+    const code = compileCadCommands(parsed!);
+    expect(code).toContain("SHAFT_bath-vent");
+    expect(code).toContain("VENT SHAFT");
+    expect(code).toContain('obj.CadKind="ventilation"');
+    expect(parseCadCommandAction(JSON.stringify({ commands: [
+      { op: "shaft", id: "oversize-shaft", kind: "ventilation", at: [5000, 5000], width: 300, depth: 900 },
+    ], summary: "bad shaft", selfReview: [], requiredElements: [], unresolvedItems: [], done: false }), 20, 20)).toBeNull();
   });
 
   it("creates bounded hatches only from closed boundaries and produces recognizable furniture and car geometry", () => {
@@ -229,7 +262,7 @@ describe("CAD agent input and execution contracts", () => {
     expect(FREECAD_HARNESS).toContain("wall geometry crossing its declared gap");
     expect(FREECAD_HARNESS).toContain("label position is outside the site");
     expect(FREECAD_HARNESS).toContain("has invalid plan bounds");
-    expect(FREECAD_HARNESS).toContain("Room enclosure and room-to-exit accessibility are not automatically verified");
+    expect(FREECAD_HARNESS).toContain("Room-to-exit connectivity is a simple planning heuristic");
   });
 
   it("returns bounded structured outside-site geometry details without trusting labels", () => {

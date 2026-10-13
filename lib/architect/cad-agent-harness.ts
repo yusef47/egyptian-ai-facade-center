@@ -56,7 +56,7 @@ def valid_wall_state(state):
 
 def layer_of(obj):
     label = obj.Label.upper()
-    for word in ('SITE', 'WALL', 'BEAM', 'DOOR', 'WINDOW', 'STAIR', 'FURNITURE', 'DIMENSION', 'COLUMN', 'TEXT', 'HATCH'):
+    for word in ('SITE', 'WALL', 'BEAM', 'DOOR', 'WINDOW', 'STAIR', 'FURNITURE', 'DIMENSION', 'COLUMN', 'TEXT', 'HATCH', 'SHAFT'):
         if label.startswith(word):
             return word
     return 'OTHER'
@@ -130,7 +130,7 @@ def emit_preview(doc, wall_baseline=None):
         summary.append(entry)
     if len(lines) > 4500:
         raise RuntimeError('CAD drawing exceeds the preview limit')
-    palette = {'SITE':'#64748b','WALL':'#d8e8ef','BEAM':'#ff6b6b','DOOR':'#ffc66d','WINDOW':'#65d4e6','STAIR':'#db8ef7','FURNITURE':'#f79a90','DIMENSION':'#8da4b6','COLUMN':'#facc15','TEXT':'#f4e6c5','HATCH':'#6ca6a3','OTHER':'#b4c3cc'}
+    palette = {'SITE':'#64748b','WALL':'#d8e8ef','BEAM':'#ff6b6b','DOOR':'#ffc66d','WINDOW':'#65d4e6','STAIR':'#db8ef7','FURNITURE':'#f79a90','DIMENSION':'#8da4b6','COLUMN':'#facc15','TEXT':'#f4e6c5','HATCH':'#6ca6a3','SHAFT':'#b197fc','OTHER':'#b4c3cc'}
     w = max(1.0, limits[2]-limits[0]); h = max(1.0, limits[3]-limits[1])
     pad = max(w,h) * .055
     minx,miny = limits[0]-pad,limits[1]-pad
@@ -222,7 +222,7 @@ def emit_preview(doc, wall_baseline=None):
             wall_changes.append({'id':identifier,'kind':'modified','beforeStartMm':before['start'],'beforeEndMm':before['end'],'afterStartMm':after['start'],'afterEndMm':after['end']})
     baseline_ids=sorted(comparison.keys())
     current_ids=sorted(current_walls.keys())
-    return {'objects':summary, 'objectIds':[o['id'] for o in summary if o.get('id')], 'counts':counts, 'warnings':warnings[:30], 'geometryErrors':geometry_errors[:8], 'unverifiedChecks':['Room enclosure and room-to-exit accessibility are not automatically verified','No code, structural, or professional-plan review is performed'], 'wallBaselineReady':bool(comparison), 'wallBaselineIds':baseline_ids, 'wallCurrentIds':current_ids, 'wallBaselineCount':len(baseline_ids), 'wallCurrentCount':len(current_ids), 'wallChanges':wall_changes[:100], '_wallBaselineToSave':baseline_to_save, 'segments':len(lines), 'siteMm':[max_x,max_y]}
+    return {'objects':summary, 'objectIds':[o['id'] for o in summary if o.get('id')], 'counts':counts, 'warnings':warnings[:30], 'geometryErrors':geometry_errors[:8], 'unverifiedChecks':['Room-to-exit connectivity is a simple planning heuristic, not an egress or accessibility analysis','Window and shaft proximity do not verify ventilation rates or code compliance','No code, structural, or professional-plan review is performed'], 'wallBaselineReady':bool(comparison), 'wallBaselineIds':baseline_ids, 'wallCurrentIds':current_ids, 'wallBaselineCount':len(baseline_ids), 'wallCurrentCount':len(current_ids), 'wallChanges':wall_changes[:100], '_wallBaselineToSave':baseline_to_save, 'segments':len(lines), 'siteMm':[max_x,max_y]}
 
 doc = None
 had_project = os.path.exists(PROJECT)
