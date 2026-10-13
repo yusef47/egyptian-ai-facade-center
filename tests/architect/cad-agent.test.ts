@@ -270,7 +270,7 @@ describe("CAD agent input and execution contracts", () => {
   });
 
   it("accepts unresolved brief items without invented evidence and safely retries invalid commands once", async () => {
-    const unresolved = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "start", requiredElements: [{ requirement: "two apartments", status: "unresolved", evidenceIds: [] }], done: false });
+    const unresolved = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "start", requiredElements: [{ requirement: "two apartments", status: "unresolved" }], done: false });
     expect(parseCadCommandAction(unresolved, 3, 3)?.requiredElements[0].evidenceIds).toEqual([]);
     expect(parseCadCommandAction(unresolved, 3, 3)?.requiredElements[0].evidence).toBe("Not evaluated yet");
 
@@ -291,6 +291,32 @@ describe("CAD agent input and execution contracts", () => {
       expect(JSON.stringify(retryBody.messages)).toContain("command index 0");
       expect(JSON.stringify(retryBody.messages)).not.toContain("unsafe-secret-marker");
       expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"op":"unknown"'));
+    } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+  });
+
+  it("defaults omitted done to false and reports safe field-level schema diagnostics on retry", async () => {
+    const missingDone = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }] });
+    expect(parseCadCommandAction(missingDone, 3, 3)?.done).toBe(false);
+    expect(parseCadCommandAction(missingDone, 3, 3)?.summary).toBe("تم تحديث عناصر الرسم");
+    const malformed = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "bad schema", requiredElements: [{ requirement: "two apartments", status: "met", evidenceIds: [] }], done: false });
+    const rejection: { category: string; schemaFields?: string[] } = { category: "" };
+    expect(parseCadCommandAction(malformed, 3, 3, null, rejection)).toBeNull();
+    expect(rejection).toMatchObject({ category: "invalid_top_level_schema", schemaFields: ["requiredElements[0].evidenceIds:count_out_of_range_for_status", "requiredElements[0].evidence:required_for_met"] });
+
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const repaired = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "تم" });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: malformed } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(proposeCadCommands({ ...valid, siteWidth: 3, siteDepth: 3 }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
+      const retryBody = JSON.parse(fetchFn.mock.calls[1][1]?.body as string);
+      expect(JSON.stringify(retryBody.messages)).toContain("requiredElements[0].evidenceIds:count_out_of_range_for_status");
+      expect(JSON.stringify(retryBody.messages)).toContain("requiredElements[0].evidence:required_for_met");
+      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"schemaFields":["requiredElements[0].evidenceIds:count_out_of_range_for_status","requiredElements[0].evidence:required_for_met"]'));
+      expect(JSON.stringify(retryBody.messages)).not.toContain("bad schema");
     } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
   });
 
