@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 import type { ArchitecturalConcept } from "../../lib/architect/concept-board";
+import { verifyCadProgressSnapshot } from "../../lib/architect/cad-agent-progress";
 
 type Inspection = { counts: Record<string, number>; warnings: string[]; unverifiedChecks?: string[]; objects: number; segments: number };
 type Turn = { role: "user" | "assistant"; text: string };
@@ -17,6 +18,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
   const storageKey = selectedConcept
     ? `${STORAGE}:${conceptRunId ?? "legacy"}:${selectedConcept.id}:${selectedConcept.strategy}:${encodeURIComponent(`${selectedConcept.title}:${selectedConcept.idea}`).slice(0, 80)}`
     : STORAGE;
+  const progressKey = `${storageKey}:progress`;
   const selectedBrief = selectedConcept
     ? (sourceBrief ?? "").slice(0, 1500)
     : EXAMPLE;
@@ -32,6 +34,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [completedSteps, setCompletedSteps] = useState(0);
+  const [resumableBrief, setResumableBrief] = useState<string | null>(null);
   const [setupAttempt, setSetupAttempt] = useState(0);
 
   useEffect(() => {
@@ -58,7 +61,21 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
         if (data.state === "ready") {
           setState("ready"); setStatus("FreeCAD جاهز. المساعد يقدر يبدأ الرسم على المشروع المحفوظ.");
           if (data.previewSvg) setPreview(data.previewSvg);
-          if (data.inspection) setInspection(data.inspection);
+          if (data.inspection) {
+            setInspection(data.inspection);
+            try {
+              const saved = localStorage.getItem(progressKey);
+              const checkpoint = saved ? verifyCadProgressSnapshot(JSON.parse(saved), { projectId, siteWidth: Number(width), siteDepth: Number(depth), inspection: data.inspection }) : null;
+              if (checkpoint) {
+                setCompletedSteps(checkpoint.completedSteps);
+                setResumableBrief(checkpoint.brief);
+                setInstruction((current) => current === selectedBrief ? checkpoint.brief : current);
+              } else {
+                setCompletedSteps(0); setResumableBrief(null);
+                if (saved) localStorage.removeItem(progressKey);
+              }
+            } catch { localStorage.removeItem(progressKey); }
+          }
         } else if (data.state === "error") {
           setState("error"); setStatus("تعذر تجهيز FreeCAD على الخادم.");
         } else {
@@ -72,7 +89,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
     };
     void check();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [projectId, setupAttempt]);
+  }, [projectId, setupAttempt, progressKey, width, depth, selectedBrief]);
 
   async function retrySetup() {
     setError(""); setState("checking");
@@ -101,11 +118,13 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
     let token = session?.data.session?.access_token;
     if (!token) { setError("سجّل دخولك بحساب الأدمن أولًا."); return; }
     const brief = instruction.trim();
-    setBusy(true); setError(""); setCompletedSteps(0);
+    const startStep = resumableBrief === brief && completedSteps < 4 ? completedSteps : 0;
+    setBusy(true); setError(""); setCompletedSteps(startStep);
+    if (startStep === 0) { setResumableBrief(null); localStorage.removeItem(progressKey); }
     let completed = false;
     setTurns((previous) => [...previous, { role: "user", text: brief }]);
     try {
-      for (let step = 0; step < 4; step++) {
+      for (let step = startStep; step < 4; step++) {
         setStatus(`المساعد بيفحص المشروع ويرسم المرحلة ${step + 1} من 4 داخل FreeCAD...`);
         let executionError: string | undefined;
         let data: { previewSvg?: string; inspection?: Inspection; summary?: string; selfReview?: string[]; requiredElements?: { requirement: string; status: "met" | "unresolved"; evidenceIds: string[]; evidence: string }[]; unresolvedItems?: string[]; modelDone?: boolean; done?: boolean; error?: string; state?: string } | null = null;
@@ -124,7 +143,8 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
           token = refreshed?.data.session?.access_token ?? token;
         }
         if (!data?.previewSvg || !data.inspection) throw new Error("FreeCAD لم يُرجع لوحة رسم صالحة");
-        setPreview(data.previewSvg); setInspection(data.inspection); setCompletedSteps(step + 1);
+        setPreview(data.previewSvg); setInspection(data.inspection); setCompletedSteps(step + 1); setResumableBrief(brief);
+        try { localStorage.setItem(progressKey, JSON.stringify({ projectId, brief, siteWidth, siteDepth, completedSteps: step + 1, counts: data.inspection.counts, objects: data.inspection.objects, segments: data.inspection.segments })); } catch { /* Keep the in-memory resume cursor when browser storage is unavailable. */ }
         setTurns((previous) => [...previous, { role: "assistant", text: `${data?.summary ?? `اكتملت المرحلة ${step + 1}`}${data?.selfReview?.length ? `\nمراجعة الرسم: ${data.selfReview.join(" · ")}` : ""}${data?.requiredElements?.length ? `\nمتطلبات الطلب: ${data.requiredElements.map((item) => `${item.status === "met" ? "متحقق" : "غير متحقق"}: ${item.requirement} (${item.evidenceIds.join(", ")})`).join(" · ")}` : ""}${data?.unresolvedItems?.length ? `\nنقاط ما زالت مفتوحة: ${data.unresolvedItems.join(" · ")}` : ""}${data?.modelDone && !data?.done ? "\nالموديل اقترح اكتمال الطلب، لكن فحوص الرسم لم تسمح بتأكيده." : ""}` }]);
         if (data.done) { completed = true; break; }
       }
@@ -162,7 +182,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
       const response = await fetch("/api/architect/cad-agent", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "undo", projectId }) });
       const data = await response.json();
       if (!response.ok || !data.previewSvg || !data.inspection) throw new Error(data.error || "لا توجد نسخة سابقة للتراجع إليها");
-      setPreview(data.previewSvg); setInspection(data.inspection); setStatus("تم الرجوع إلى النسخة السابقة من الرسم.");
+      setPreview(data.previewSvg); setInspection(data.inspection); setCompletedSteps(0); setResumableBrief(null); localStorage.removeItem(progressKey); setStatus("تم الرجوع إلى النسخة السابقة من الرسم.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "تعذر التراجع"); }
     finally { setBusy(false); }
   }
@@ -170,7 +190,8 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
   function reset() {
     const id = newProjectId();
     localStorage.setItem(storageKey, id); setProjectId(id); setState("checking");
-    setPreview(null); setInspection(null); setTurns([]); setCompletedSteps(0); setError(""); setInstruction(selectedConcept ? selectedBrief : EXAMPLE);
+    localStorage.removeItem(progressKey);
+    setPreview(null); setInspection(null); setTurns([]); setCompletedSteps(0); setResumableBrief(null); setError(""); setInstruction(selectedConcept ? selectedBrief : EXAMPLE);
   }
 
   return <main dir="rtl" className="min-h-screen bg-[#071014] px-4 py-6 text-white md:px-7">

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -117,6 +117,35 @@ describe("CAD agent input and execution contracts", () => {
     ], summary: "invalid", done: false }), 20, 20)).toBeNull();
     expect(FREECAD_HARNESS).toContain("'HATCH':'#6ca6a3'");
     expect(FREECAD_HARNESS).toContain("pair(0,'LINE',8,kind");
+  });
+
+  it("classifies furniture contract failures with bounded reason codes", () => {
+    const invalidFurniture = (command: Record<string, unknown>) => JSON.stringify({ commands: [{ op: "furniture", id: "furn-1", kind: "bed-double", at: [1000, 1000], width: 1800, depth: 2000, ...command }], summary: "test", done: false });
+    const rejection: CadCommandRejection = { category: "" };
+    expect(parseCadCommandAction(invalidFurniture({ kind: "unknown-sofa" }), 20, 20, null, rejection)).toBeNull();
+    expect(rejection.reasonCode).toBe("unsupported_furniture_kind");
+    expect(parseCadCommandAction(invalidFurniture({ at: [19_500, 1000] }), 20, 20, null, rejection)).toBeNull();
+    expect(rejection.reasonCode).toBe("furniture_outside_site");
+    expect(parseCadCommandAction(invalidFurniture({ width: 30_000 }), 20, 20, null, rejection)).toBeNull();
+    expect(rejection.reasonCode).toBe("invalid_furniture_dimensions");
+    expect(parseCadCommandAction(invalidFurniture({ kind: "car-sedan", width: 800, depth: 1200 }), 20, 20, null, rejection)).toBeNull();
+    expect(rejection.reasonCode).toBe("invalid_vehicle_scale");
+  });
+
+  it("uses the furniture rejection code in its single bounded repair prompt", async () => {
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const invalid = JSON.stringify({ commands: [{ op: "furniture", id: "bed-1", kind: "bed-double", at: [19_500, 1000], width: 1800, depth: 2000 }], summary: "bed", done: false });
+    const repaired = JSON.stringify({ commands: [{ op: "furniture", id: "bed-1", kind: "bed-double", at: [17_000, 1000], width: 1800, depth: 2000 }], summary: "bed", done: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: invalid } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
+    try {
+      await expect(proposeCadCommands({ ...valid, siteWidth: 20, siteDepth: 20 }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ commands: [{ op: "furniture", at: [17_000, 1000] }] });
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      const retryBody = JSON.parse(String(fetchFn.mock.calls[1][1]?.body));
+      expect(retryBody.messages[1].content[0].text).toContain("reason furniture_outside_site");
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it("centers hatch strokes inside narrow wall bands instead of aligning them to an edge", () => {
@@ -353,14 +382,20 @@ describe("CAD agent input and execution contracts", () => {
         const body = JSON.parse(options.body as string);
         expect(body.model).toBe("anthropic/claude-sonnet-5.5");
         expect(body.messages[0].content).toContain("metric input");
-        const userContent = body.messages[1].content;
+        expect(body.messages[1].content).toContain("do not treat an earlier request for three alternatives as a CAD requirement");
+        const userContent = body.messages[2].content;
+        const cadContext = JSON.parse(userContent[0].text);
+        expect(cadContext.userBrief).toBe(originalBrief);
+        expect(cadContext.selectedConceptDrawingScope).toMatchObject({ mode: "draw_selected_concept_only", selectedId: "B" });
+        expect(cadContext.selectedConceptDrawingScope.instruction).toContain("do not treat an earlier request to propose multiple concepts as a CAD drawing requirement");
         expect(userContent[0].text).toContain('"id":"B"');
         expect(userContent[0].text).toContain('"strategy":"courtyard"');
         expect(userContent.filter((part: { type: string }) => part.type === "image_url")).toHaveLength(1);
-        expect(userContent[1].image_url.url.startsWith("data:image/jpeg;base64,")).toBe(true);
+        expect(userContent.find((part: { type: string }) => part.type === "image_url").image_url.url.startsWith("data:image/jpeg;base64,")).toBe(true);
         return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "تم", done: false }) } }] }), { status: 200 });
       });
-      await expect(proposeCadCommands({ ...valid, selectedConcept, conceptBoardDataUrl }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
+      const originalBrief = "أريد شقتين وثلاث غرف نوم لكل شقة، وعلى الأرض 20×20 متر. اقترح ثلاث توزيعات مختلفة للحركة والخصوصية.";
+      await expect(proposeCadCommands({ ...valid, instruction: originalBrief, selectedConcept, conceptBoardDataUrl }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
       expect(fetchFn).toHaveBeenCalledOnce();
     } finally { vi.unstubAllEnvs(); }
   });

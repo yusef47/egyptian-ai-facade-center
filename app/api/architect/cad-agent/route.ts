@@ -116,6 +116,10 @@ export async function POST(request: Request) {
       ? `FreeCAD action failed: ${error.message}`
       : message.startsWith("FreeCAD action failed:")
       ? `فشلت خطوة الرسم داخل FreeCAD: ${message.slice(23, 350)}`
+      : error instanceof CadCommandValidationError && error.diagnostic.op === "furniture"
+      ? `فشل فحص عنصر أثاث في استجابة CAD بعد محاولة تصحيح واحدة (${error.diagnostic.reasonCode ?? "invalid_furniture"}${error.diagnostic.commandIndex !== undefined ? `، الأمر ${error.diagnostic.commandIndex + 1}` : ""}). لم يتغير المشروع المحفوظ؛ راجع أبعاد العنصر وموقعه ثم أعد المحاولة.`
+      : error instanceof CadCommandValidationError
+      ? `فشل التحقق من استجابة CAD بعد محاولة تصحيح واحدة (${error.diagnostic.category}${error.diagnostic.commandIndex !== undefined ? `، الأمر ${error.diagnostic.commandIndex + 1}` : ""}). لم يتغير المشروع المحفوظ؛ أعد المحاولة.`
       : "تعذّر إكمال خطوة CAD. المشروع المحفوظ لم يتغير؛ حاول مرة أخرى." }, { status: 502 });
   }
 }
