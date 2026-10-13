@@ -22,6 +22,49 @@ describe("CAD agent input and execution contracts", () => {
     expect(parseCadCommandAction(wall, 20, 20, null, undefined, 8, allowed, true)?.commands[0].op).toBe("wall");
   });
 
+  it("reports the exact opening host and offset constraint without exposing model text", () => {
+    const rejection: CadCommandRejection = { category: "" };
+    const invalid = JSON.stringify({ commands: [
+      { op: "wall", id: "host-wall", from: [100, 100], to: [2100, 100], thickness: 200 },
+      { op: "opening", id: "entry-door", wallId: "host-wall", offset: 1200, width: 900, kind: "DOOR" },
+    ], summary: "x", done: false });
+    expect(parseCadCommandAction(invalid, 3, 3, null, rejection)).toBeNull();
+    expect(rejection).toMatchObject({ category: "invalid_command_contract", commandIndex: 1, op: "opening", reasonCode: "opening_invalid_offset", hostWallLengthMm: 2000, openingMaxOffsetMm: 1050 });
+
+    const missingHost = JSON.stringify({ commands: [{ op: "opening", id: "entry-door", wallId: "missing-wall", offset: 500, width: 900, kind: "DOOR" }], summary: "x", done: false });
+    expect(parseCadCommandAction(missingHost, 3, 3, null, rejection)).toBeNull();
+    expect(rejection.reasonCode).toBe("opening_host_wall_missing");
+    expect(rejection.hostWallLengthMm).toBeUndefined();
+  });
+
+  it("gives Sonnet the measured host span on retry and keeps a rejected batch atomic", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const selectedConcept = { id: "A" as const, title: "Selected courtyard", strategy: "courtyard" as const, idea: "Courtyard apartments", circulation: "Compact shared core", siteWidthM: 20, siteDepthM: 20, program: ["two apartments"], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] };
+    const invalid = JSON.stringify({ commands: [
+      { op: "wall", id: "host-wall", from: [100, 100], to: [2100, 100], thickness: 200 },
+      { op: "room", id: "room-a", name: "Living", at: [1000, 1000] },
+      { op: "opening", id: "entry-door", wallId: "host-wall", offset: 1200, width: 900, kind: "DOOR" },
+    ], summary: "try", done: false });
+    const repaired = JSON.stringify({ commands: [
+      { op: "wall", id: "host-wall", from: [100, 100], to: [2100, 100], thickness: 200 },
+      { op: "room", id: "room-a", name: "Living", at: [1000, 1000] },
+      { op: "opening", id: "entry-door", wallId: "host-wall", offset: 500, width: 900, kind: "DOOR" },
+    ], summary: "تم تصحيح الفتحة", done: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: invalid } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await proposeCadCommands({ ...valid, selectedConcept }, null, null, fetchFn as unknown as typeof fetch);
+      expect(result.commands.map((command) => command.op)).toEqual(["wall", "room", "opening"]);
+      const retryBody = JSON.parse(fetchFn.mock.calls[1][1]?.body as string);
+      expect(JSON.stringify(retryBody.messages)).toContain("host wall is 2000 mm long");
+      expect(JSON.stringify(retryBody.messages)).toContain("offset must be 50..1050 mm");
+      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"reasonCode":"opening_invalid_offset"'));
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+  });
+
   it("compacts long inspections while retaining semantic issue targets and stable IDs", () => {
     const objects = Array.from({ length: 260 }, (_, i) => ({ id: `item-${i}`, label: `LABEL_${i}`, type: "Part::Feature", layer: "OTHER", semantic: i === 250 ? "furniture" : "line", boundsMm: [i, i, i + 100, i + 100], positionMm: [i, i], text: "x".repeat(300) }));
     const compact = compactCadInspection({ ok: true, objects, objectIds: objects.map((object) => object.id), counts: { OTHER: 260 }, warnings: [], qualityIssues: [{ code: "furniture_opening_clearance", severity: "blocking", ids: ["item-250"], message: "move furniture" }], segments: 260, siteMm: [20_000, 20_000] });
