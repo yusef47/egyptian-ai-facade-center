@@ -2,7 +2,7 @@ import { extractChatText } from "../architect-interpreter";
 import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
 import { CONCEPT_BOARD_MODELS } from "./concept-board";
 
-export const LISP_LAB_LIMITS = { brief: 2_000, source: 48_000, timeoutMs: 165_000, maxTokens: 12_000 } as const;
+export const LISP_LAB_LIMITS = { brief: 2_000, source: 80_000, responseBytes: 200_000, timeoutMs: 270_000, maxTokens: 20_000 } as const;
 
 const SYSTEM_PROMPT = `Write one complete, self-contained AutoLISP file defining c:QATTANPLAN for a schematic 2D residential plan. Units are millimetres; state this in a short header comment. Use entmake. Keep source compact: define reusable helper functions for layers, lines, polylines, labels and dimensions, and call them with coordinate data instead of repeating entity-building code. Include the plot boundary, walls with real door/window gaps and symbols, labeled rooms, shared stair, and named layers for walls, doors, windows, stairs, furniture, labels and dimensions, plus overall dimensions. Design freely from the brief, no fixed template. Finish the entire command; use concise coordinates and labels. Warn that reruns may duplicate entities and a clean drawing is recommended. Return ONLY complete source, no Markdown. Never use command/eval, file or network access, shell/system, COM/ActiveX, reactors, autoload/startup hooks, persistence or external dependencies. Do not claim code compliance or structural validation.`;
 
@@ -86,7 +86,7 @@ export async function generateAutoLisp(brief: string, fetchFn: typeof fetch = fe
     throw new Error("upstream_failed");
   }
   const raw = await response.text();
-  if (raw.length > 100_000) throw new Error("invalid_response");
+  if (raw.length > LISP_LAB_LIMITS.responseBytes) throw new Error("invalid_response");
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(raw) as Record<string, unknown>; } catch { throw new Error("invalid_response"); }
   const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;

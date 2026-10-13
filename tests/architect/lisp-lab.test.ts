@@ -21,14 +21,15 @@ describe("AutoLISP pilot contract", () => {
   });
 
   it("makes one bounded Sonnet call and reports provider usage without retry", async () => {
-    expect(LISP_LAB_LIMITS.timeoutMs).toBe(165_000);
-    expect(LISP_LAB_LIMITS.maxTokens).toBe(12_000);
-    expect(LISP_LAB_LIMITS.source).toBe(48_000);
+    expect(LISP_LAB_LIMITS.timeoutMs).toBe(270_000);
+    expect(LISP_LAB_LIMITS.maxTokens).toBe(20_000);
+    expect(LISP_LAB_LIMITS.source).toBe(80_000);
+    expect(LISP_LAB_LIMITS.responseBytes).toBe(200_000);
     const fetchFn = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("anthropic/claude-sonnet-5.5");
       expect(body.reasoning).toEqual({ effort: "medium" });
-      expect(body.max_tokens).toBe(12_000);
+      expect(body.max_tokens).toBe(20_000);
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: validLisp } }], usage: { prompt_tokens: 900, completion_tokens: 500, cost: 0.0123 } }), { status: 200 });
     });
     await expect(generateAutoLisp("20 m plan", fetchFn as unknown as typeof fetch)).resolves.toMatchObject({
