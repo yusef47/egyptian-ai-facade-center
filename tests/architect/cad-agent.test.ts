@@ -38,7 +38,7 @@ describe("CAD agent input and execution contracts", () => {
     const inspection = { ok: true, objects: Array.from({ length: 86 }, (_, i) => ({ id: `object-${i}`, label: `OBJECT_${i}`, type: "Part::Feature", layer: "OTHER", semantic: "furniture", boundsMm: [1000 + i, 1000, 2000 + i, 2000] })), counts: { OTHER: 86 }, warnings: [], segments: 86, siteMm: [20_000, 20_000] };
     const repaired = JSON.stringify({ commands: [{ op: "move", id: "object-85", delta: [200, 0] }], summary: "تعديل محدد", selfReview: ["راجعت مساحة الحركة"], requiredElements: [], unresolvedItems: ["تحتاج الغرف الأخرى مراجعة لاحقة"], done: false });
     const fetchFn = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{\"commands\":[" } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{\"commands\":[" } }], usage: { prompt_tokens: 12_000, completion_tokens: 6_000, completion_tokens_details: { reasoning_tokens: 6_000 } } }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -50,18 +50,20 @@ describe("CAD agent input and execution contracts", () => {
       const firstUser = first.messages.find((message: { role: string }) => message.role === "user");
       const firstPayload = JSON.parse(firstUser.content.find((part: { type: string }) => part.type === "text").text);
       expect(first.max_tokens).toBe(6_000);
-      expect(first.reasoning.max_tokens).toBe(900);
-      expect(firstPayload).toMatchObject({ commandLimit: 8, currentDrawing: { objectCount: 86, listedObjectCount: 86 } });
+      expect(first.reasoning).toEqual({ effort: "low" });
+      expect(first.response_format).toEqual({ type: "json_object" });
+      expect(firstPayload).toMatchObject({ commandLimit: 5, currentDrawing: { objectCount: 86, listedObjectCount: 72, omittedObjectCount: 14 } });
       expect(JSON.stringify(firstPayload.currentDrawing)).not.toContain('"label":"OBJECT_0"');
       expect(firstUser.content.some((part: { image_url?: { url?: string } }) => part.image_url?.url?.startsWith("data:image/jpeg;base64,"))).toBe(false);
       expect(firstUser.content.some((part: { image_url?: { url?: string } }) => part.image_url?.url?.startsWith("data:image/png;base64,"))).toBe(true);
-      expect(retry.max_tokens).toBe(3_200);
-      expect(retry.reasoning.max_tokens).toBe(128);
+      expect(retry.max_tokens).toBe(6_000);
+      expect(retry.reasoning).toEqual({ effort: "low" });
       const retrySystem = retry.messages.find((message: { role: string }) => message.role === "system").content;
       const retryUser = retry.messages.find((message: { role: string }) => message.role === "user");
       const retryPayload = JSON.parse(retryUser.content.find((part: { type: string }) => part.type === "text").text);
-      expect(retrySystem).toContain("at most 3 targeted commands");
+      expect(retrySystem).toContain("at most 3 concise commands");
       expect(retryPayload.commandLimit).toBe(3);
+      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"visibleTokens":0'));
       expect(fetchFn).toHaveBeenCalledTimes(2);
       const tooMany = { commands: Array.from({ length: 4 }, (_, i) => ({ op: "line", id: `line-${i}`, from: [i * 100, 0], to: [i * 100 + 50, 50] })), summary: "many" };
       expect(parseCadCommandAction(JSON.stringify(tooMany), 20, 20, null, undefined, 3)).toBeNull();
@@ -86,6 +88,8 @@ describe("CAD agent input and execution contracts", () => {
     const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("anthropic/claude-sonnet-5.5");
+      expect(body.max_tokens).toBe(5_000);
+      expect(body.reasoning).toEqual({ effort: "medium" });
       expect(JSON.stringify(body.messages)).toContain("object-85");
       expect(JSON.stringify(body.messages)).toContain("data:image/png;base64,");
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(review) } }] }), { status: 200 });
@@ -480,7 +484,9 @@ describe("CAD agent input and execution contracts", () => {
       const fetchFn = vi.fn(async (_url: unknown, options: RequestInit) => {
         const body = JSON.parse(options.body as string);
         expect(body.model).toBe("anthropic/claude-sonnet-5.5");
-        expect(body.messages[0].content).toContain("metric input");
+        expect(body.messages[0].content).toContain("visual references, never metric inputs");
+        expect(body.reasoning).toEqual({ effort: "low" });
+        expect(body.response_format).toEqual({ type: "json_object" });
         expect(body.messages[1].content).toContain("do not treat an earlier request for three alternatives as a CAD requirement");
         const userContent = body.messages[2].content;
         const cadContext = JSON.parse(userContent[0].text);
