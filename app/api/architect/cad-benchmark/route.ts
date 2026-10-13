@@ -54,7 +54,8 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model,
         temperature: 0.25,
-        max_tokens: 12000,
+        max_tokens: 16000,
+        reasoning: { effort: "low" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: "Produce your best furnished architectural CAD plan now. Check every requested room and the hosted opening offsets before you answer." },
