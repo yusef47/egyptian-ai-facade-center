@@ -121,7 +121,9 @@ describe("CAD agent input and execution contracts", () => {
     expect(cadCompletionReady(approved, { ...drawing, objects: [{ id: "room-a" }] })).toBe(false);
     expect(cadCompletionReady(approved, { ...drawing, objects: [{ id: "room-a", semantic: "room", text: "Flat A" }, { id: "room-b", semantic: "circle", text: "Flat B" }] })).toBe(false);
     expect(cadCompletionReady(approved, { ...drawing, warnings: ["door gap mismatch"] })).toBe(false);
-    expect(parseCadCommandAction(JSON.stringify({ commands: [{ op: "line", id: "line-a", from: [100, 100], to: [500, 100] }], summary: "x", selfReview: [], requiredElements: [{ requirement: "room", status: "met", evidenceIds: [], evidence: "proof" }], unresolvedItems: [], done: true }), 3, 3)).toBeNull();
+    const unsupportedCompletion = parseCadCommandAction(JSON.stringify({ commands: [{ op: "line", id: "line-a", from: [100, 100], to: [500, 100] }], summary: "x", selfReview: [], requiredElements: [{ requirement: "room", status: "met", evidenceIds: [], evidence: "proof" }], unresolvedItems: [], done: true }), 3, 3);
+    expect(unsupportedCompletion).toMatchObject({ done: false, requiredElements: [{ status: "unresolved", evidenceIds: [] }] });
+    expect(unsupportedCompletion?.unresolvedItems).toContain("Evidence pending: room");
   });
 
   it("runs deterministic opening, room, and schematic object checks and reports unverified enclosure", () => {
@@ -298,10 +300,10 @@ describe("CAD agent input and execution contracts", () => {
     const missingDone = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }] });
     expect(parseCadCommandAction(missingDone, 3, 3)?.done).toBe(false);
     expect(parseCadCommandAction(missingDone, 3, 3)?.summary).toBe("تم تحديث عناصر الرسم");
-    const malformed = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "bad schema", requiredElements: [{ requirement: "two apartments", status: "met", evidenceIds: [] }], done: false });
+    const malformed = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "bad schema", selfReview: ["geometry checked", 42], requiredElements: [{ requirement: "two apartments", status: "met", evidenceIds: [] }], done: false });
     const rejection: { category: string; schemaFields?: string[] } = { category: "" };
     expect(parseCadCommandAction(malformed, 3, 3, null, rejection)).toBeNull();
-    expect(rejection).toMatchObject({ category: "invalid_top_level_schema", schemaFields: ["requiredElements[0].evidenceIds:count_out_of_range_for_status", "requiredElements[0].evidence:required_for_met"] });
+    expect(rejection).toMatchObject({ category: "invalid_top_level_schema", schemaFields: ["selfReview[1]:expected_string_max_240"] });
 
     vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
@@ -313,9 +315,8 @@ describe("CAD agent input and execution contracts", () => {
     try {
       await expect(proposeCadCommands({ ...valid, siteWidth: 3, siteDepth: 3 }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
       const retryBody = JSON.parse(fetchFn.mock.calls[1][1]?.body as string);
-      expect(JSON.stringify(retryBody.messages)).toContain("requiredElements[0].evidenceIds:count_out_of_range_for_status");
-      expect(JSON.stringify(retryBody.messages)).toContain("requiredElements[0].evidence:required_for_met");
-      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"schemaFields":["requiredElements[0].evidenceIds:count_out_of_range_for_status","requiredElements[0].evidence:required_for_met"]'));
+      expect(JSON.stringify(retryBody.messages)).toContain("selfReview[1]:expected_string_max_240");
+      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"schemaFields":["selfReview[1]:expected_string_max_240"]'));
       expect(JSON.stringify(retryBody.messages)).not.toContain("bad schema");
     } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
   });

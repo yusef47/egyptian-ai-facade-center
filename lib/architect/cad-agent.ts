@@ -117,27 +117,6 @@ function cadSchemaIssues(value: Record<string, unknown>): string[] {
       value.selfReview.forEach((item, index) => { if (typeof item !== "string" || item.length > 240) add(`selfReview[${index}]`, "expected_string_max_240"); });
     }
   }
-  if (value.requiredElements !== undefined) {
-    if (!Array.isArray(value.requiredElements)) add("requiredElements", "expected_array");
-    else {
-      if (value.requiredElements.length > 12) add("requiredElements", "max_items_12");
-      value.requiredElements.forEach((raw, index) => {
-        const field = `requiredElements[${index}]`;
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) { add(field, "expected_object"); return; }
-        const item = raw as Record<string, unknown>;
-        if (typeof item.requirement !== "string" || item.requirement.trim().length < 3 || item.requirement.length > 120) add(`${field}.requirement`, "expected_string_length_3_120");
-        if (item.status !== "met" && item.status !== "unresolved") add(`${field}.status`, "expected_met_or_unresolved");
-        if (!Array.isArray(item.evidenceIds) && !(item.status === "unresolved" && item.evidenceIds === undefined)) add(`${field}.evidenceIds`, "expected_array");
-        else {
-          const evidenceIds = Array.isArray(item.evidenceIds) ? item.evidenceIds : [];
-          if (evidenceIds.length > 8 || (item.status === "met" && evidenceIds.length < 1)) add(`${field}.evidenceIds`, "count_out_of_range_for_status");
-          evidenceIds.forEach((id, evidenceIndex) => { if (typeof id !== "string" || !CAD_ID.test(id)) add(`${field}.evidenceIds[${evidenceIndex}]`, "invalid_cad_id"); });
-        }
-        if (item.status === "met" && (typeof item.evidence !== "string" || !item.evidence.trim())) add(`${field}.evidence`, "required_for_met");
-        if (item.evidence !== undefined && (typeof item.evidence !== "string" || item.evidence.length > 200)) add(`${field}.evidence`, "expected_string_max_200");
-      });
-    }
-  }
   if (value.unresolvedItems !== undefined) {
     if (!Array.isArray(value.unresolvedItems)) add("unresolvedItems", "expected_array");
     else {
@@ -147,6 +126,38 @@ function cadSchemaIssues(value: Record<string, unknown>): string[] {
   }
   if (value.done !== undefined && typeof value.done !== "boolean") add("done", "expected_boolean");
   return issues;
+}
+function normalizeCadRequirements(raw: unknown): { requiredElements: CadRequirementReview[]; reviewNeeded: boolean; pending: string[] } {
+  if (raw === undefined) return { requiredElements: [], reviewNeeded: false, pending: [] };
+  if (!Array.isArray(raw)) return { requiredElements: [], reviewNeeded: true, pending: ["Brief requirement evidence needs review"] };
+  const requiredElements: CadRequirementReview[] = [];
+  const pending: string[] = [];
+  let reviewNeeded = raw.length > 12;
+  if (reviewNeeded) pending.push("Additional brief requirements need review");
+  for (const entry of raw.slice(0, 12)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      reviewNeeded = true;
+      pending.push("Brief requirement metadata needs review");
+      continue;
+    }
+    const item = entry as Record<string, unknown>;
+    const validRequirement = typeof item.requirement === "string" && item.requirement.trim().length >= 3 && item.requirement.length <= 120;
+    const requirement = validRequirement ? (item.requirement as string).trim() : "Brief requirement needs review";
+    const validStatus = item.status === "met" || item.status === "unresolved";
+    const evidenceIds = Array.isArray(item.evidenceIds) ? item.evidenceIds : [];
+    const validIds = evidenceIds.length <= 8 && evidenceIds.every((id) => typeof id === "string" && CAD_ID.test(id));
+    const evidence = typeof item.evidence === "string" && item.evidence.trim().length > 0 && item.evidence.length <= 200 ? item.evidence.trim() : "Not evaluated yet";
+    const claimedMet = item.status === "met";
+    const provenMet = claimedMet && validRequirement && validStatus && validIds && evidenceIds.length > 0 && evidence !== "Not evaluated yet";
+    const status: CadRequirementReview["status"] = provenMet ? "met" : "unresolved";
+    const normalizedIds = validIds && (!claimedMet || provenMet) ? evidenceIds as string[] : [];
+    requiredElements.push({ requirement, status, evidenceIds: normalizedIds, evidence: provenMet ? evidence : "Not evaluated yet" });
+    if (status === "unresolved") {
+      pending.push(`Evidence pending: ${requirement}`);
+      if (claimedMet || !validRequirement || !validStatus || !validIds || (item.evidence !== undefined && evidence === "Not evaluated yet")) reviewNeeded = true;
+    }
+  }
+  return { requiredElements, reviewNeeded, pending: [...new Set(pending)].slice(0, 12) };
 }
 function transformFitsSite(objects: CadInspection["objects"], id: string, maxX: number, maxY: number, transform: { delta: [number, number] } | { center: [number, number]; angle: number }): boolean {
   const angle = "angle" in transform ? transform.angle * Math.PI / 180 : 0;
@@ -188,16 +199,11 @@ export function parseCadCommandAction(text: string, siteWidth: number, siteDepth
   const actionCommands = value.commands as unknown[];
   const actionSummary = typeof value.summary === "string" && value.summary.trim() ? value.summary.trim() : "تم تحديث عناصر الرسم";
   const selfReview = Array.isArray(value.selfReview) ? value.selfReview as string[] : [];
-  const unresolvedItems = Array.isArray(value.unresolvedItems) ? value.unresolvedItems as string[] : [];
-  const rawRequiredElements = Array.isArray(value.requiredElements) ? value.requiredElements : [];
-  const requiredElements: CadRequirementReview[] = [];
-  for (const rawRequirement of rawRequiredElements) {
-    if (!rawRequirement || typeof rawRequirement !== "object" || Array.isArray(rawRequirement)) return null;
-    const item = rawRequirement as Record<string, unknown>;
-    if (typeof item.requirement !== "string" || item.requirement.trim().length < 3 || item.requirement.length > 120 || (item.status !== "met" && item.status !== "unresolved") || (!Array.isArray(item.evidenceIds) && !(item.status === "unresolved" && item.evidenceIds === undefined)) || (item.status === "met" && (!Array.isArray(item.evidenceIds) || item.evidenceIds.length < 1)) || (Array.isArray(item.evidenceIds) && (item.evidenceIds.length > 8 || !item.evidenceIds.every((id) => typeof id === "string" && CAD_ID.test(id)))) || (item.status === "met" && (typeof item.evidence !== "string" || !item.evidence.trim())) || (item.evidence !== undefined && (typeof item.evidence !== "string" || item.evidence.length > 200))) return null;
-    requiredElements.push({ requirement: item.requirement.trim(), status: item.status, evidenceIds: (Array.isArray(item.evidenceIds) ? item.evidenceIds : []) as string[], evidence: typeof item.evidence === "string" && item.evidence.trim() ? item.evidence.trim() : "Not evaluated yet" });
-  }
-  if (value.done && (requiredElements.length === 0 || unresolvedItems.length > 0)) { if (rejection) { rejection.category = "invalid_completion_contract"; rejection.schemaFields = ["done", "requiredElements", "unresolvedItems"]; } return null; }
+  const unresolvedItems = Array.isArray(value.unresolvedItems) ? [...value.unresolvedItems as string[]] : [];
+  const requirementReview = normalizeCadRequirements(value.requiredElements);
+  const requiredElements = requirementReview.requiredElements;
+  for (const pending of requirementReview.pending) if (!unresolvedItems.includes(pending) && unresolvedItems.length < 12) unresolvedItems.push(pending);
+  const requestedDone = value.done === true;
   const maxX = siteWidth * 1000, maxY = siteDepth * 1000;
   const commands: CadCommand[] = [];
   const ids = new Set<string>();
@@ -295,8 +301,11 @@ export function parseCadCommandAction(text: string, siteWidth: number, siteDepth
     }
     return null;
   }
+  const evidenceExists = requiredElements.every((item) => item.evidenceIds.every((id) => knownIds.has(id)));
+  const done = requestedDone && requiredElements.length > 0 && requiredElements.every((item) => item.status === "met" && item.evidenceIds.length > 0) && unresolvedItems.length === 0 && !requirementReview.reviewNeeded && evidenceExists;
+  if (requestedDone && !done && unresolvedItems.length < 12) unresolvedItems.push("Completion evidence is incomplete");
   if (rejection) { rejection.category = "valid"; delete rejection.commandIndex; delete rejection.op; }
-  return { commands, summary: actionSummary.trim(), selfReview, requiredElements, unresolvedItems, done: value.done === true };
+  return { commands, summary: actionSummary.trim(), selfReview, requiredElements, unresolvedItems, done };
 }
 
 export function cadCompletionReady(action: Pick<CadCommandAction, "done" | "requiredElements" | "unresolvedItems">, inspection: Pick<CadInspection, "warnings"> & { objects: Pick<CadInspection["objects"][number], "id" | "semantic" | "text" | "hostWallId" | "wallStartMm" | "wallEndMm" | "boundsMm">[]; objectIds?: string[] }): boolean {
@@ -571,7 +580,7 @@ export async function proposeCadCommands(input: CadInput, inspection: CadInspect
   }
   const thinking = model.startsWith("anthropic/") ? { max_tokens: 3_000 } : { effort: "medium" };
   const response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: attempt === 0 ? 10_000 : 7_000, reasoning: attempt === 0 ? thinking : (model.startsWith("anthropic/") ? { max_tokens: 1_500 } : { effort: "medium" }), messages: [
-  { role: "system", content: `You are an architectural CAD operator. Return ONLY JSON with shape {"commands":[...],"summary":"brief Arabic stage report","selfReview":["specific check/result"],"requiredElements":[{"requirement":"a concrete user-brief requirement","status":"met"|"unresolved","evidenceIds":["existing-or-created-object-id"],"evidence":"what inspected geometry supports this"}],"unresolvedItems":["remaining brief or drawing issue"],"done":false}. Never return code. Coordinates and sizes are millimeters in a 0..siteMm rectangle. Wall endpoints describe the wall centerline, so inset boundary walls by half their thickness to keep the finished face on the lot edge. Available commands: {"op":"wall","id":"stable-id","from":[x,y],"to":[x,y],"thickness":200}; {"op":"beam","id":"stable-id","from":[x,y],"to":[x,y],"width":250} for a conceptual 2D beam footprint only, with no structural sizing or validation; {"op":"dimension","id":"stable-id","from":[x,y],"to":[x,y],"offset":400} to draw extension lines, measured dimension line and numeric millimeter label for that exact span; dimensions are placed toward the site center automatically, but check their full bounds; {"op":"line","id":"stable-id","from":[x,y],"to":[x,y],"layer":"DIMENSION"}; {"op":"polyline","id":"stable-id","points":[[x,y],...],"closed":true,"layer":"OTHER"} for bounded primitive outlines; {"op":"opening","id":"stable-id","wallId":"existing-wall-id","offset":1200,"kind":"DOOR"|"WINDOW","width":900,"swingSide":1}. Openings cut a gap from that wall and draw a door leaf/swing arc or double-line window symbol; offset is measured from its start centerline. The default door swing points toward the site center; use swingSide 1 or -1 only when the chosen swing and its full arc remain inside the site. The host wall must exist already or be added earlier in the same batch. {"op":"hatch","id":"stable-id","targetId":"closed-polyline-or-wall-id","pattern":"diagonal"|"cross"|"tile","spacing":400,"angle":45} creates clipped, editable pattern strokes on a dedicated HATCH layer; tile is an orthogonal grid. Hatch only material zones you mean to show; spacing is bounded and hatch strokes are not associative native HATCH entities. {"op":"room","id":"stable-id","name":"Living","at":[x,y]}; {"op":"stair","id":"stable-id","kind":"flight","at":[x,y],"width":1000,"depth":3000,"angle":0,"treads":12} draws a schematic single flight with treads and travel arrow. {"op":"furniture","id":"stable-id","kind":"bed|bed-single|bed-double|sofa|sofa-2-seat|sofa-3-seat|armchair|dining-table|dining-table-4|dining-table-6|desk|wardrobe|kitchen-counter|kitchen-island|refrigerator|cooker|kitchen-sink|sink|bath-vanity|toilet|bathtub|shower|chair|car-compact|car-sedan|car-suv|generic-block","at":[x,y],"width":1800,"depth":2000,"angle":0}. Cars are top-view symbols; set width to vehicle width (~1800mm) and depth to its length (~4300mm), then rotate via angle. Beds, seating, dining tables and chairs, kitchen/bath fixtures and vehicles are procedural 2D outline/detail symbols with no third-party asset pack. {"op":"column","id":"stable-id","kind":"...","at":[x,y],"width":300,"depth":300,"angle":0}. Stair, furniture, vehicle and column shapes are schematic plan symbols, not detailed objects. {"op":"delete","id":"existing-stable-id"}. Max 80 commands per stage and two hatch commands per stage. IDs must remain stable across stages; edit by reusing the same ID; remove with delete. Work in incremental stages: first make site perimeter and major partition walls; next openings and room labels; then room hatches, dimensioned plans, stairs/furniture/vehicles/columns/beams and corrections. Every complete object shape must remain inside the site, not just its insertion point. Preflight wall thickness, door swing arcs, dimension ticks, and the rotated extents of furniture, cars, and stairs against all four boundaries. Keep clearance where a symbol has nonzero extent. Before completion, review the inspection warnings and preview. Fill selfReview with concrete visual/geometry checks performed. Map the important requirements from the actual user brief into requiredElements, and cite IDs that exist in the final inspection; mark each met only when the inspection is evidence. Explicitly list every outstanding brief or drawing issue in unresolvedItems. Set done=true only when every required element is met, every cited ID exists, unresolvedItems is empty, and deterministic geometry warnings are empty. Room enclosure/access, structure, and code are NOT checked; never present this as architectural correctness or claim code compliance.` },
+  { role: "system", content: `You are an architectural CAD operator. Return ONLY JSON with shape {"commands":[...],"summary":"brief Arabic stage report","selfReview":["specific check/result"],"requiredElements":[{"requirement":"a concrete user-brief requirement","status":"met"|"unresolved","evidenceIds":["existing-or-created-object-id"],"evidence":"what inspected geometry supports this"}],"unresolvedItems":["remaining brief or drawing issue"],"done":false}. Never return code. Requirement review is advisory during intermediate drawing: do not omit otherwise valid commands because evidence is not available yet. Mark unverified items unresolved with evidenceIds:[] and done=false; mark met only when evidence IDs exist in inspection or are created in this batch. Coordinates and sizes are millimeters in a 0..siteMm rectangle. Wall endpoints describe the wall centerline, so inset boundary walls by half their thickness to keep the finished face on the lot edge. Available commands: {"op":"wall","id":"stable-id","from":[x,y],"to":[x,y],"thickness":200}; {"op":"beam","id":"stable-id","from":[x,y],"to":[x,y],"width":250} for a conceptual 2D beam footprint only, with no structural sizing or validation; {"op":"dimension","id":"stable-id","from":[x,y],"to":[x,y],"offset":400} to draw extension lines, measured dimension line and numeric millimeter label for that exact span; dimensions are placed toward the site center automatically, but check their full bounds; {"op":"line","id":"stable-id","from":[x,y],"to":[x,y],"layer":"DIMENSION"}; {"op":"polyline","id":"stable-id","points":[[x,y],...],"closed":true,"layer":"OTHER"} for bounded primitive outlines; {"op":"opening","id":"stable-id","wallId":"existing-wall-id","offset":1200,"kind":"DOOR"|"WINDOW","width":900,"swingSide":1}. Openings cut a gap from that wall and draw a door leaf/swing arc or double-line window symbol; offset is measured from its start centerline. The default door swing points toward the site center; use swingSide 1 or -1 only when the chosen swing and its full arc remain inside the site. The host wall must exist already or be added earlier in the same batch. {"op":"hatch","id":"stable-id","targetId":"closed-polyline-or-wall-id","pattern":"diagonal"|"cross"|"tile","spacing":400,"angle":45} creates clipped, editable pattern strokes on a dedicated HATCH layer; tile is an orthogonal grid. Hatch only material zones you mean to show; spacing is bounded and hatch strokes are not associative native HATCH entities. {"op":"room","id":"stable-id","name":"Living","at":[x,y]}; {"op":"stair","id":"stable-id","kind":"flight","at":[x,y],"width":1000,"depth":3000,"angle":0,"treads":12} draws a schematic single flight with treads and travel arrow. {"op":"furniture","id":"stable-id","kind":"bed|bed-single|bed-double|sofa|sofa-2-seat|sofa-3-seat|armchair|dining-table|dining-table-4|dining-table-6|desk|wardrobe|kitchen-counter|kitchen-island|refrigerator|cooker|kitchen-sink|sink|bath-vanity|toilet|bathtub|shower|chair|car-compact|car-sedan|car-suv|generic-block","at":[x,y],"width":1800,"depth":2000,"angle":0}. Cars are top-view symbols; set width to vehicle width (~1800mm) and depth to its length (~4300mm), then rotate via angle. Beds, seating, dining tables and chairs, kitchen/bath fixtures and vehicles are procedural 2D outline/detail symbols with no third-party asset pack. {"op":"column","id":"stable-id","kind":"...","at":[x,y],"width":300,"depth":300,"angle":0}. Stair, furniture, vehicle and column shapes are schematic plan symbols, not detailed objects. {"op":"delete","id":"existing-stable-id"}. Max 80 commands per stage and two hatch commands per stage. IDs must remain stable across stages; edit by reusing the same ID; remove with delete. Work in incremental stages: first make site perimeter and major partition walls; next openings and room labels; then room hatches, dimensioned plans, stairs/furniture/vehicles/columns/beams and corrections. Every complete object shape must remain inside the site, not just its insertion point. Preflight wall thickness, door swing arcs, dimension ticks, and the rotated extents of furniture, cars, and stairs against all four boundaries. Keep clearance where a symbol has nonzero extent. Before completion, review the inspection warnings and preview. Fill selfReview with concrete visual/geometry checks performed. Map the important requirements from the actual user brief into requiredElements, and cite IDs that exist in the final inspection; mark each met only when the inspection is evidence. Explicitly list every outstanding brief or drawing issue in unresolvedItems. Set done=true only when every required element is met, every cited ID exists, unresolvedItems is empty, and deterministic geometry warnings are empty. Room enclosure/access, structure, and code are NOT checked; never present this as architectural correctness or claim code compliance.` },
     { role: "user", content },
   ] }), signal: AbortSignal.timeout(attempt === 0 ? 90_000 : 55_000) });
   if (!response.ok) throw new Error(`CAD model request failed (${response.status})`);
