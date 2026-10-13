@@ -209,9 +209,41 @@ describe("CAD agent input and execution contracts", () => {
     expect(code).toContain("SHAFT_bath-vent");
     expect(code).toContain("VENT SHAFT");
     expect(code).toContain('obj.CadKind="ventilation"');
+    // Simulate an update to an already saved shaft with the same stable ID:
+    // remove the old object before creating it, and add CadKind only once.
+    const findExisting = code.indexOf('_obj=_find("bath-vent")');
+    const removeExisting = code.indexOf("doc.removeObject(_obj.Name)", findExisting);
+    const createReplacement = code.indexOf('obj=doc.addObject(\'Part::Feature\',"CAD_bath_vent")');
+    expect(findExisting).toBeGreaterThan(-1);
+    expect(removeExisting).toBeGreaterThan(findExisting);
+    expect(createReplacement).toBeGreaterThan(removeExisting);
+    expect(code.match(/obj\.addProperty\('App::PropertyString','CadKind'\)/g)).toHaveLength(1);
+    expect(code.match(/obj\.CadKind="ventilation"/g)).toHaveLength(1);
     expect(parseCadCommandAction(JSON.stringify({ commands: [
       { op: "shaft", id: "oversize-shaft", kind: "ventilation", at: [5000, 5000], width: 300, depth: 900 },
     ], summary: "bad shaft", selfReview: [], requiredElements: [], unresolvedItems: [], done: false }), 20, 20)).toBeNull();
+  });
+
+  it("replaces same-ID room, stair, furniture, and opening objects before adding semantic properties", () => {
+    const cases = [
+      { id: "room-main", commands: [{ op: "room", id: "room-main", name: "Living", at: [1000, 1000] }] },
+      { id: "stair-main", commands: [{ op: "stair", id: "stair-main", kind: "flight", at: [1000, 1000], width: 1000, depth: 3000, treads: 12 }] },
+      { id: "bed-main", commands: [{ op: "furniture", id: "bed-main", kind: "bed-double", at: [1000, 1000], width: 1800, depth: 2000 }] },
+      { id: "entry-door", commands: [
+        { op: "wall", id: "host-wall", from: [100, 100], to: [5000, 100], thickness: 200 },
+        { op: "opening", id: "entry-door", wallId: "host-wall", offset: 1000, width: 900, kind: "DOOR" },
+      ] },
+    ];
+    for (const item of cases) {
+      const action = parseCadCommandAction(JSON.stringify({ commands: item.commands, summary: "update", done: false }), 20, 20);
+      expect(action).not.toBeNull();
+      const code = compileCadCommands(action!);
+      const safeName = item.id.replace(/[^a-zA-Z0-9_]/g, "_");
+      const createAt = code.indexOf(`obj=doc.addObject('Part::Feature',"CAD_${safeName}")`);
+      expect(createAt).toBeGreaterThan(-1);
+      expect(code.slice(0, createAt)).toMatch(/doc\.removeObject\(_(?:obj|old)\.Name\)/);
+      expect(code.match(/obj\.addProperty\('App::PropertyString','CadKind'\)/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    }
   });
 
   it("creates bounded hatches only from closed boundaries and produces recognizable furniture and car geometry", () => {
