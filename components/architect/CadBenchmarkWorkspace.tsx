@@ -11,6 +11,7 @@ type Result = {
   validJson?: boolean;
   output?: { spec?: { walls?: unknown[]; openings?: unknown[]; rooms?: unknown[]; stairs?: unknown[] }; furniture?: unknown[]; selfReview?: string[] } | null;
   responseExcerpt?: string | null;
+  rawResponse?: string | null;
   error?: string;
 };
 
@@ -105,7 +106,7 @@ export function CadBenchmarkWorkspace() {
             <button type="button" disabled={Boolean(busy)} onClick={() => void run(id)} className="mt-5 w-full rounded-xl bg-[#d4af37] px-4 py-3 font-bold text-[#102027] disabled:opacity-40">{busy === id ? "الموديل بيخطط وبيجهز العفش..." : result ? "أعد التجربة" : "جرّب الموديل"}</button>
             {busy === id && <p className="mt-3 text-xs text-cyan-200" aria-live="polite">اتصال مباشر · {((progress[id]?.elapsedMs ?? 0) / 1000).toFixed(0)} ثانية · {progress[id]?.contentChars ? `${progress[id].contentChars} حرف من المخطط` : "الموديل بيفكر"}</p>}
             {result && <div className="mt-5 space-y-2 text-sm leading-6">
-              <p className={result.error || !result.validJson ? "text-rose-300" : "text-emerald-300"}>{result.error ?? (result.validJson ? "رجّع مواصفات JSON قابلة للفحص" : "الرد لم يكن مواصفات JSON صالحة")}</p>
+              <p className={result.error || !result.validJson ? "text-rose-300" : "text-emerald-300"}>{result.error ?? (result.validJson ? "رجّع مواصفات JSON قابلة للفحص" : result.finishReason === "length" ? "الموديل استهلك حدّ التوكنز قبل ما يكمل المخطط؛ تكلفة الاتصال اتحسبت. نزّل الملف لو محتاج تفحص الرد." : "الرد لم يكن مواصفات JSON صالحة")}</p>
               {result.elapsedMs !== undefined && <p>المدة: {(result.elapsedMs / 1000).toFixed(1)} ثانية</p>}
               {result.finishReason && <p>سبب التوقف: {result.finishReason}</p>}
               {spec && <p>{spec.walls?.length ?? 0} حائط · {spec.openings?.length ?? 0} فتحة · {spec.rooms?.length ?? 0} فراغ · {result.output?.furniture?.length ?? 0} قطعة عفش</p>}

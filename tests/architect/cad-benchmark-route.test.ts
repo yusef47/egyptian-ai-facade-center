@@ -56,10 +56,24 @@ describe("CAD benchmark route", () => {
     expect(text).toContain('"validJson":true');
     expect(text).toContain('"cost":0.01');
     expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-      body: expect.stringContaining('"reasoning":{"effort":"medium"}'),
+      body: expect.stringContaining('"reasoning":{"max_tokens":9000}'),
     }));
     expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       body: expect.stringContaining('"stream":true'),
+    }));
+  });
+
+  it("keeps a truncated response for diagnosis and never marks it valid", async () => {
+    const output = { spec: { walls: [{}], openings: [{}], rooms: [{}] }, furniture: [] };
+    const source = `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(output) }, finish_reason: "length" }], usage: { completion_tokens: 18000 } })}\n\n`;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(source, { status: 200 })));
+    const response = await POST(request("anthropic/claude-opus-5.5"));
+    const body = await response.text();
+    expect(body).toContain('"finishReason":"length"');
+    expect(body).toContain('"validJson":false');
+    expect(body).toContain('"rawResponse":');
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      body: expect.stringContaining('"max_tokens":18000'),
     }));
   });
 });

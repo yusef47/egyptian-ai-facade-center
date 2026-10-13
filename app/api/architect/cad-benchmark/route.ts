@@ -15,6 +15,11 @@ const MODELS = [
   "moonshotai/kimi-k3",
 ] as const;
 
+// Claude receives an explicit thinking budget equal to half the total output
+// budget (the medium allocation). This leaves room for the complete CAD JSON.
+const MAX_COMPLETION_TOKENS = 18_000;
+const CLAUDE_MEDIUM_THINKING_TOKENS = 9_000;
+
 const SYSTEM_PROMPT = `You are a professional architectural CAD planner. Create ONE original, furnished, editable 2D plan from this brief: a 20 m x 20 m plot, one residential floor with exactly two independent apartments A and B; each apartment has exactly three bedrooms, one bathroom, one kitchen, and one reception/living area. Include a shared entrance and a usable shared stair. Your output will be executed by AutoCAD-MCP's arch_plan_from_spec tool and furniture catalogue. You must design the layout yourself; do not repeat a supplied plan.
 
 Return ONLY one JSON object with keys "spec", "furniture", and "selfReview". No Markdown or prose outside JSON.
@@ -72,8 +77,10 @@ export async function POST(request: Request) {
             body: JSON.stringify({
               model,
               temperature: 0.25,
-              max_tokens: 26000,
-              reasoning: { effort: "medium" },
+              max_tokens: MAX_COMPLETION_TOKENS,
+              reasoning: model.startsWith("anthropic/")
+                ? { max_tokens: CLAUDE_MEDIUM_THINKING_TOKENS }
+                : { effort: "medium" },
               stream: true,
               messages: [
                 { role: "system", content: SYSTEM_PROMPT },
@@ -121,7 +128,7 @@ export async function POST(request: Request) {
           const parsed = answer ? extractJsonPayload(answer) : null;
           const spec = parsed && typeof parsed === "object" && !Array.isArray(parsed)
             ? (parsed as Record<string, unknown>).spec : null;
-          const valid = spec && typeof spec === "object" && !Array.isArray(spec)
+          const valid = finishReason !== "length" && spec && typeof spec === "object" && !Array.isArray(spec)
             && Array.isArray((spec as Record<string, unknown>).walls)
             && Array.isArray((spec as Record<string, unknown>).openings)
             && Array.isArray((spec as Record<string, unknown>).rooms)
@@ -130,6 +137,7 @@ export async function POST(request: Request) {
             model, elapsedMs: Date.now() - started, finishReason, usage,
             validJson: Boolean(valid), output: valid ? parsed : null,
             responseExcerpt: valid ? null : answer.slice(0, 2000),
+            rawResponse: valid ? null : answer,
           });
         } catch (error) {
           console.error("[CAD_BENCHMARK_FAILED]", model, error instanceof Error ? error.message.slice(0, 500) : "unknown");
