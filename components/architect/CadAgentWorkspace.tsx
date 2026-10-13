@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 
-type Inspection = { counts: Record<string, number>; warnings: string[]; objects: number; segments: number };
+type Inspection = { counts: Record<string, number>; warnings: string[]; unverifiedChecks?: string[]; objects: number; segments: number };
 type Turn = { role: "user" | "assistant"; text: string };
 const STORAGE = "qattan:cad-agent-project-v1";
 const EXAMPLE = "على أرض 20 × 20 متر ارسم مخطط طابق فيه شقتين مستقلتين. كل شقة فيها 3 غرف نوم وحمام ومطبخ وريسبشن. وزّع الفراغات بنفسك، وارسم الحوائط والأبواب والشبابيك والأثاث الأساسي والسلم والمداخل بأبعاد واضحة.";
@@ -95,12 +95,13 @@ export function CadAgentWorkspace() {
     if (!token) { setError("سجّل دخولك بحساب الأدمن أولًا."); return; }
     const brief = instruction.trim();
     setBusy(true); setError(""); setCompletedSteps(0);
+    let completed = false;
     setTurns((previous) => [...previous, { role: "user", text: brief }]);
     try {
       for (let step = 0; step < 4; step++) {
         setStatus(`المساعد بيفحص المشروع ويرسم المرحلة ${step + 1} من 4 داخل FreeCAD...`);
         let executionError: string | undefined;
-        let data: { previewSvg?: string; inspection?: Inspection; summary?: string; done?: boolean; error?: string; state?: string } | null = null;
+        let data: { previewSvg?: string; inspection?: Inspection; summary?: string; selfReview?: string[]; requiredElements?: { requirement: string; status: "met" | "unresolved"; evidenceIds: string[]; evidence: string }[]; unresolvedItems?: string[]; modelDone?: boolean; done?: boolean; error?: string; state?: string } | null = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await fetch("/api/architect/cad-agent", {
             method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -117,11 +118,13 @@ export function CadAgentWorkspace() {
         }
         if (!data?.previewSvg || !data.inspection) throw new Error("FreeCAD لم يُرجع لوحة رسم صالحة");
         setPreview(data.previewSvg); setInspection(data.inspection); setCompletedSteps(step + 1);
-        setTurns((previous) => [...previous, { role: "assistant", text: data?.summary ?? `اكتملت المرحلة ${step + 1}` }]);
-        if (data.done && step >= 1) break;
+        setTurns((previous) => [...previous, { role: "assistant", text: `${data?.summary ?? `اكتملت المرحلة ${step + 1}`}${data?.selfReview?.length ? `\nمراجعة الرسم: ${data.selfReview.join(" · ")}` : ""}${data?.requiredElements?.length ? `\nمتطلبات الطلب: ${data.requiredElements.map((item) => `${item.status === "met" ? "متحقق" : "غير متحقق"}: ${item.requirement} (${item.evidenceIds.join(", ")})`).join(" · ")}` : ""}${data?.unresolvedItems?.length ? `\nنقاط ما زالت مفتوحة: ${data.unresolvedItems.join(" · ")}` : ""}${data?.modelDone && !data?.done ? "\nالموديل اقترح اكتمال الطلب، لكن فحوص الرسم لم تسمح بتأكيده." : ""}` }]);
+        if (data.done) { completed = true; break; }
       }
-      setStatus("انتهت الجولة. راجع المخطط واطلب أي تعديل، أو نزّل ملف FreeCAD وDXF.");
-      setInstruction("");
+      setStatus(completed
+        ? "الموديل يقول إن متطلبات الطلب اكتملت وفحوص الهندسة المحددة نجحت. راجع المخطط بنفسك؛ إغلاق الغرف ومسارات الوصول والإنشاء والكود غير مفحوصة آليًا."
+        : "انتهت أربع مراحل محفوظة دون اكتمال مؤكد. راجع الملاحظات ثم أعد تشغيل نفس الطلب لمتابعة الرسم على المشروع الحالي.");
+      if (completed) setInstruction("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "حدث خطأ غير متوقع");
       setStatus("توقفنا عند آخر خطوة محفوظة. تقدر تصلّح الطلب أو تعيد المحاولة.");
@@ -140,6 +143,21 @@ export function CadAgentWorkspace() {
       const link = document.createElement("a"); link.href = url; link.download = `qattan-cad-project.${kind === "fcstd" ? "FCStd" : "dxf"}`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "تعذر التنزيل"); }
+  }
+
+  async function undo() {
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const session = await supabase?.auth.getSession();
+      const token = session?.data.session?.access_token;
+      if (!token) throw new Error("سجّل دخولك بحساب الأدمن أولًا.");
+      setBusy(true); setError("");
+      const response = await fetch("/api/architect/cad-agent", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "undo", projectId }) });
+      const data = await response.json();
+      if (!response.ok || !data.previewSvg || !data.inspection) throw new Error(data.error || "لا توجد نسخة سابقة للتراجع إليها");
+      setPreview(data.previewSvg); setInspection(data.inspection); setStatus("تم الرجوع إلى النسخة السابقة من الرسم.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "تعذر التراجع"); }
+    finally { setBusy(false); }
   }
 
   function reset() {
@@ -179,11 +197,13 @@ export function CadAgentWorkspace() {
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#101c21] p-4">
             <button type="button" disabled={!preview || busy} onClick={() => void download("fcstd")} className="rounded-xl border border-[#d4af37]/50 px-4 py-2 text-sm text-[#f1d985] disabled:opacity-40">تنزيل مشروع FreeCAD</button>
             <button type="button" disabled={!preview || busy} onClick={() => void download("dxf")} className="rounded-xl border border-white/20 px-4 py-2 text-sm disabled:opacity-40">تنزيل DXF</button>
+            <button type="button" disabled={!preview || busy} onClick={() => void undo()} className="rounded-xl border border-amber-300/30 px-4 py-2 text-sm text-amber-100 disabled:opacity-40">تراجع عن آخر نسخة</button>
             <button type="button" disabled={busy} onClick={reset} className="rounded-xl border border-white/20 px-4 py-2 text-sm disabled:opacity-40">مشروع جديد</button>
-            {inspection && <span className="text-xs text-slate-400">{inspection.segments} خط/قوس في الرسم · {inspection.counts.WALL ?? 0} حائط · {inspection.counts.DOOR ?? 0} باب</span>}
+            {inspection && <span className="text-xs text-slate-400">{inspection.segments} خط/قوس في الرسم · {inspection.counts.WALL ?? 0} حائط · {inspection.counts.BEAM ?? 0} كمرة تخطيطية · {inspection.counts.COLUMN ?? 0} عمود تخطيطي · {inspection.counts.DOOR ?? 0} باب · {inspection.counts.HATCH ?? 0} تهشير</span>}
           </div>
           {inspection?.warnings?.length ? <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 p-4 text-xs leading-6 text-amber-100"><strong>ملاحظات الفحص:</strong> {inspection.warnings.slice(0, 5).join(" · ")}</div> : null}
-          <p className="text-xs leading-6 text-slate-500">تجربة رسم أولية للأدمن؛ مراجعة مهندس مختص لازمة قبل أي استخدام تنفيذي أو قانوني.</p>
+          {inspection?.unverifiedChecks?.length ? <div className="rounded-2xl border border-sky-500/20 bg-sky-950/20 p-4 text-xs leading-6 text-sky-100"><strong>فحوص غير متاحة آليًا:</strong> {inspection.unverifiedChecks.join(" · ")}</div> : null}
+          <p className="text-xs leading-6 text-slate-500">الكمرات والأعمدة والسلالم والأثاث عناصر تخطيطية فقط؛ والتهشير خطوط CAD مستقلة وليست Hatch مرتبطًا بحدوده. لا يوجد تصميم أو تحقق إنشائي. راجع المخطط مع مهندس مختص قبل أي استخدام تنفيذي أو قانوني.</p>
         </section>
       </div>
     </div>

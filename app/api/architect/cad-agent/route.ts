@@ -4,8 +4,8 @@ import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { isAllowedOrigin } from "../../../../lib/origin";
 import { rateLimit } from "../../../../lib/request-guards";
 import {
-  cadAgentAvailable, getCadSandbox, parseCadInput, proposeCadAction,
-  readCadDownload, readCadInspection, retryCadSetup, runCadAction, setupCadSandbox,
+  cadAgentAvailable, cadCompletionReady, compileCadCommands, getCadSandbox, parseCadInput, proposeCadCommands,
+  readCadDownload, readCadInspection, retryCadSetup, rollbackCadProject, runCadAction, setupCadSandbox,
 } from "../../../../lib/architect/cad-agent";
 
 export const runtime = "nodejs";
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     const drawing = state === "ready" ? await readCadInspection(sandbox, projectId) : null;
     if (drawing) await sandbox.stop();
     return NextResponse.json({ state, previewSvg: drawing?.preview ?? null, inspection: drawing?.inspection ? {
-      counts: drawing.inspection.counts, warnings: drawing.inspection.warnings,
+      counts: drawing.inspection.counts, warnings: drawing.inspection.warnings, unverifiedChecks: drawing.inspection.unverifiedChecks ?? [],
       objects: drawing.inspection.objects.length, segments: drawing.inspection.segments,
     } : null }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -72,6 +72,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "تعذر إعادة تجهيز FreeCAD" }, { status: 503 });
     }
   }
+  if (data && typeof data === "object" && !Array.isArray(data) && (data as Record<string, unknown>).action === "undo") {
+    const projectId = (data as Record<string, unknown>).projectId;
+    if (typeof projectId !== "string" || !/^[0-9a-f]{24}$/.test(projectId)) return NextResponse.json({ error: "Invalid project" }, { status: 400 });
+    let sandbox;
+    try {
+      sandbox = await getCadSandbox(userId);
+      if (await setupCadSandbox(sandbox) !== "ready") return NextResponse.json({ error: "FreeCAD is not ready" }, { status: 503 });
+      const result = await rollbackCadProject(sandbox, projectId);
+      await sandbox.stop();
+      return NextResponse.json({ previewSvg: result.preview, inspection: { counts: result.inspection.counts, warnings: result.inspection.warnings, unverifiedChecks: result.inspection.unverifiedChecks ?? [], objects: result.inspection.objects.length, segments: result.inspection.segments } });
+    } catch (error) {
+      if (sandbox) await sandbox.stop().catch(() => {});
+      return NextResponse.json({ error: error instanceof Error ? error.message : "CAD undo failed" }, { status: 409 });
+    }
+  }
   const input = parseCadInput(data);
   if (!input) return NextResponse.json({ error: "طلب CAD أو أبعاد الأرض غير صالحة" }, { status: 400 });
   let sandbox;
@@ -80,13 +95,14 @@ export async function POST(request: Request) {
     const state = await setupCadSandbox(sandbox);
     if (state !== "ready") return NextResponse.json({ state }, { status: state === "error" ? 503 : 202 });
     const previous = await readCadInspection(sandbox, input.projectId);
-    const action = await proposeCadAction(input, previous.inspection, previous.preview);
-    const result = await runCadAction(sandbox, input, action);
+    const action = await proposeCadCommands(input, previous.inspection, previous.preview);
+    const result = await runCadAction(sandbox, input, { python: compileCadCommands(action), summary: action.summary, done: action.done });
     await sandbox.stop();
     return NextResponse.json({
-      summary: action.summary, done: action.done, step: input.step + 1,
+      summary: action.summary, selfReview: action.selfReview, requiredElements: action.requiredElements, unresolvedItems: action.unresolvedItems,
+      modelDone: action.done, done: cadCompletionReady(action, result.inspection), step: input.step + 1,
       previewSvg: result.preview, inspection: {
-        counts: result.inspection.counts, warnings: result.inspection.warnings,
+        counts: result.inspection.counts, warnings: result.inspection.warnings, unverifiedChecks: result.inspection.unverifiedChecks ?? [],
         objects: result.inspection.objects.length, segments: result.inspection.segments,
       },
     }, { headers: { "Cache-Control": "no-store" } });
