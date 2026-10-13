@@ -168,4 +168,44 @@ describe("CAD agent input and execution contracts", () => {
         .resolves.toMatchObject({ summary: "تم", selfReview: ["حدود الأرض"], done: false });
     } finally { vi.unstubAllEnvs(); }
   });
+
+  it("accepts unresolved brief items without invented evidence and safely retries invalid commands once", async () => {
+    const unresolved = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "start", requiredElements: [{ requirement: "two apartments", status: "unresolved", evidenceIds: [] }], done: false });
+    expect(parseCadCommandAction(unresolved, 3, 3)?.requiredElements[0].evidenceIds).toEqual([]);
+    expect(parseCadCommandAction(unresolved, 3, 3)?.requiredElements[0].evidence).toBe("Not evaluated yet");
+
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const invalid = JSON.stringify({ commands: [{ op: "unsafe-secret-marker", id: "bad-wall" }], summary: "bad", done: false });
+    const repaired = JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "تم", done: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: invalid } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(proposeCadCommands({ ...valid, siteWidth: 3, siteDepth: 3 }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ summary: "تم" });
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      const retryBody = JSON.parse(fetchFn.mock.calls[1][1]?.body as string);
+      expect(retryBody.max_tokens).toBe(7_000);
+      expect(JSON.stringify(retryBody.messages)).toContain("invalid_command_contract");
+      expect(JSON.stringify(retryBody.messages)).toContain("command index 0");
+      expect(JSON.stringify(retryBody.messages)).not.toContain("unsafe-secret-marker");
+      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"op":"unknown"'));
+    } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+  });
+
+  it("fails with bounded response metadata after one invalid-output repair attempt", async () => {
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const truncated = JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{not complete" } }] });
+    const fetchFn = vi.fn(async () => new Response(truncated, { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(proposeCadCommands({ ...valid, siteWidth: 3, siteDepth: 3 }, null, null, fetchFn as unknown as typeof fetch)).rejects.toMatchObject({
+        name: "CadCommandValidationError", diagnostic: { category: "response_truncated", attempt: 2, finishReason: "length" },
+      });
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+  });
 });

@@ -4,7 +4,7 @@ import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { isAllowedOrigin } from "../../../../lib/origin";
 import { rateLimit } from "../../../../lib/request-guards";
 import {
-  cadAgentAvailable, cadCompletionReady, compileCadCommands, getCadSandbox, parseCadInput, proposeCadCommands,
+  CadCommandValidationError, cadAgentAvailable, cadCompletionReady, compileCadCommands, getCadSandbox, parseCadInput, proposeCadCommands,
   readCadDownload, readCadInspection, retryCadSetup, rollbackCadProject, runCadAction, setupCadSandbox,
 } from "../../../../lib/architect/cad-agent";
 
@@ -108,7 +108,8 @@ export async function POST(request: Request) {
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
-    console.error("[CAD_STEP_FAILED]", message.slice(0, 1500));
+    if (error instanceof CadCommandValidationError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "model_output_rejected", ...error.diagnostic }));
+    else console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: message.startsWith("FreeCAD action failed:") ? "freecad_execution_failed" : "request_failed", errorName: error instanceof Error ? error.name.slice(0, 60) : "unknown" }));
     if (sandbox) await sandbox.stop().catch(() => {});
     return NextResponse.json({ error: message.startsWith("FreeCAD action failed:")
       ? `فشلت خطوة الرسم داخل FreeCAD: ${message.slice(23, 350)}`

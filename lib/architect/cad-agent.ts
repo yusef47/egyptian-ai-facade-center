@@ -39,6 +39,7 @@ export type CadCommand =
   | { op: "delete"; id: string };
 export type CadRequirementReview = { requirement: string; status: "met" | "unresolved"; evidenceIds: string[]; evidence: string };
 export type CadCommandAction = { commands: CadCommand[]; summary: string; selfReview: string[]; requiredElements: CadRequirementReview[]; unresolvedItems: string[]; done: boolean };
+export type CadCommandRejection = { category: string; commandIndex?: number; op?: string };
 export type CadInspection = { ok: boolean; error?: string; objects: { id?: string; label: string; type: string; layer: string; semantic?: string; kind?: string; text?: string; positionMm?: number[]; boundsMm?: number[]; wallStartMm?: number[]; wallEndMm?: number[]; wallThicknessMm?: number; wallOpenings?: string[]; hostWallId?: string; openingOffsetMm?: number; openingWidthMm?: number; lineStartMm?: number[]; lineEndMm?: number[]; polylinePointsMm?: number[][]; closed?: boolean; hatchHostId?: string }[]; objectIds?: string[]; counts: Record<string, number>; warnings: string[]; unverifiedChecks?: string[]; segments: number; siteMm: number[] };
 
 export function cadAgentAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -71,19 +72,24 @@ const CAD_ID = /^[a-z][a-z0-9_-]{1,39}$/i;
 const CAD_LAYERS = new Set<CadLayer>(["SITE", "WALL", "BEAM", "DOOR", "WINDOW", "STAIR", "FURNITURE", "DIMENSION", "COLUMN", "TEXT", "HATCH", "OTHER"]);
 const CAD_FURNITURE_KINDS = new Set<CadFurnitureKind>(["bed", "bed-single", "bed-double", "sofa", "sofa-2-seat", "sofa-3-seat", "armchair", "dining-table", "dining-table-4", "dining-table-6", "desk", "wardrobe", "kitchen-counter", "kitchen-island", "refrigerator", "cooker", "kitchen-sink", "sink", "bath-vanity", "toilet", "bathtub", "shower", "chair", "car-compact", "car-sedan", "car-suv", "generic-block"]);
 function point(value: unknown): value is [number, number] { return Array.isArray(value) && value.length === 2 && value.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 100_000); }
-export function parseCadCommandAction(text: string, siteWidth: number, siteDepth: number, inspection: CadInspection | null = null): CadCommandAction | null {
+export function parseCadCommandAction(text: string, siteWidth: number, siteDepth: number, inspection: CadInspection | null = null, rejection?: CadCommandRejection): CadCommandAction | null {
+  if (rejection) { rejection.category = "invalid_json"; delete rejection.commandIndex; delete rejection.op; }
   const parsed = extractJsonPayload(text);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  if (rejection) rejection.category = "invalid_top_level_schema";
   const value = parsed as Record<string, unknown>;
-  if (!Array.isArray(value.commands) || value.commands.length < 1 || value.commands.length > 80 || typeof value.summary !== "string" || !value.summary.trim() || value.summary.length > 500 || !Array.isArray(value.selfReview) || value.selfReview.length > 8 || value.selfReview.some((item) => typeof item !== "string" || item.length > 240) || !Array.isArray(value.requiredElements) || value.requiredElements.length > 12 || !Array.isArray(value.unresolvedItems) || value.unresolvedItems.length > 12 || value.unresolvedItems.some((item) => typeof item !== "string" || item.trim().length < 3 || item.length > 160) || typeof value.done !== "boolean") return null;
+  if (!Array.isArray(value.commands) || value.commands.length < 1 || value.commands.length > 80 || typeof value.summary !== "string" || !value.summary.trim() || value.summary.length > 500 || (value.selfReview !== undefined && (!Array.isArray(value.selfReview) || value.selfReview.length > 8 || value.selfReview.some((item) => typeof item !== "string" || item.length > 240))) || (value.requiredElements !== undefined && (!Array.isArray(value.requiredElements) || value.requiredElements.length > 12)) || (value.unresolvedItems !== undefined && (!Array.isArray(value.unresolvedItems) || value.unresolvedItems.length > 12 || value.unresolvedItems.some((item) => typeof item !== "string" || item.trim().length < 3 || item.length > 160))) || typeof value.done !== "boolean") return null;
+  const selfReview = Array.isArray(value.selfReview) ? value.selfReview as string[] : [];
+  const unresolvedItems = Array.isArray(value.unresolvedItems) ? value.unresolvedItems as string[] : [];
+  const rawRequiredElements = Array.isArray(value.requiredElements) ? value.requiredElements : [];
   const requiredElements: CadRequirementReview[] = [];
-  for (const rawRequirement of value.requiredElements) {
+  for (const rawRequirement of rawRequiredElements) {
     if (!rawRequirement || typeof rawRequirement !== "object" || Array.isArray(rawRequirement)) return null;
     const item = rawRequirement as Record<string, unknown>;
-    if (typeof item.requirement !== "string" || item.requirement.trim().length < 3 || item.requirement.length > 120 || (item.status !== "met" && item.status !== "unresolved") || !Array.isArray(item.evidenceIds) || item.evidenceIds.length < 1 || item.evidenceIds.length > 8 || !item.evidenceIds.every((id) => typeof id === "string" && CAD_ID.test(id)) || typeof item.evidence !== "string" || !item.evidence.trim() || item.evidence.length > 200) return null;
-    requiredElements.push({ requirement: item.requirement.trim(), status: item.status, evidenceIds: item.evidenceIds as string[], evidence: item.evidence.trim() });
+    if (typeof item.requirement !== "string" || item.requirement.trim().length < 3 || item.requirement.length > 120 || (item.status !== "met" && item.status !== "unresolved") || !Array.isArray(item.evidenceIds) || (item.status === "met" && item.evidenceIds.length < 1) || item.evidenceIds.length > 8 || !item.evidenceIds.every((id) => typeof id === "string" && CAD_ID.test(id)) || (item.status === "met" && (typeof item.evidence !== "string" || !item.evidence.trim())) || (item.evidence !== undefined && (typeof item.evidence !== "string" || item.evidence.length > 200))) return null;
+    requiredElements.push({ requirement: item.requirement.trim(), status: item.status, evidenceIds: item.evidenceIds as string[], evidence: typeof item.evidence === "string" && item.evidence.trim() ? item.evidence.trim() : "Not evaluated yet" });
   }
-  if (value.done && (requiredElements.length === 0 || value.unresolvedItems.length > 0)) return null;
+  if (value.done && (requiredElements.length === 0 || unresolvedItems.length > 0)) { if (rejection) rejection.category = "invalid_completion_contract"; return null; }
   const maxX = siteWidth * 1000, maxY = siteDepth * 1000;
   const commands: CadCommand[] = [];
   const ids = new Set<string>();
@@ -95,9 +101,11 @@ export function parseCadCommandAction(text: string, siteWidth: number, siteDepth
   let hatchCount = 0;
   const walls = new Map<string, { length: number }>();
   for (const object of inspection?.objects ?? []) if (object.id && object.wallStartMm && object.wallEndMm) walls.set(object.id, { length: Math.hypot(object.wallEndMm[0] - object.wallStartMm[0], object.wallEndMm[1] - object.wallStartMm[1]) });
-  for (const raw of value.commands) {
+  if (rejection) rejection.category = "invalid_command_contract";
+  for (const [commandIndex, raw] of value.commands.entries()) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const c = raw as Record<string, unknown>;
+    if (rejection) { rejection.commandIndex = commandIndex; rejection.op = typeof c.op === "string" && ["delete", "polyline", "circle", "arc", "move", "rotate", "copy", "offset", "set-layer", "hatch", "line", "wall", "beam", "opening", "room", "dimension", "stair", "furniture", "column"].includes(c.op) ? c.op : "unknown"; }
     if (typeof c.id !== "string" || !CAD_ID.test(c.id) || ids.has(c.id)) return null;
     ids.add(c.id);
     if (c.op === "delete") { commands.push({ op: "delete", id: c.id }); knownIds.delete(c.id); closedIds.delete(c.id); linearIds.delete(c.id); walls.delete(c.id); continue; }
@@ -172,7 +180,8 @@ export function parseCadCommandAction(text: string, siteWidth: number, siteDepth
     }
     return null;
   }
-  return { commands, summary: value.summary.trim(), selfReview: value.selfReview as string[], requiredElements, unresolvedItems: value.unresolvedItems as string[], done: value.done };
+  if (rejection) { rejection.category = "valid"; delete rejection.commandIndex; delete rejection.op; }
+  return { commands, summary: value.summary.trim(), selfReview, requiredElements, unresolvedItems, done: value.done };
 }
 
 export function cadCompletionReady(action: Pick<CadCommandAction, "done" | "requiredElements" | "unresolvedItems">, inspection: Pick<CadInspection, "warnings"> & { objects: Pick<CadInspection["objects"][number], "id" | "semantic" | "text" | "hostWallId" | "wallStartMm" | "wallEndMm" | "boundsMm">[]; objectIds?: string[] }): boolean {
@@ -406,7 +415,14 @@ export async function proposeCadAction(input: CadInput, inspection: CadInspectio
   return action;
 }
 
-export async function proposeCadCommands(input: CadInput, inspection: CadInspection | null, preview: string | null, fetchFn: typeof fetch = fetch): Promise<CadCommandAction> {
+export class CadCommandValidationError extends Error {
+  constructor(readonly diagnostic: { category: string; attempt: number; finishReason: string; responseContentLength: number; commandIndex?: number; op?: string }) {
+    super("CAD model returned invalid structured drawing commands");
+    this.name = "CadCommandValidationError";
+  }
+}
+
+export async function proposeCadCommands(input: CadInput, inspection: CadInspection | null, preview: string | null, fetchFn: typeof fetch = fetch, attempt = 0): Promise<CadCommandAction> {
   const model = resolveArchitectTextModel();
   const key = process.env.OPENROUTER_API_KEY?.trim();
   if (!model || !key) throw new Error("CAD text model unavailable");
@@ -416,17 +432,29 @@ export async function proposeCadCommands(input: CadInput, inspection: CadInspect
     content.push({ type: "image_url", image_url: { url: `data:image/png;base64,${png.toString("base64")}` } });
   }
   const thinking = model.startsWith("anthropic/") ? { max_tokens: 3_000 } : { effort: "medium" };
-  const response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: 10_000, reasoning: thinking, messages: [
+  const response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: attempt === 0 ? 10_000 : 7_000, reasoning: attempt === 0 ? thinking : (model.startsWith("anthropic/") ? { max_tokens: 1_500 } : { effort: "medium" }), messages: [
     { role: "system", content: `You are an architectural CAD operator. Return ONLY JSON with shape {"commands":[...],"summary":"brief Arabic stage report","selfReview":["specific check/result"],"requiredElements":[{"requirement":"a concrete user-brief requirement","status":"met"|"unresolved","evidenceIds":["existing-or-created-object-id"],"evidence":"what inspected geometry supports this"}],"unresolvedItems":["remaining brief or drawing issue"],"done":false}. Never return code. Coordinates and sizes are millimeters in a 0..siteMm rectangle. Wall endpoints describe the wall centerline, so inset boundary walls by half their thickness to keep the finished face on the lot edge. Available commands: {"op":"wall","id":"stable-id","from":[x,y],"to":[x,y],"thickness":200}; {"op":"beam","id":"stable-id","from":[x,y],"to":[x,y],"width":250} for a conceptual 2D beam footprint only, with no structural sizing or validation; {"op":"dimension","id":"stable-id","from":[x,y],"to":[x,y],"offset":400} to draw extension lines, measured dimension line and numeric millimeter label for that exact span; {"op":"line","id":"stable-id","from":[x,y],"to":[x,y],"layer":"DIMENSION"}; {"op":"polyline","id":"stable-id","points":[[x,y],...],"closed":true,"layer":"OTHER"} for bounded primitive outlines; {"op":"opening","id":"stable-id","wallId":"existing-wall-id","offset":1200,"kind":"DOOR"|"WINDOW","width":900,"swingSide":1}. Openings cut a gap from that wall and draw a door leaf/swing arc or double-line window symbol; offset is measured from its start centerline. The host wall must exist already or be added earlier in the same batch. {"op":"hatch","id":"stable-id","targetId":"closed-polyline-or-wall-id","pattern":"diagonal"|"cross"|"tile","spacing":400,"angle":45} creates clipped, editable pattern strokes on a dedicated HATCH layer; tile is an orthogonal grid. Hatch only material zones you mean to show; spacing is bounded and hatch strokes are not associative native HATCH entities. {"op":"room","id":"stable-id","name":"Living","at":[x,y]}; {"op":"stair","id":"stable-id","kind":"flight","at":[x,y],"width":1000,"depth":3000,"angle":0,"treads":12} draws a schematic single flight with treads and travel arrow. {"op":"furniture","id":"stable-id","kind":"bed|bed-single|bed-double|sofa|sofa-2-seat|sofa-3-seat|armchair|dining-table|dining-table-4|dining-table-6|desk|wardrobe|kitchen-counter|kitchen-island|refrigerator|cooker|kitchen-sink|sink|bath-vanity|toilet|bathtub|shower|chair|car-compact|car-sedan|car-suv|generic-block","at":[x,y],"width":1800,"depth":2000,"angle":0}. Cars are top-view symbols; set width to vehicle width (~1800mm) and depth to its length (~4300mm), then rotate via angle. Beds, seating, dining tables and chairs, kitchen/bath fixtures and vehicles are procedural 2D outline/detail symbols with no third-party asset pack. {"op":"column","id":"stable-id","kind":"...","at":[x,y],"width":300,"depth":300,"angle":0}. Stair, furniture, vehicle and column shapes are schematic plan symbols, not detailed objects. {"op":"delete","id":"existing-stable-id"}. Max 80 commands per stage and two hatch commands per stage. IDs must remain stable across stages; edit by reusing the same ID; remove with delete. Work in incremental stages: first make site perimeter and major partition walls; next openings and room labels; then room hatches, dimensioned plans, stairs/furniture/vehicles/columns/beams and corrections. Before completion, review the inspection warnings and preview. Fill selfReview with concrete visual/geometry checks performed. Map the important requirements from the actual user brief into requiredElements, and cite IDs that exist in the final inspection; mark each met only when the inspection is evidence. Explicitly list every outstanding brief or drawing issue in unresolvedItems. Set done=true only when every required element is met, every cited ID exists, unresolvedItems is empty, and deterministic geometry warnings are empty. Room enclosure/access, structure, and code are NOT checked; never present this as architectural correctness or claim code compliance.` },
     { role: "user", content },
-  ] }), signal: AbortSignal.timeout(160_000) });
+  ] }), signal: AbortSignal.timeout(attempt === 0 ? 90_000 : 55_000) });
   if (!response.ok) throw new Error(`CAD model request failed (${response.status})`);
   const raw = await response.text();
   if (raw.length > 100_000) throw new Error("CAD model response too large");
-  const payload = JSON.parse(raw) as Record<string, unknown>;
+  let payload: Record<string, unknown>;
+  try { payload = JSON.parse(raw) as Record<string, unknown>; } catch { throw new Error("CAD model response envelope invalid"); }
+  const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
+  const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason.slice(0, 32) : "missing";
   const answer = extractChatText(payload);
-  const action = answer && parseCadCommandAction(answer, input.siteWidth, input.siteDepth, inspection);
-  if (!action) throw new Error("CAD model returned invalid or unsafe drawing commands");
+  const rejection: CadCommandRejection = { category: finishReason === "length" ? "response_truncated" : "missing_model_content" };
+  const action = answer && finishReason !== "length" ? parseCadCommandAction(answer, input.siteWidth, input.siteDepth, inspection, rejection) : null;
+  if (!action) {
+    const diagnostic = { category: rejection.category, attempt: attempt + 1, finishReason, responseContentLength: answer?.length ?? 0, commandIndex: rejection.commandIndex, op: rejection.op };
+    console.warn("[CAD_MODEL_OUTPUT_REJECTED]", JSON.stringify(diagnostic));
+    if (attempt === 0) {
+      const reason = `Previous CAD reply failed validation (${rejection.category}${rejection.commandIndex !== undefined ? `, command index ${rejection.commandIndex}` : ""}${rejection.op ? `, operation ${rejection.op}` : ""}${finishReason === "length" ? ", response was truncated" : ""}). Return a corrected complete JSON action. Preserve the user's design intent; change only invalid fields or commands. Keep all site, geometry, ID, and schema constraints.`;
+      return proposeCadCommands({ ...input, executionError: reason }, inspection, preview, fetchFn, 1);
+    }
+    throw new CadCommandValidationError(diagnostic);
+  }
   return action;
 }
 
