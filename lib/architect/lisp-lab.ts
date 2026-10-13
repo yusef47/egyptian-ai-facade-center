@@ -1,0 +1,96 @@
+import { extractChatText } from "../architect-interpreter";
+import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
+import { CONCEPT_BOARD_MODELS } from "./concept-board";
+
+export const LISP_LAB_LIMITS = { brief: 2_000, source: 32_000, timeoutMs: 45_000, maxTokens: 8_000 } as const;
+
+const SYSTEM_PROMPT = `Write one self-contained AutoLISP source file for a user to download and manually inspect in compatible AutoCAD. The source should define the command QATTANPLAN and create a schematic 2D residential floor plan from the user's brief. Treat all coordinates and dimensions consistently in millimetres; state that in the source header comments. Prefer simple entmake entities (LINE, LWPOLYLINE, TEXT) and helper defuns. Create and use named layers for walls, doors, windows, stairs, furniture, room labels, and dimensions. Draw the plot boundary, wall runs with real gaps for openings, door/window symbols, room labels, a shared stair, and a few overall dimensions. Design the layout yourself; do not use a fixed coordinate template. Keep the source bounded and deterministic; a rerun may create a fresh duplicate plan, so define the command clearly and warn the operator to use a clean drawing. Do not use (command), eval, file access, network, shell/system calls, COM/ActiveX, reactors, autoload, startup hooks, or any persistence. Do not write or load files. No external dependencies. Return ONLY complete AutoLISP source code, no Markdown fences or explanation. Keep the function self-contained and avoid symbols that trigger file, shell, network, or startup actions. Do not claim code compliance or structural validation.`;
+
+/**
+ * Small fail-closed source check. We never evaluate AutoLISP on the server;
+ * this only rejects incomplete text and obvious file/network/shell/startup APIs.
+ */
+export function validateAutoLispSource(source: string): { valid: true; source: string } | { valid: false; reason: "empty" | "too_large" | "fenced" | "unsafe_symbol" | "missing_entrypoint" | "unbalanced" | "top_level_expression" } {
+  const code = source.trim();
+  if (!code) return { valid: false, reason: "empty" };
+  if (code.length > LISP_LAB_LIMITS.source) return { valid: false, reason: "too_large" };
+  if (/```|~~~/.test(code)) return { valid: false, reason: "fenced" };
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let inComment = false;
+  let visible = "";
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    if (inComment) {
+      if (ch === "\n" || ch === "\r") { inComment = false; visible += "\n"; }
+      continue;
+    }
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      visible += " ";
+      continue;
+    }
+    if (ch === ";") { inComment = true; visible += " "; continue; }
+    if (ch === '"') { inString = true; visible += " "; continue; }
+    if (ch === "(") depth++;
+    if (ch === ")" && --depth < 0) return { valid: false, reason: "unbalanced" };
+    visible += ch;
+  }
+  if (inString || depth !== 0) return { valid: false, reason: "unbalanced" };
+
+  const normalized = visible.toLowerCase();
+  const topLevelForms: string[] = [];
+  let formDepth = 0;
+  let formStart = -1;
+  for (let i = 0; i < visible.length; i++) {
+    const ch = visible[i];
+    if (ch === "(" && formDepth === 0) formStart = i;
+    if (ch === "(" ) formDepth++;
+    else if (ch === ")") {
+      formDepth--;
+      if (formDepth === 0 && formStart >= 0) { topLevelForms.push(visible.slice(formStart, i + 1)); formStart = -1; }
+    } else if (formDepth === 0 && !/\s/.test(ch)) return { valid: false, reason: "top_level_expression" };
+  }
+  if (!topLevelForms.length || topLevelForms.some((form) => !/^\(\s*defun\s+/i.test(form))) return { valid: false, reason: "top_level_expression" };
+  const forbidden = /\b(?:open|close|load|findfile|startapp|shell|system|command|command-s|vl-cmdf|eval|autoload|arxload|menuload|vl-load-com|vlax-[\w-]*|vl-file-[\w-]*|vl-http-[\w-]*|vl-socket-[\w-]*|getenv|setenv|getvar|setvar|ads_[\w-]*|s::startup|acaddoc\.lsp|acad\.lsp|vlr-[\w-]*|acet-[\w-]*)\b/;
+  if (forbidden.test(normalized)) return { valid: false, reason: "unsafe_symbol" };
+  if (!/\(\s*defun\s+c:qattanplan\b/.test(normalized) || !/\bentmake\b/.test(normalized)) return { valid: false, reason: "missing_entrypoint" };
+  return { valid: true, source: code.endsWith("\n") ? code : `${code}\n` };
+}
+
+export async function generateAutoLisp(brief: string, fetchFn: typeof fetch = fetch): Promise<{ source: string; model: string; usage: { promptTokens: number | null; completionTokens: number | null; costUsd: number | null } }> {
+  const cleanBrief = brief.trim();
+  if (!cleanBrief || cleanBrief.length > LISP_LAB_LIMITS.brief) throw new Error("invalid_brief");
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) throw new Error("unavailable");
+  const model = CONCEPT_BOARD_MODELS.text;
+  let response: Response;
+  try {
+    response = await fetchFn(OPENROUTER_ENDPOINT, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": "https://www.qattan-ai.com", "X-Title": "Qattan AutoLISP Pilot" },
+      body: JSON.stringify({ model, temperature: 0.2, max_tokens: LISP_LAB_LIMITS.maxTokens, reasoning: { effort: "medium" }, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: cleanBrief }] }),
+      signal: AbortSignal.timeout(LISP_LAB_LIMITS.timeoutMs), cache: "no-store",
+    });
+  } catch {
+    throw new Error("upstream_failed");
+  }
+  if (!response.ok) throw new Error("upstream_failed");
+  const raw = await response.text();
+  if (raw.length > 100_000) throw new Error("invalid_response");
+  let payload: Record<string, unknown>;
+  try { payload = JSON.parse(raw) as Record<string, unknown>; } catch { throw new Error("invalid_response"); }
+  const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
+  if (choice?.finish_reason !== "stop") throw new Error("incomplete_response");
+  const source = extractChatText(payload);
+  if (!source) throw new Error("invalid_response");
+  const checked = validateAutoLispSource(source);
+  if (!checked.valid) throw new Error(`rejected_${checked.reason}`);
+  const usage = payload.usage && typeof payload.usage === "object" ? payload.usage as Record<string, unknown> : {};
+  const numberOrNull = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  return { source: checked.source, model, usage: { promptTokens: numberOrNull(usage.prompt_tokens), completionTokens: numberOrNull(usage.completion_tokens), costUsd: numberOrNull(usage.cost) } };
+}

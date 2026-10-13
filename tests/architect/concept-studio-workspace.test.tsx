@@ -25,6 +25,7 @@ describe("Concept Studio state flow", () => {
     const user = userEvent.setup();
     const { unmount } = render(<ConceptStudioWorkspace />);
     expect(screen.queryByTestId("cad-workspace")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "جرّب مولّد AutoLISP" })).toHaveAttribute("href", "/ar/architect/lisp-lab");
     expect(fetchMock).not.toHaveBeenCalled();
     const sourceBrief = "على أرض 24×18 متر أريد شقتين؛ لا تحذف عدد الغرف أو المدخل المشترك عند تحويل الفكرة إلى CAD.";
     await user.clear(screen.getByLabelText("وصف المشروع"));

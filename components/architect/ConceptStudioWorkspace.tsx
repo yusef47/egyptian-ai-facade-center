@@ -132,7 +132,7 @@ export function ConceptStudioWorkspace() {
 
   return <main dir="rtl" className="min-h-screen bg-[#071014] px-4 py-6 text-white md:px-7">
     <div className="mx-auto max-w-[1500px] space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold tracking-[0.2em] text-[#d4af37]">QATTAN AI / PRIVATE ARCHITECT PILOT</p><h1 className="mt-2 text-3xl font-bold">ثلاثة مفاهيم معمارية ثم اختيارك لـ CAD</h1><p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">سونيت يساعدك على صياغة البرنامج وثلاثة توزيعات مكانية مختلفة. بعد اختيارك الصريح، نرسل المفهوم المنظم ومرجع اللوحة إلى مساعد FreeCAD. اللوحة للتصور وليست مخططًا بمقياس أو اعتمادًا هندسيًا.</p></div><a href="/ar/architect/cad-agent" className="rounded-xl border border-white/20 px-4 py-2 text-sm text-slate-300">مختبر CAD الحالي</a></header>
+      <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold tracking-[0.2em] text-[#d4af37]">QATTAN AI / PRIVATE ARCHITECT PILOT</p><h1 className="mt-2 text-3xl font-bold">ثلاثة مفاهيم معمارية ثم اختيارك لـ CAD</h1><p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">سونيت يساعدك على صياغة البرنامج وثلاثة توزيعات مكانية مختلفة. بعد اختيارك الصريح، يمكنك طلب مصدر AutoLISP قابل للتنزيل؛ لا يشغّله الخادم ولا يتحقق منه هندسيًا. اللوحة للتصور وليست مخططًا بمقياس أو اعتمادًا هندسيًا.</p></div><a href="/ar/architect/lisp-lab" className="rounded-xl bg-[#d4af37] px-4 py-3 text-sm font-bold text-[#121a1e]">جرّب مولّد AutoLISP</a></header>
 
       {!selectedConcept && <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <section className="space-y-4 rounded-2xl border border-white/10 bg-[#101c21] p-4">
