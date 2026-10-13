@@ -7,7 +7,7 @@ import { generateAutoLisp, LISP_LAB_LIMITS } from "../../../../lib/architect/lis
 import { isConceptBoardAvailable } from "../../../../lib/architect/concept-board";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 export async function POST(request: Request) {
   if (!isAllowedOrigin(request)) return NextResponse.json({ error: "Origin denied" }, { status: 403 });

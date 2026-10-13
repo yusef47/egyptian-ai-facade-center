@@ -2,7 +2,7 @@ import { extractChatText } from "../architect-interpreter";
 import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
 import { CONCEPT_BOARD_MODELS } from "./concept-board";
 
-export const LISP_LAB_LIMITS = { brief: 2_000, source: 32_000, timeoutMs: 53_000, maxTokens: 8_000 } as const;
+export const LISP_LAB_LIMITS = { brief: 2_000, source: 32_000, timeoutMs: 165_000, maxTokens: 8_000 } as const;
 
 const SYSTEM_PROMPT = `Write one complete, self-contained AutoLISP file defining c:QATTANPLAN for a schematic 2D residential plan. All units are millimetres; put that in a short header comment. Use entmake and helper defuns. Include plot boundary, wall runs with real door/window gaps and symbols, room labels, shared stair, named layers (walls, doors, windows, stairs, furniture, labels, dimensions), and overall dimensions. Design freely from the brief; no fixed template. Keep code concise and deterministic; tell operator to use a clean drawing because reruns may duplicate entities. Return ONLY source, no Markdown. Never use command/eval, file or network access, shell/system, COM/ActiveX, reactors, autoload/startup hooks, persistence, or external dependencies. Do not claim code compliance or structural validation.`;
 
