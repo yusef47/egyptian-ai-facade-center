@@ -37,6 +37,36 @@ describe("CAD agent input and execution contracts", () => {
     expect(rejection.hostWallLengthMm).toBeUndefined();
   });
 
+  it("reports stair and repeated-ID contract failures precisely while allowing in-place stair updates", () => {
+    const inspection = { ok: true, objects: [
+      { id: "stair-main", label: "STAIR_stair-main", type: "Part::Feature", layer: "STAIR", semantic: "stair", boundsMm: [1000, 1000, 2200, 4200], positionMm: [1600, 2600] },
+    ], counts: { STAIR: 1 }, warnings: [], segments: 10, siteMm: [20_000, 20_000] };
+    const act = (commands: unknown[]) => JSON.stringify({ commands, summary: "stair edit", done: false });
+    const updated = parseCadCommandAction(act([{ op: "stair", id: "stair-main", kind: "flight", at: [2500, 3000], width: 1200, depth: 3200, angle: 0, treads: 14 }]), 20, 20, inspection as never);
+    expect(updated?.commands).toMatchObject([{ op: "stair", id: "stair-main", at: [2500, 3000], treads: 14 }]);
+    const generated = compileCadCommands(updated!);
+    expect(generated.indexOf('doc.removeObject(_obj.Name)')).toBeGreaterThanOrEqual(0);
+    expect(generated.indexOf('doc.removeObject(_obj.Name)')).toBeLessThan(generated.indexOf('obj=doc.addObject(\'Part::Feature\',"CAD_stair_main")'));
+
+    for (const [badCommand, reasonCode] of [
+      [{ op: "stair", id: "stair-main", kind: "spiral", at: [2500, 3000], width: 1200, depth: 3200, treads: 14 }, "stair_invalid_kind"],
+      [{ op: "stair", id: "stair-main", kind: "flight", at: [2500, 3000], width: "wide", depth: 3200, treads: 14 }, "stair_invalid_dimensions"],
+      [{ op: "stair", id: "stair-main", kind: "flight", at: [2500, 3000], width: 1200, depth: 3200, treads: 40 }, "stair_invalid_treads"],
+      [{ op: "stair", id: "stair-main", kind: "flight", at: [18000, 9000], width: 1800, depth: 5000, angle: 45, treads: 14 }, "stair_outside_site"],
+    ] as const) {
+      const diagnostic: CadCommandRejection = { category: "" };
+      expect(parseCadCommandAction(act([badCommand]), 20, 20, inspection as never, diagnostic)).toBeNull();
+      expect(diagnostic).toMatchObject({ commandIndex: 0, op: "stair", reasonCode });
+    }
+
+    const duplicate: CadCommandRejection = { category: "" };
+    expect(parseCadCommandAction(act([
+      { op: "delete", id: "stair-main" },
+      { op: "stair", id: "stair-main", kind: "flight", at: [2500, 3000], width: 1200, depth: 3200, treads: 14 },
+    ]), 20, 20, inspection as never, duplicate)).toBeNull();
+    expect(duplicate).toMatchObject({ commandIndex: 1, duplicateOfCommandIndex: 0, op: "stair", reasonCode: "duplicate_command_id" });
+  });
+
   it("rejects duplicate overlapping openings on an existing host wall but allows delete-then-replace", () => {
     const inspection = { ok: true, objects: [
       { id: "host-wall", label: "wall", type: "Part::Feature", layer: "WALL", semantic: "wall", wallStartMm: [100, 100], wallEndMm: [5100, 100], wallThicknessMm: 200, wallOpenings: [] },
@@ -89,6 +119,27 @@ describe("CAD agent input and execution contracts", () => {
       expect(JSON.stringify(retryBody.messages)).toContain("host wall is 2000 mm long");
       expect(JSON.stringify(retryBody.messages)).toContain("offset must be 50..1050 mm");
       expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"reasonCode":"opening_invalid_offset"'));
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+  });
+
+  it("gives one bounded retry actionable stair guidance instead of a generic contract failure", async () => {
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const selectedConcept = { id: "A" as const, title: "Courtyard", strategy: "courtyard" as const, idea: "two homes", circulation: "shared stair", siteWidthM: 20, siteDepthM: 20, program: ["two apartments"], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] };
+    const invalid = JSON.stringify({ commands: [{ op: "stair", id: "stair-main", kind: "flight", at: [2500, 3000], width: 1200, depth: 3200, treads: 40 }], summary: "fix stair", done: false });
+    const repaired = JSON.stringify({ commands: [{ op: "stair", id: "stair-main", kind: "flight", at: [2500, 3000], width: 1200, depth: 3200, treads: 14 }], summary: "تم تعديل السلم", done: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: invalid } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(proposeCadCommands({ ...valid, selectedConcept }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ commands: [{ op: "stair", id: "stair-main", treads: 14 }] });
+      const retry = JSON.parse(fetchFn.mock.calls[1][1]?.body as string);
+      expect(JSON.stringify(retry.messages)).toContain("stair_invalid_treads");
+      expect(JSON.stringify(retry.messages)).toContain("integer from 3 through 30");
+      expect(JSON.stringify(fetchFn.mock.calls[0][1]?.body)).toContain("Use each ID at most once per command batch");
+      expect(warn).toHaveBeenCalledWith("[CAD_MODEL_OUTPUT_REJECTED]", expect.stringContaining('"reasonCode":"stair_invalid_treads"'));
       expect(fetchFn).toHaveBeenCalledTimes(2);
     } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
   });
