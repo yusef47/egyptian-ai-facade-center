@@ -72,6 +72,7 @@ describe("CAD agent input and execution contracts", () => {
     expect(compiled).toContain("CadPattern");
     expect(compiled).toContain("HATCH_zone-hatch");
     expect(compiled).toContain("Hatch stroke limit exceeded");
+    expect(compiled).toContain("getattr(_old_hatch,'CadHatchHost','') == \"zone\" and getattr(_old_hatch,'CadPattern','') == \"tile\"");
     expect(compiled).toContain("phase=pmin+spacing/2.0");
     expect(compiled).toContain("if phase>=pmax: phase=(pmin+pmax)/2.0");
     expect(compiled).toContain("_x+_w*.18"); // recognizable vehicle silhouette
@@ -124,6 +125,20 @@ describe("CAD agent input and execution contracts", () => {
     expect(python).not.toContain("_a.add(_u.multiply(_lo))");
   });
 
+  it("replaces hatch revisions by stable ID or same target and pattern while retaining different patterns", () => {
+    const action = parseCadCommandAction(JSON.stringify({ commands: [
+      { op: "polyline", id: "hatch-zone", points: [[1000, 1000], [7000, 1000], [7000, 5000], [1000, 5000]], closed: true, layer: "OTHER" },
+      { op: "hatch", id: "zone-tile", targetId: "hatch-zone", pattern: "tile", spacing: 400, angle: 0 },
+      { op: "hatch", id: "zone-cross", targetId: "hatch-zone", pattern: "cross", spacing: 600, angle: 45 },
+    ], summary: "distinct fills", selfReview: [], requiredElements: [], unresolvedItems: [], done: false }), 20, 20);
+    expect(action).not.toBeNull();
+    const python = compileCadCommands(action!);
+    expect(python).toContain("getattr(_old_hatch,'CadAgentId','') == \"zone-tile\"");
+    expect(python).toContain("getattr(_old_hatch,'CadAgentId','') == \"zone-cross\"");
+    expect(python).toContain("getattr(_old_hatch,'CadHatchHost','') == \"hatch-zone\" and getattr(_old_hatch,'CadPattern','') == \"tile\"");
+    expect(python).toContain("getattr(_old_hatch,'CadHatchHost','') == \"hatch-zone\" and getattr(_old_hatch,'CadPattern','') == \"cross\"");
+  });
+
   it("rejects moving or rotating attached opening symbols independently of their host wall", () => {
     const inspection = { ok: true, objects: [
       { id: "north-wall", label: "WALL_north-wall", type: "Part::Feature", layer: "WALL", wallStartMm: [100, 100], wallEndMm: [1900, 100], wallThicknessMm: 200, wallOpenings: ["front-door"] },
@@ -150,6 +165,23 @@ describe("CAD agent input and execution contracts", () => {
     const unsupportedCompletion = parseCadCommandAction(JSON.stringify({ commands: [{ op: "line", id: "line-a", from: [100, 100], to: [500, 100] }], summary: "x", selfReview: [], requiredElements: [{ requirement: "room", status: "met", evidenceIds: [], evidence: "proof" }], unresolvedItems: [], done: true }), 3, 3);
     expect(unsupportedCompletion).toMatchObject({ done: false, requiredElements: [{ status: "unresolved", evidenceIds: [] }] });
     expect(unsupportedCompletion?.unresolvedItems).toContain("Evidence pending: room");
+    const noWallMutation = { done: true, requiredElements: [{ requirement: "No existing walls were moved or deleted", status: "met" as const, evidenceIds: ["wall-a"], evidence: "Stable wall baseline comparison is empty" }], unresolvedItems: [] };
+    const wallInspection = { warnings: [], objects: [{ id: "wall-a", semantic: "wall", wallStartMm: [0, 0], wallEndMm: [1000, 0] }], wallBaselineReady: true, wallBaselineIds: ["wall-a"], wallCurrentIds: ["wall-a"], wallChanges: [] };
+    expect(cadCompletionReady(noWallMutation, wallInspection)).toBe(true);
+    expect(cadCompletionReady(noWallMutation, { ...wallInspection, wallBaselineReady: false })).toBe(false);
+    expect(cadCompletionReady(noWallMutation, { ...wallInspection, wallChanges: [{ id: "wall-a", kind: "modified" as const, beforeStartMm: [0, 0], beforeEndMm: [1000, 0], afterStartMm: [0, 100], afterEndMm: [1000, 100] }] })).toBe(false);
+    expect(cadCompletionReady(noWallMutation, { ...wallInspection, wallChanges: [{ id: "wall-a", kind: "deleted" as const, beforeStartMm: [0, 0], beforeEndMm: [1000, 0] }] })).toBe(false);
+    expect(cadCompletionReady(noWallMutation, { ...wallInspection, wallCurrentIds: [] })).toBe(false);
+  });
+
+  it("tracks the initial wall baseline and returns stable mutation evidence from FreeCAD", () => {
+    expect(FREECAD_HARNESS).toContain("WALL_BASELINE = ROOT + '/wall-baseline.json'");
+    expect(FREECAD_HARNESS).toContain("'wallBaselineReady':bool(comparison)");
+    expect(FREECAD_HARNESS).toContain("'wallBaselineIds':baseline_ids");
+    expect(FREECAD_HARNESS).toContain("'wallCurrentIds':current_ids");
+    expect(FREECAD_HARNESS).toContain("'kind':'deleted'");
+    expect(FREECAD_HARNESS).toContain("'kind':'modified'");
+    expect(FREECAD_HARNESS).toContain("if baseline_created and os.path.exists(WALL_BASELINE): os.remove(WALL_BASELINE)");
   });
 
   it("runs deterministic opening, room, and schematic object checks and reports unverified enclosure", () => {

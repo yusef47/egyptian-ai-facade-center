@@ -19,9 +19,40 @@ DXF = ROOT + '/plan.dxf'
 BACKUP = ROOT + '/project.backup.FCStd'
 SVG_BACKUP = ROOT + '/preview.backup.svg'
 DXF_BACKUP = ROOT + '/drawing.backup.dxf'
+WALL_BASELINE = ROOT + '/wall-baseline.json'
 SITE = json.load(open(ROOT + '/site.json', encoding='utf-8'))
 os.makedirs(ROOT, exist_ok=True)
 if os.path.exists(FAILURE): os.remove(FAILURE)
+
+def wall_state(doc):
+    state = {}
+    for obj in doc.Objects:
+        if not (hasattr(obj, 'CadAgentId') and hasattr(obj, 'CadWallStart') and hasattr(obj, 'CadWallEnd') and hasattr(obj, 'CadWallThickness')):
+            continue
+        identifier = str(obj.CadAgentId)
+        if not identifier or len(identifier) > 40 or not identifier[0].isalpha() or any(not (ch.isascii() and (ch.isalnum() or ch in '_-')) for ch in identifier):
+            continue
+        state[identifier] = {
+            'start': [round(float(obj.CadWallStart.x), 2), round(float(obj.CadWallStart.y), 2)],
+            'end': [round(float(obj.CadWallEnd.x), 2), round(float(obj.CadWallEnd.y), 2)],
+            'thickness': round(float(obj.CadWallThickness), 2),
+        }
+    if len(state) > 400:
+        raise RuntimeError('CAD wall baseline exceeds the inspection limit')
+    return state
+
+def valid_wall_state(state):
+    if not isinstance(state, dict) or len(state) > 400:
+        return False
+    for identifier, entry in state.items():
+        if not isinstance(identifier, str) or not identifier or len(identifier) > 40 or not identifier[0].isalpha() or any(not (ch.isascii() and (ch.isalnum() or ch in '_-')) for ch in identifier):
+            return False
+        if not isinstance(entry, dict) or not isinstance(entry.get('start'), list) or not isinstance(entry.get('end'), list) or len(entry['start']) != 2 or len(entry['end']) != 2:
+            return False
+        values = entry['start'] + entry['end'] + [entry.get('thickness')]
+        if any(not isinstance(v, (int, float)) or not math.isfinite(v) or abs(v) > 100000 for v in values):
+            return False
+    return True
 
 def layer_of(obj):
     label = obj.Label.upper()
@@ -30,7 +61,7 @@ def layer_of(obj):
             return word
     return 'OTHER'
 
-def emit_preview(doc):
+def emit_preview(doc, wall_baseline=None):
     lines = []
     labels = []
     summary = []
@@ -175,10 +206,28 @@ def emit_preview(doc):
             bb=obj.get('boundsMm')
             if not bb or bb[0]<-1 or bb[1]<-1 or bb[2]>max_x+1 or bb[3]>max_y+1: warnings.append(str(obj.get('semantic'))+' '+str(obj.get('id','?'))+' has invalid plan bounds')
     if len(summary)>1200: raise RuntimeError('CAD drawing exceeds the inspection limit')
-    return {'objects':summary, 'objectIds':[o['id'] for o in summary if o.get('id')], 'counts':counts, 'warnings':warnings[:30], 'geometryErrors':geometry_errors[:8], 'unverifiedChecks':['Room enclosure and room-to-exit accessibility are not automatically verified','No code, structural, or professional-plan review is performed'], 'segments':len(lines), 'siteMm':[max_x,max_y]}
+    current_walls = wall_state(doc)
+    baseline_to_save = None
+    if not wall_baseline and current_walls:
+        baseline_to_save = current_walls
+        comparison = current_walls
+    else:
+        comparison = wall_baseline or {}
+    wall_changes = []
+    for identifier, before in comparison.items():
+        after = current_walls.get(identifier)
+        if after is None:
+            wall_changes.append({'id':identifier,'kind':'deleted','beforeStartMm':before['start'],'beforeEndMm':before['end']})
+        elif before['start'] != after['start'] or before['end'] != after['end'] or abs(before['thickness']-after['thickness']) > .01:
+            wall_changes.append({'id':identifier,'kind':'modified','beforeStartMm':before['start'],'beforeEndMm':before['end'],'afterStartMm':after['start'],'afterEndMm':after['end']})
+    baseline_ids=sorted(comparison.keys())
+    current_ids=sorted(current_walls.keys())
+    return {'objects':summary, 'objectIds':[o['id'] for o in summary if o.get('id')], 'counts':counts, 'warnings':warnings[:30], 'geometryErrors':geometry_errors[:8], 'unverifiedChecks':['Room enclosure and room-to-exit accessibility are not automatically verified','No code, structural, or professional-plan review is performed'], 'wallBaselineReady':bool(comparison), 'wallBaselineIds':baseline_ids, 'wallCurrentIds':current_ids, 'wallBaselineCount':len(baseline_ids), 'wallCurrentCount':len(current_ids), 'wallChanges':wall_changes[:100], '_wallBaselineToSave':baseline_to_save, 'segments':len(lines), 'siteMm':[max_x,max_y]}
 
 doc = None
 had_project = os.path.exists(PROJECT)
+baseline_created = False
+baseline_needs_save = not os.path.exists(WALL_BASELINE)
 try:
     if os.path.exists(PROJECT):
         shutil.copy2(PROJECT, BACKUP)
@@ -187,6 +236,15 @@ try:
         doc = App.openDocument(PROJECT)
     else:
         doc = App.newDocument('QattanCAD')
+    wall_baseline = None
+    if os.path.exists(WALL_BASELINE):
+        raw_baseline = json.load(open(WALL_BASELINE, encoding='utf-8'))
+        if not valid_wall_state(raw_baseline): raise RuntimeError('Saved wall baseline is invalid; project was not changed')
+        wall_baseline = raw_baseline or None
+        if not wall_baseline: baseline_needs_save = True
+    else:
+        existing_walls = wall_state(doc)
+        wall_baseline = existing_walls or None
     scope={'App':App,'Part':Part,'Vector':App.Vector,'doc':doc,'SITE_WIDTH_MM':float(SITE['width'])*1000,'SITE_DEPTH_MM':float(SITE['depth'])*1000}
     def add_label(name, value, x_mm, y_mm):
         obj=doc.addObject('App::FeaturePython',name)
@@ -202,7 +260,7 @@ try:
         code=open(ACTION,encoding='utf-8').read()
         exec(compile(code,ACTION,'exec'),scope,scope)
     doc.recompute()
-    details=emit_preview(doc)
+    details=emit_preview(doc,wall_baseline)
     if details['segments']==0: raise RuntimeError('FreeCAD produced no visible geometry')
     if details['geometryErrors']:
         raise RuntimeError('CAD_BOUNDS_ERROR:'+json.dumps(details['geometryErrors'][:4],separators=(',',':')))
@@ -213,6 +271,12 @@ try:
         old=sorted([versions+'/'+n for n in os.listdir(versions) if n.endswith('.FCStd')],key=os.path.getmtime,reverse=True)
         for path in old[20:]: os.remove(path)
     doc.saveAs(PROJECT)
+    baseline_to_save=details.pop('_wallBaselineToSave',None) or (wall_baseline if baseline_needs_save else None)
+    if baseline_to_save and baseline_needs_save:
+        temp_baseline=WALL_BASELINE+'.tmp'
+        json.dump(baseline_to_save,open(temp_baseline,'w',encoding='utf-8'))
+        os.replace(temp_baseline,WALL_BASELINE)
+        baseline_created=True
     json.dump({'ok':True,**details},open(RESULT,'w',encoding='utf-8'),ensure_ascii=False)
     if os.path.exists(FAILURE): os.remove(FAILURE)
     print('QATTAN_CAD_OK',len(doc.Objects),details['segments'])
@@ -224,6 +288,8 @@ except Exception as err:
         except Exception: pass
     if had_project and os.path.exists(BACKUP): shutil.copy2(BACKUP,PROJECT)
     elif not had_project and os.path.exists(PROJECT): os.remove(PROJECT)
+    if baseline_created and os.path.exists(WALL_BASELINE): os.remove(WALL_BASELINE)
+    if os.path.exists(WALL_BASELINE+'.tmp'): os.remove(WALL_BASELINE+'.tmp')
     if os.path.exists(SVG_BACKUP): shutil.copy2(SVG_BACKUP,SVG)
     elif os.path.exists(SVG): os.remove(SVG)
     if os.path.exists(DXF_BACKUP): shutil.copy2(DXF_BACKUP,DXF)

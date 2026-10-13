@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       summary: action.summary, selfReview: action.selfReview, requiredElements: action.requiredElements, unresolvedItems: action.unresolvedItems,
       modelDone: action.done, done: cadCompletionReady(action, result.inspection), step: input.step + 1,
       previewSvg: result.preview, inspection: {
-        counts: result.inspection.counts, warnings: result.inspection.warnings, unverifiedChecks: result.inspection.unverifiedChecks ?? [],
+        counts: result.inspection.counts, warnings: result.inspection.warnings, unverifiedChecks: result.inspection.unverifiedChecks ?? [], wallBaselineReady: result.inspection.wallBaselineReady ?? false, wallBaselineIds: result.inspection.wallBaselineIds ?? [], wallCurrentIds: result.inspection.wallCurrentIds ?? [], wallBaselineCount: result.inspection.wallBaselineCount ?? 0, wallCurrentCount: result.inspection.wallCurrentCount ?? 0, wallChanges: result.inspection.wallChanges ?? [],
         objects: result.inspection.objects.length, segments: result.inspection.segments,
       },
     }, { headers: { "Cache-Control": "no-store" } });

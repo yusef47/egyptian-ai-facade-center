@@ -6,7 +6,10 @@ install or import FreeCAD.
 """
 
 import math
+import ast
+import re
 import unittest
+from pathlib import Path
 
 
 def hatch_segments(points, spacing, angle):
@@ -87,7 +90,26 @@ def wall_polygons(start, end, thickness, openings=()):
     return polygons
 
 
+def wall_mutations(baseline, current):
+    """Compare stable wall IDs and location/section, ignoring opening edits."""
+    changes = []
+    for identifier, before in baseline.items():
+        after = current.get(identifier)
+        if after is None:
+            changes.append((identifier, "deleted"))
+        elif before != after:
+            changes.append((identifier, "modified"))
+    return changes
+
+
 class HatchAlgorithmTests(unittest.TestCase):
+    def test_embedded_freecad_harness_is_valid_python(self):
+        root = Path(__file__).resolve().parents[2]
+        source = (root / "lib" / "architect" / "cad-agent-harness.ts").read_text(encoding="utf-8")
+        match = re.search(r"String\.raw`([\s\S]*)`;\s*$", source)
+        self.assertIsNotNone(match)
+        ast.parse(match.group(1))
+
     def test_rebuilt_wall_bounds_are_stable_for_axis_and_rotated_walls(self):
         cases = [
             ((2000, 2000), (18000, 2000), (2000, 1900, 18000, 2100)),
@@ -108,6 +130,18 @@ class HatchAlgorithmTests(unittest.TestCase):
         self.assertAlmostEqual(min(p[0] for p in polygons[1]), 7900)
         self.assertAlmostEqual(max(p[0] for p in polygons[1]), 14000)
         self.assertAlmostEqual(min(p[0] for p in polygons[2]), 15200)
+
+    def test_stable_wall_id_comparison_detects_move_and_delete_but_allows_additions(self):
+        baseline = {
+            "wall-a": {"start": [0, 0], "end": [1000, 0], "thickness": 200},
+            "wall-b": {"start": [0, 500], "end": [1000, 500], "thickness": 200},
+        }
+        current = {
+            "wall-a": {"start": [0, 100], "end": [1000, 100], "thickness": 200},
+            "wall-new": {"start": [0, 1000], "end": [1000, 1000], "thickness": 200},
+        }
+        self.assertEqual(wall_mutations(baseline, current), [("wall-a", "modified"), ("wall-b", "deleted")])
+        self.assertEqual(wall_mutations(baseline, baseline), [])
 
     def test_thin_wall_band_gets_interior_stroke_for_parallel_hatch(self):
         # Exactly the production failure shape: y=100 +/- 100, spacing 500.
