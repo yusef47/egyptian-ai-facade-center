@@ -18,9 +18,9 @@ const SYSTEM_PROMPT = `Create a deterministic AutoLISP drawing in millimetres fo
 
 const STAGE_INSTRUCTIONS: Record<LispGenerationStage, string> = {
   layout: `Return ONLY compact JSON matching {"siteMm":[width,height],"walls":[{"id":"w1","start":[x,y],"end":[x,y],"role":"outer|partition"}],"openings":[{"id":"o1","wallId":"w1","offsetMm":500,"widthMm":900,"kind":"DOOR|WINDOW"}],"rooms":[{"id":"r1","label":"Bedroom 1","bounds":[x1,y1,x2,y2],"kind":"bedroom"}],"stair":{"id":"stair-main","bounds":[x1,y1,x2,y2]}}. Coordinates are mm, within the site; walls are axis aligned. Create a coherent layout satisfying the entire brief. No source code.`,
-  helpers: `Return complete top-level defun forms only. Define compact reusable functions q:layer (name color), q:line (a b layer), q:rect (bounds layer), q:text (point height value layer), q:dim (a b point). Use entmake with DXF lists; no command function.`,
-  shell: `Return complete top-level defun forms only: q:draw-site, q:draw-walls, q:draw-openings, q:draw-stair. Read geometry only from the supplied locked manifest. Use q:line/q:rect/q:layer helpers defined in earlier stage. Walls must leave actual gaps from opening offsets and widths measured along each host wall; draw door/window symbols on their named layers. Stair should show a bounded schematic flight with treads.`,
-  interior: `Return complete top-level defun forms only: q:draw-rooms, q:draw-dimensions, and c:QATTANPLAN. Use only the locked manifest and earlier helpers/functions. Draw room boundary lines/labels and overall dimensions; c:QATTANPLAN creates needed named layers, calls all drawing functions in order, prints a short completion message, then (princ). Include millimetre and clean-drawing warning as a short source comment. Do not redefine earlier functions.`,
+  helpers: `Return complete top-level defun forms only. Define compact reusable functions q:layer (name color), q:line (a b layer), q:rect (bounds layer), q:text (point height value layer), q:dim (a b point). Use entmake with DXF lists; no command function. Use exactly these layer name string literals in source: "WALLS", "DOORS", "WINDOWS", "STAIRS", "LABELS", "DIMENSIONS".`,
+  shell: `Return complete top-level defun forms only: q:draw-site, q:draw-walls, q:draw-openings, q:draw-stair. Read geometry only from the supplied locked manifest. Use q:line/q:rect/q:layer helpers defined in earlier stage. Walls must leave actual gaps from opening offsets and widths measured along each host wall; draw door/window symbols on layers "DOORS" and "WINDOWS". Draw site/walls/stair on "WALLS"/"STAIRS". Stair should show a bounded schematic flight with treads.`,
+  interior: `Return complete top-level defun forms only: q:draw-rooms, q:draw-dimensions, and c:QATTANPLAN. Use only the locked manifest and earlier helpers/functions. Draw room boundary lines/labels and overall dimensions; c:QATTANPLAN creates needed named layers, calls all drawing functions in order, prints a short completion message, then (princ). Use layer name literals "LABELS" and "DIMENSIONS"; ensure the command invokes q:layer for "WALLS", "DOORS", "WINDOWS", "STAIRS", "LABELS", and "DIMENSIONS". Include millimetre and clean-drawing warning as a short source comment. Do not redefine earlier functions.`,
 };
 
 /**
@@ -126,15 +126,17 @@ export function validateCompletedAutoLisp(source: string): { valid: true; source
   const required = ["q:layer", "q:line", "q:rect", "q:text", "q:dim", "q:draw-site", "q:draw-walls", "q:draw-openings", "q:draw-stair", "q:draw-rooms", "q:draw-dimensions", "c:qattanplan"];
   if (required.some((name) => !names.includes(name))) return { valid: false, reason: "incomplete_stages" };
   const lower = code.toLowerCase().replace(/;[^\r\n]*/g, "");
-  const layerNameGroups = [/(?:walls?)/, /(?:doors?)/, /(?:windows?)/, /(?:stairs?)/, /furniture/, /(?:labels?)/, /(?:dimensions?)/];
+  const layerNameGroups = [/(?:walls?)/, /(?:doors?)/, /(?:windows?)/, /(?:stairs?)/, /(?:labels?)/, /(?:dimensions?)/];
   if (!/\bentmake\b/.test(lower) || layerNameGroups.some((names) => !new RegExp(`"${names.source}"`).test(lower))) return { valid: false, reason: "missing_layer_or_entity" };
   const commandForm = forms.find((form) => /^\(\s*defun\s+c:qattanplan\b/i.test(form))?.toLowerCase() ?? "";
   if (["q:layer", "q:draw-site", "q:draw-walls", "q:draw-openings", "q:draw-stair", "q:draw-rooms", "q:draw-dimensions"].some((name) => !commandForm.includes(name))) return { valid: false, reason: "entrypoint_missing_calls" };
   return { valid: true, source: base.source };
 }
 
-export function assembleAutoLispStages(planValue: unknown, partsValue: unknown): { valid: true; source: string } | { valid: false; reason: string } {
-  if (!validateLispPlan(planValue) || !Array.isArray(partsValue) || partsValue.length !== 3 || partsValue.some((part) => typeof part !== "string")) return { valid: false, reason: "incomplete_stages" };
+export type LispAssemblyFailure = { valid: false; reason: "invalid_plan" | "invalid_fragment" | "incomplete_stages" | "duplicate_function" | "missing_functions" | "missing_layer_or_entity" | "entrypoint_missing_calls"; targetIndex: number; missingFunctions?: string[] };
+export function assembleAutoLispStages(planValue: unknown, partsValue: unknown): { valid: true; source: string } | LispAssemblyFailure {
+  if (!validateLispPlan(planValue)) return { valid: false, reason: "invalid_plan", targetIndex: 0 };
+  if (!Array.isArray(partsValue) || partsValue.length !== 3 || partsValue.some((part) => typeof part !== "string")) return { valid: false, reason: "invalid_fragment", targetIndex: 0 };
   const parts = partsValue as string[];
   const expected = [
     ["q:layer", "q:line", "q:rect", "q:text", "q:dim"],
@@ -143,13 +145,36 @@ export function assembleAutoLispStages(planValue: unknown, partsValue: unknown):
   ];
   const seen = new Set<string>();
   for (let i = 0; i < parts.length; i++) {
-    if (!validateLispFragment(parts[i])) return { valid: false, reason: "incomplete_stages" };
+    if (!validateLispFragment(parts[i])) return { valid: false, reason: "invalid_fragment", targetIndex: i };
     const names = topLevelDefunForms(parts[i]).map((form) => form.match(/^\(\s*defun\s+([^\s()]+)/i)?.[1].toLowerCase() ?? "");
-    if (new Set(names).size !== names.length || names.some((name) => seen.has(name))) return { valid: false, reason: "duplicate_function" };
-    if (expected[i].some((name) => !names.includes(name))) return { valid: false, reason: "incomplete_stages" };
+    if (new Set(names).size !== names.length || names.some((name) => seen.has(name))) return { valid: false, reason: "duplicate_function", targetIndex: i };
+    const missing = expected[i].filter((name) => !names.includes(name));
+    if (missing.length) return { valid: false, reason: "missing_functions", targetIndex: i, missingFunctions: missing };
     names.forEach((name) => seen.add(name));
   }
-  return validateCompletedAutoLisp(parts.join("\n\n"));
+  const result = validateCompletedAutoLisp(parts.join("\n\n"));
+  if (result.valid) return result;
+  const targetIndex = result.reason === "entrypoint_missing_calls" ? 2 : result.reason === "missing_layer_or_entity" ? 0 : 2;
+  return { valid: false, reason: result.reason, targetIndex };
+}
+
+export function validateLispStageFragment(stage: Exclude<LispGenerationStage, "layout">, source: string): { valid: true } | { valid: false; reason: "invalid_fragment" | "missing_functions" | "missing_layer_names" | "entrypoint_missing_calls"; missingFunctions?: string[] } {
+  if (!validateLispFragment(source)) return { valid: false, reason: "invalid_fragment" };
+  const names = topLevelDefunForms(source).map((form) => form.match(/^\(\s*defun\s+([^\s()]+)/i)?.[1].toLowerCase() ?? "");
+  const expected: Record<Exclude<LispGenerationStage, "layout">, string[]> = {
+    helpers: ["q:layer", "q:line", "q:rect", "q:text", "q:dim"],
+    shell: ["q:draw-site", "q:draw-walls", "q:draw-openings", "q:draw-stair"],
+    interior: ["q:draw-rooms", "q:draw-dimensions", "c:qattanplan"],
+  };
+  const missingFunctions = expected[stage].filter((name) => !names.includes(name));
+  if (missingFunctions.length) return { valid: false, reason: "missing_functions", missingFunctions };
+  const lower = source.toLowerCase();
+  if (stage === "helpers" && ["walls", "doors", "windows", "stairs", "labels", "dimensions"].some((layer) => !new RegExp(`"${layer}"`).test(lower))) return { valid: false, reason: "missing_layer_names" };
+  if (stage === "interior") {
+    const commandForm = topLevelDefunForms(source).find((form) => /^\(\s*defun\s+c:qattanplan\b/i.test(form))?.toLowerCase() ?? "";
+    if (["q:layer", "q:draw-site", "q:draw-walls", "q:draw-openings", "q:draw-stair", "q:draw-rooms", "q:draw-dimensions"].some((name) => !commandForm.includes(name))) return { valid: false, reason: "entrypoint_missing_calls" };
+  }
+  return { valid: true };
 }
 
 export function validateLispPlan(value: unknown): LispPlan | null {
@@ -312,8 +337,9 @@ export async function streamAutoLispStage(args: {
   if (stage === "layout") {
     try { parsedPlan = validateLispPlan(JSON.parse(output)) ?? undefined; } catch { parsedPlan = undefined; }
     if (!parsedPlan) throw new Error("invalid_layout");
-  } else if (!validateLispFragment(output)) {
-    throw new Error("invalid_source_fragment");
+  } else {
+    const stageCheck = validateLispStageFragment(stage, output);
+    if (!stageCheck.valid) throw new Error(stageCheck.reason);
   }
   const numberOrNull = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
   return { output: stage === "layout" ? JSON.stringify(parsedPlan) : output.trim(), plan: parsedPlan, usage: { promptTokens: numberOrNull(usage.prompt_tokens), completionTokens: numberOrNull(usage.completion_tokens), costUsd: numberOrNull(usage.cost) } };

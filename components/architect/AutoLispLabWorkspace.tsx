@@ -11,11 +11,11 @@ const PROGRESS_KEY = "qattan-lisp-job-v2";
 
 type Plan = { siteMm: [number, number]; walls: unknown[]; openings: unknown[]; rooms: unknown[]; stair: unknown };
 type Usage = { promptTokens: number | null; completionTokens: number | null; costUsd: number | null };
-type Job = { brief: string; nextStage: number; plan?: Plan; parts: string[]; usage: Usage };
+type Job = { brief: string; nextStage: number; plan?: Plan; parts: string[]; usage: Usage; repairAttempted?: boolean };
 type Generated = { source: string; model: string; usage: { promptTokens: number | null; completionTokens: number | null; costUsd: number | null }; verified: false; executed: false };
 
 function formatCost(value: number | null): string { return value === null ? "التكلفة غير متاحة من سجل المزود" : `$${value.toFixed(4)} حسب تقرير المزود`; }
-function blankJob(brief: string): Job { return { brief, nextStage: 0, parts: [], usage: { promptTokens: 0, completionTokens: 0, costUsd: 0 } }; }
+function blankJob(brief: string): Job { return { brief, nextStage: 0, parts: [], usage: { promptTokens: 0, completionTokens: 0, costUsd: 0 }, repairAttempted: false }; }
 function isJob(value: unknown): value is Job {
   if (!value || typeof value !== "object") return false;
   const job = value as Partial<Job>;
@@ -112,11 +112,40 @@ export function AutoLispLabWorkspace() {
         saveJob(current);
       }
       setStageStatus("التحقق النهائي من المصدر المجمع");
-      const finalResponse = await fetch("/api/architect/lisp-lab", {
+      let finalResponse = await fetch("/api/architect/lisp-lab", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ stage: "finalize", brief: current.brief, plan: current.plan, parts: current.parts }), cache: "no-store",
       });
-      const finalData = await finalResponse.json() as Generated & { error?: string };
+      let finalData = await finalResponse.json() as Generated & { error?: string; reason?: string; targetIndex?: number; missingFunctions?: string[] };
+      if (!finalResponse.ok && !current.repairAttempted && finalData.reason !== "invalid_plan" && Number.isInteger(finalData.targetIndex) && (finalData.targetIndex as number) >= 0 && (finalData.targetIndex as number) < 3 && current.plan) {
+        const targetIndex = finalData.targetIndex as number;
+        const targetStage = STAGES[targetIndex + 1];
+        current = { ...current, repairAttempted: true };
+        saveJob(current);
+        setStageStatus(`إصلاح مركز لمرحلة ${STAGE_LABELS[targetStage]} بناءً على فحص المصدر النهائي`);
+        setLiveText("");
+        let repairedLive = "";
+        const repairResponse = await fetch("/api/architect/lisp-lab", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ stage: targetStage, brief: current.brief, plan: current.plan, priorSource: current.parts.slice(0, targetIndex).join("\n\n") }), cache: "no-store",
+        });
+        const repaired = await readStage(repairResponse, (text) => { repairedLive += text; setLiveText(repairedLive); setStageStatus(`إصلاح ${STAGE_LABELS[targetStage]} · يستقبل المصدر تدريجيًا`); }, () => setStageStatus(`إصلاح ${STAGE_LABELS[targetStage]} · سونيت يعالج الطلب`));
+        const repairOutput = typeof repaired.output === "string" ? repaired.output.trim() : "";
+        if (!repairOutput) throw new Error("لم تصل نتيجة الإصلاح؛ احتفظنا بالمراحل السابقة لتستكملها لاحقًا.");
+        const repairUsage = repaired.usage && typeof repaired.usage === "object" ? repaired.usage as Record<string, unknown> : {};
+        const addRepairUsage = (previous: number | null, value: unknown) => previous !== null && typeof value === "number" && Number.isFinite(value) ? previous + value : null;
+        const repairedParts = [...current.parts]; repairedParts[targetIndex] = `${repairOutput}\n`;
+        if (repairedParts.join("\n").length > 80_000) throw new Error("تجاوز المصدر المجمع حد الحجم بعد الإصلاح؛ احتفظنا بالمراحل الأصلية.");
+        const repairedUsage: Usage = { promptTokens: addRepairUsage(current.usage.promptTokens, repairUsage.promptTokens), completionTokens: addRepairUsage(current.usage.completionTokens, repairUsage.completionTokens), costUsd: addRepairUsage(current.usage.costUsd, repairUsage.costUsd) };
+        if (repairedUsage.completionTokens !== null && repairedUsage.completionTokens > 100_000) throw new Error("تجاوزت المحاولات ميزانية المخرجات المحددة؛ لم نعتمد الإصلاح.");
+        current = { ...current, parts: repairedParts, usage: repairedUsage };
+        saveJob(current);
+        finalResponse = await fetch("/api/architect/lisp-lab", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ stage: "finalize", brief: current.brief, plan: current.plan, parts: current.parts }), cache: "no-store",
+        });
+        finalData = await finalResponse.json() as Generated & { error?: string; reason?: string; targetIndex?: number; missingFunctions?: string[] };
+      }
       if (!finalResponse.ok) throw new Error(finalData.error || "لم يجتز المصدر المجمع التحقق النهائي.");
       setGenerated({ ...finalData, usage: { promptTokens: current.usage.promptTokens, completionTokens: current.usage.completionTokens, costUsd: current.usage.costUsd } });
       setStageStatus("اجتاز المصدر فحوص الاكتمال البنيوي والمحتوى المحظور؛ لم يُشغّل داخل CAD.");
@@ -124,7 +153,7 @@ export function AutoLispLabWorkspace() {
       setJob(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر الاتصال بالموديل.");
-      setStageStatus(current.nextStage > 0 ? `توقفت بعد ${current.nextStage} مراحل مكتملة؛ يمكنك الاستكمال من المرحلة التالية.` : "لم تكتمل أي مرحلة بعد.");
+      setStageStatus(current.nextStage >= STAGES.length ? (current.repairAttempted ? "اكتملت المراحل؛ فشل الفحص بعد إصلاح مركز واحد. احتفظنا بالمصدر لإعادة الفحص أو البدء من جديد." : "اكتملت المراحل؛ احتفظنا بها ويمكن إصلاح الجزء الذي يحدده الفحص النهائي.") : current.nextStage > 0 ? `توقفت بعد ${current.nextStage} مراحل مكتملة؛ يمكنك الاستكمال من المرحلة التالية.` : "لم تكتمل أي مرحلة بعد.");
       saveJob(current);
     } finally { setBusy(false); }
   }
@@ -152,7 +181,7 @@ export function AutoLispLabWorkspace() {
       <section className="mt-7 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <label htmlFor="lisp-brief" className="text-sm font-bold text-[#f1d985]">وصف المخطط</label>
         <textarea id="lisp-brief" value={brief} onChange={(event) => setBrief(event.target.value)} disabled={busy} maxLength={2000} rows={6} className="mt-3 w-full rounded-xl border border-white/15 bg-[#091216] p-4 text-sm leading-7 text-white outline-none focus:border-[#d4af37] disabled:opacity-70" />
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-slate-500">{brief.length}/2000 حرف · Claude Sonnet 5.5 · حتى 4 مراحل متصلة</span><div className="flex gap-2"><button type="button" onClick={generate} disabled={busy || !brief.trim() || brief.length > 2000} className="rounded-xl bg-[#d4af37] px-5 py-3 font-bold text-[#121a1e] disabled:cursor-not-allowed disabled:opacity-50">{busy ? "سونيت يعمل على المرحلة…" : canResume ? "استكمل المراحل المتبقية" : "ابدأ توليد المخطط"}</button>{job && !busy && <button type="button" onClick={startOver} className="rounded-xl border border-white/20 px-4 py-2 text-sm text-slate-300">ابدأ من جديد</button>}</div></div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-slate-500">{brief.length}/2000 حرف · Claude Sonnet 5.5 · 4 مراحل ورقعة نهائية واحدة عند الحاجة</span><div className="flex gap-2"><button type="button" onClick={generate} disabled={busy || !brief.trim() || brief.length > 2000} className="rounded-xl bg-[#d4af37] px-5 py-3 font-bold text-[#121a1e] disabled:cursor-not-allowed disabled:opacity-50">{busy ? "سونيت يعمل على المرحلة…" : canResume && job?.nextStage === STAGES.length ? "أعد الفحص النهائي" : canResume ? "استكمل المراحل المتبقية" : "ابدأ توليد المخطط"}</button>{job && !busy && <button type="button" onClick={startOver} className="rounded-xl border border-white/20 px-4 py-2 text-sm text-slate-300">ابدأ من جديد</button>}</div></div>
         {stageStatus && <p aria-live="polite" className="mt-4 rounded-xl border border-[#d4af37]/25 bg-[#d4af37]/[0.06] p-3 text-sm text-[#f1d985]">{stageStatus}</p>}
         {error && <p role="alert" className="mt-3 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
         {busy && liveText && <pre dir="ltr" aria-label="المصدر الجاري توليده" className="mt-3 max-h-56 overflow-auto rounded-xl border border-white/10 bg-[#05090b] p-3 text-left text-xs text-emerald-100">{liveText.slice(-12_000)}</pre>}

@@ -88,4 +88,16 @@ describe("AutoLISP route", () => {
     expect(assembleAutoLispStages).toHaveBeenCalledOnce();
     expect(streamAutoLispStage).not.toHaveBeenCalled();
   });
+
+  it("returns bounded finalization diagnostics and does not log submitted source", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.mocked(assembleAutoLispStages).mockReturnValueOnce({ valid: false, reason: "missing_functions", targetIndex: 1, missingFunctions: ["q:draw-stair"] });
+    const request = new Request("http://localhost/api/architect/lisp-lab", { method: "POST", headers: { Origin: "http://localhost:3000", Authorization: "Bearer test", "Content-Type": "application/json" }, body: JSON.stringify({ brief: "plan", stage: "finalize", plan: {}, parts: ["SECRET_SOURCE", "part", "part"] }) });
+    const response = await POST(request);
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ reason: "missing_functions", targetIndex: 1, missingFunctions: ["q:draw-stair"] });
+    expect(warn).toHaveBeenCalledWith("[LISP_LAB_FINALIZE_REJECTED]", expect.stringContaining('"targetIndex":1'));
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET_SOURCE");
+    warn.mockRestore();
+  });
 });

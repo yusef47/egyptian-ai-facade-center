@@ -33,7 +33,13 @@ export async function POST(request: Request) {
   if (finalize) {
     if (JSON.stringify(input.parts ?? []).length > LISP_LAB_LIMITS.source || !Array.isArray(input.parts) || input.parts.some((part) => typeof part !== "string")) return NextResponse.json({ error: "مراحل المصدر أطول من الحد المسموح." }, { status: 400 });
     const checked = assembleAutoLispStages(input.plan, input.parts);
-    if (!checked.valid) return NextResponse.json({ error: "لم يجتز المصدر فحوص الاكتمال والأمان." }, { status: 422 });
+    if (!checked.valid) {
+      const safeReason = checked.reason;
+      const targetIndex = Number.isInteger(checked.targetIndex) && checked.targetIndex >= 0 && checked.targetIndex <= 2 ? checked.targetIndex : 2;
+      const missingFunctions = checked.missingFunctions?.filter((name) => /^[a-z:-]+$/.test(name)).slice(0, 5);
+      console.warn("[LISP_LAB_FINALIZE_REJECTED]", JSON.stringify({ reason: safeReason, targetIndex, missingFunctions }));
+      return NextResponse.json({ error: "تعذر اعتماد الملف؛ يمكن إصلاح المرحلة المحددة مرة واحدة.", reason: safeReason, targetIndex, missingFunctions }, { status: 422 });
+    }
     return NextResponse.json({ source: checked.source, model: "anthropic/claude-sonnet-5.5", verified: false, executed: false }, { headers: { "Cache-Control": "no-store" } });
   }
   const generationStage = stage as LispGenerationStage;
@@ -58,9 +64,10 @@ export async function POST(request: Request) {
           finish();
         } catch (error) {
           const message = error instanceof Error ? error.message : "unknown";
-          const safeCategory = ["incomplete_response", "invalid_layout", "invalid_source_fragment", "upstream_failed", "invalid_stream", "upstream_stream_error", "stage_too_large"].includes(message) ? message : "generation_failed";
+          const safeCategory = ["incomplete_response", "invalid_layout", "invalid_source_fragment", "invalid_fragment", "missing_functions", "missing_layer_names", "entrypoint_missing_calls", "upstream_failed", "invalid_stream", "upstream_stream_error", "stage_too_large"].includes(message) ? message : "generation_failed";
           console.warn("[LISP_LAB_STAGE_FAILED]", JSON.stringify({ stage: generationStage, category: safeCategory }));
-          send("error", { category: safeCategory, message: "تعذر إكمال هذه المرحلة؛ لم يتم اعتماد الملف." });
+          const stageMessage = safeCategory === "missing_functions" ? "لم تُعرّف دوال هذه المرحلة المطلوبة؛ لم تُعتمد. أعد هذه المرحلة." : safeCategory === "missing_layer_names" ? "أسماء الطبقات المطلوبة غير مكتملة؛ أعد مرحلة الدوال." : safeCategory === "entrypoint_missing_calls" ? "أمر التشغيل لا يستدعي دوال الرسم المطلوبة؛ أعد المرحلة الداخلية." : "تعذر إكمال هذه المرحلة؛ لم يتم اعتماد الملف.";
+          send("error", { category: safeCategory, message: stageMessage });
           finish();
         } finally { if (heartbeat) clearInterval(heartbeat); }
       })();

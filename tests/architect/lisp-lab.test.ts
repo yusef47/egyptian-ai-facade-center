@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { assembleAutoLispStages, createLispStagePrompt, LISP_LAB_LIMITS, streamAutoLispStage, validateAutoLispSource, validateLispPlan } from "../../lib/architect/lisp-lab";
+import { assembleAutoLispStages, createLispStagePrompt, LISP_LAB_LIMITS, streamAutoLispStage, validateAutoLispSource, validateLispPlan, validateLispStageFragment } from "../../lib/architect/lisp-lab";
 
 const validLisp = `; millimetres
 (defun c:QATTANPLAN (/)
@@ -71,11 +71,21 @@ describe("AutoLISP pilot contract", () => {
     ];
     expect(assembleAutoLispStages(validPlan, parts)).toMatchObject({ valid: true, source: expect.stringContaining("c:QATTANPLAN") });
     expect(assembleAutoLispStages(validPlan, [parts[0], parts[1], `${parts[2]}\n${parts[0]}`])).toMatchObject({ valid: false, reason: "duplicate_function" });
-    expect(assembleAutoLispStages(validPlan, parts.slice(0, 2))).toMatchObject({ valid: false, reason: "incomplete_stages" });
+    expect(assembleAutoLispStages(validPlan, parts.slice(0, 2))).toMatchObject({ valid: false, reason: "invalid_fragment" });
+  });
+
+  it("reports the exact source part and missing stage functions without exposing its text", () => {
+    const parts = [
+      `(defun q:layer () (list "walls" "doors" "windows" "stairs" "labels" "dimensions"))\n(defun q:line () (entmake nil))\n(defun q:rect () (princ))\n(defun q:text () (princ))\n(defun q:dim () (princ))`,
+      `(defun q:draw-site () (q:line))\n(defun q:draw-walls () (q:line))\n(defun q:draw-openings () (q:line))`,
+      `(defun q:draw-rooms () (q:text))\n(defun q:draw-dimensions () (q:dim))\n(defun c:QATTANPLAN () (q:layer) (q:draw-site) (q:draw-walls) (q:draw-openings) (q:draw-stair) (q:draw-rooms) (q:draw-dimensions) (entmake nil))`,
+    ];
+    expect(assembleAutoLispStages(validPlan, parts)).toMatchObject({ valid: false, reason: "missing_functions", targetIndex: 1, missingFunctions: ["q:draw-stair"] });
+    expect(validateLispStageFragment("shell", parts[1])).toMatchObject({ valid: false, reason: "missing_functions", missingFunctions: ["q:draw-stair"] });
   });
 
   it("streams stage deltas, retains one manifest, and requires stop before accepting the stage", async () => {
-    const source = "(defun q:layer (name color) (princ))\n(defun q:line (a b layer) (princ))";
+    const source = `(defun q:layer (name color) (list "walls" "doors" "windows" "stairs" "labels" "dimensions"))\n(defun q:line (a b layer) (princ))\n(defun q:rect (bounds layer) (princ))\n(defun q:text (point height value layer) (princ))\n(defun q:dim (a b point) (princ))`;
     const frames = [
       `data: ${JSON.stringify({ choices: [{ delta: { content: source.slice(0, 28) }, finish_reason: null }] })}\n\n`,
       `data: ${JSON.stringify({ choices: [{ delta: { content: source.slice(28) }, finish_reason: "stop" }] })}\n\n`,
