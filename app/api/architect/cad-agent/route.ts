@@ -4,7 +4,7 @@ import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { isAllowedOrigin } from "../../../../lib/origin";
 import { rateLimit } from "../../../../lib/request-guards";
 import {
-  CAD_AGENT, CadCommandValidationError, CadGeometryBoundsError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
+  CAD_AGENT, CadCommandValidationError, CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
   readCadDownload, readCadInspection, retryCadSetup, rollbackCadProject, runCadAction, setupCadSandbox,
 } from "../../../../lib/architect/cad-agent";
 import { evaluateCadPlanQuality } from "../../../../lib/architect/cad-plan-quality";
@@ -129,10 +129,13 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "unknown";
     if (error instanceof CadGeometryBoundsError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "geometry_outside_site", violations: error.violations }));
     else if (error instanceof CadCommandValidationError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "model_output_rejected", ...error.diagnostic }));
+    else if (error instanceof CadModelTimeoutError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "model_timeout", attempt: error.attempt }));
     else console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: message.startsWith("FreeCAD action failed:") ? "freecad_execution_failed" : "request_failed", errorName: error instanceof Error ? error.name.slice(0, 60) : "unknown" }));
     if (sandbox) await sandbox.stop().catch(() => {});
     return NextResponse.json({ error: error instanceof CadGeometryBoundsError
       ? `FreeCAD action failed: ${error.message}`
+      : error instanceof CadModelTimeoutError
+      ? `انتهت مهلة توليد أو تصحيح خطوة CAD (${error.attempt === 1 ? "المحاولة الأولى" : "محاولة التصحيح"}). لم يبدأ تنفيذ هذه الخطوة، والرسم المحفوظ لم يتغير؛ أعد المحاولة لإكمال تعديل محدود.`
       : message.startsWith("FreeCAD action failed:")
       ? `فشلت خطوة الرسم داخل FreeCAD: ${message.slice(23, 350)}`
       : error instanceof CadCommandValidationError && error.diagnostic.op === "furniture"

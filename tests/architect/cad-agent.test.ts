@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, critiqueCadPlan, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compactCadInspection, compileCadCommands, critiqueCadPlan, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName, type CadCommandRejection } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -12,6 +12,62 @@ const valid = {
 };
 
 describe("CAD agent input and execution contracts", () => {
+  it("compacts long inspections while retaining semantic issue targets and stable IDs", () => {
+    const objects = Array.from({ length: 260 }, (_, i) => ({ id: `item-${i}`, label: `LABEL_${i}`, type: "Part::Feature", layer: "OTHER", semantic: i === 250 ? "furniture" : "line", boundsMm: [i, i, i + 100, i + 100], positionMm: [i, i], text: "x".repeat(300) }));
+    const compact = compactCadInspection({ ok: true, objects, objectIds: objects.map((object) => object.id), counts: { OTHER: 260 }, warnings: [], qualityIssues: [{ code: "furniture_opening_clearance", severity: "blocking", ids: ["item-250"], message: "move furniture" }], segments: 260, siteMm: [20_000, 20_000] });
+    expect(compact).toMatchObject({ objectCount: 260, listedObjectCount: 100, omittedObjectCount: 160 });
+    expect(compact.objects[0].id).toBe("item-250");
+    expect(compact.objects[0].text).toHaveLength(64);
+    expect(JSON.stringify(compact)).not.toContain("LABEL_");
+    expect(compact.objectIds).toContain("item-250");
+  });
+
+  it("retries a truncated selected-plan response with one concise 3-command batch and bounded tokens", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const selectedConcept = { id: "A" as const, title: "Selected courtyard", strategy: "courtyard" as const, idea: "Courtyard apartments", circulation: "Compact shared core", siteWidthM: 20, siteDepthM: 20, program: ["two apartments"], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] };
+    const inspection = { ok: true, objects: Array.from({ length: 86 }, (_, i) => ({ id: `object-${i}`, label: `OBJECT_${i}`, type: "Part::Feature", layer: "OTHER", semantic: "furniture", boundsMm: [1000 + i, 1000, 2000 + i, 2000] })), counts: { OTHER: 86 }, warnings: [], segments: 86, siteMm: [20_000, 20_000] };
+    const repaired = JSON.stringify({ commands: [{ op: "move", id: "object-85", delta: [200, 0] }], summary: "تعديل محدد", selfReview: ["راجعت مساحة الحركة"], requiredElements: [], unresolvedItems: ["تحتاج الغرف الأخرى مراجعة لاحقة"], done: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{\"commands\":[" } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: repaired } }] }), { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const board = `data:image/jpeg;base64,${Buffer.from("board-image").toString("base64")}`;
+      const result = await proposeCadCommands({ ...valid, selectedConcept, conceptBoardDataUrl: board }, inspection, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>', fetchFn as unknown as typeof fetch);
+      expect(result.summary).toBe("تعديل محدد");
+      const first = JSON.parse(fetchFn.mock.calls[0][1]?.body as string);
+      const retry = JSON.parse(fetchFn.mock.calls[1][1]?.body as string);
+      const firstUser = first.messages.find((message: { role: string }) => message.role === "user");
+      const firstPayload = JSON.parse(firstUser.content.find((part: { type: string }) => part.type === "text").text);
+      expect(first.max_tokens).toBe(6_000);
+      expect(first.reasoning.max_tokens).toBe(900);
+      expect(firstPayload).toMatchObject({ commandLimit: 8, currentDrawing: { objectCount: 86, listedObjectCount: 86 } });
+      expect(JSON.stringify(firstPayload.currentDrawing)).not.toContain('"label":"OBJECT_0"');
+      expect(firstUser.content.some((part: { image_url?: { url?: string } }) => part.image_url?.url?.startsWith("data:image/jpeg;base64,"))).toBe(false);
+      expect(firstUser.content.some((part: { image_url?: { url?: string } }) => part.image_url?.url?.startsWith("data:image/png;base64,"))).toBe(true);
+      expect(retry.max_tokens).toBe(3_200);
+      expect(retry.reasoning.max_tokens).toBe(128);
+      const retrySystem = retry.messages.find((message: { role: string }) => message.role === "system").content;
+      const retryUser = retry.messages.find((message: { role: string }) => message.role === "user");
+      const retryPayload = JSON.parse(retryUser.content.find((part: { type: string }) => part.type === "text").text);
+      expect(retrySystem).toContain("at most 3 targeted commands");
+      expect(retryPayload.commandLimit).toBe(3);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      const tooMany = { commands: Array.from({ length: 4 }, (_, i) => ({ op: "line", id: `line-${i}`, from: [i * 100, 0], to: [i * 100 + 50, 50] })), summary: "many" };
+      expect(parseCadCommandAction(JSON.stringify(tooMany), 20, 20, null, undefined, 3)).toBeNull();
+    } finally { warn.mockRestore(); vi.unstubAllEnvs(); }
+  });
+
+  it("classifies an upstream model timeout without a second hidden retry", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const timeout = new Error("aborted"); timeout.name = "TimeoutError";
+    const fetchFn = vi.fn().mockRejectedValue(timeout);
+    try {
+      await expect(proposeCadCommands({ ...valid, selectedConcept: { id: "A", title: "Court", strategy: "courtyard", idea: "Court", circulation: "Core", siteWidthM: 20, siteDepthM: 20, program: [], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] } }, null, null, fetchFn as unknown as typeof fetch)).rejects.toMatchObject({ name: "CadModelTimeoutError", attempt: 1 });
+      expect(fetchFn).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("runs Sonnet post-execution review with the actual preview and full inspected object set", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     const dimensions = ["program", "room_logic", "circulation", "stair", "privacy", "daylight_ventilation", "clearance", "usability"];

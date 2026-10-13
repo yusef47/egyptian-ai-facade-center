@@ -116,11 +116,11 @@ export function parseCadAction(text: string): CadAction | null {
 const CAD_LAYERS = new Set<CadLayer>(["SITE", "WALL", "BEAM", "DOOR", "WINDOW", "STAIR", "FURNITURE", "DIMENSION", "COLUMN", "TEXT", "HATCH", "SHAFT", "OTHER"]);
 const CAD_FURNITURE_KINDS = new Set<CadFurnitureKind>(["bed", "bed-single", "bed-double", "sofa", "sofa-2-seat", "sofa-3-seat", "armchair", "dining-table", "dining-table-4", "dining-table-6", "desk", "wardrobe", "kitchen-counter", "kitchen-island", "refrigerator", "cooker", "kitchen-sink", "sink", "bath-vanity", "toilet", "bathtub", "shower", "chair", "car-compact", "car-sedan", "car-suv", "generic-block"]);
 function point(value: unknown): value is [number, number] { return Array.isArray(value) && value.length === 2 && value.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 100_000); }
-function cadSchemaIssues(value: Record<string, unknown>): string[] {
+function cadSchemaIssues(value: Record<string, unknown>, maxCommands = 80): string[] {
   const issues: string[] = [];
   const add = (field: string, reason: string) => { if (issues.length < 12) issues.push(`${field}:${reason}`); };
   if (!Array.isArray(value.commands)) add("commands", value.commands === undefined ? "missing" : "expected_array");
-  else if (value.commands.length < 1 || value.commands.length > 80) add("commands", "count_out_of_range_1_80");
+  else if (value.commands.length < 1 || value.commands.length > maxCommands) add("commands", `count_out_of_range_1_${maxCommands}`);
   if (value.summary !== undefined && typeof value.summary !== "string") add("summary", "expected_string");
   else if (typeof value.summary === "string" && value.summary.length > 500) add("summary", "max_length_500");
   if (value.selfReview !== undefined) {
@@ -201,13 +201,13 @@ function transformFitsSite(objects: CadInspection["objects"], id: string, maxX: 
   }
   return true;
 }
-export function parseCadCommandAction(text: string, siteWidth: number, siteDepth: number, inspection: CadInspection | null = null, rejection?: CadCommandRejection): CadCommandAction | null {
+export function parseCadCommandAction(text: string, siteWidth: number, siteDepth: number, inspection: CadInspection | null = null, rejection?: CadCommandRejection, maxCommands = 80): CadCommandAction | null {
   if (rejection) { rejection.category = "invalid_json"; delete rejection.commandIndex; delete rejection.op; delete rejection.schemaFields; delete rejection.reasonCode; }
   const parsed = extractJsonPayload(text);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   if (rejection) rejection.category = "invalid_top_level_schema";
   const value = parsed as Record<string, unknown>;
-  const schemaIssues = cadSchemaIssues(value);
+  const schemaIssues = cadSchemaIssues(value, maxCommands);
   if (schemaIssues.length) { if (rejection) rejection.schemaFields = schemaIssues; return null; }
   const actionCommands = value.commands as unknown[];
   const actionSummary = typeof value.summary === "string" && value.summary.trim() ? value.summary.trim() : "تم تحديث عناصر الرسم";
@@ -601,6 +601,13 @@ export class CadCommandValidationError extends Error {
   }
 }
 
+export class CadModelTimeoutError extends Error {
+  constructor(readonly attempt: number) {
+    super("CAD model request timed out");
+    this.name = "CadModelTimeoutError";
+  }
+}
+
 export function selectedConceptDrawingScope(selectedConcept: ArchitecturalConcept | undefined) {
   if (!selectedConcept) return null;
   return {
@@ -618,21 +625,67 @@ export type CadArchitectureReview = {
   rubric: { dimension: string; status: "reviewed" | "unresolved"; evidenceIds: string[]; note: string }[];
 };
 
+/** A compact, bounded model context that preserves semantic geometry and stable IDs. */
+export function compactCadInspection(inspection: CadInspection, limit = 100) {
+  const priorityIds = new Set((inspection.qualityIssues ?? []).flatMap((issue) => issue.ids));
+  const priority = (object: CadInspection["objects"][number]) => priorityIds.has(object.id ?? "") ? 0
+    : ["wall", "opening", "room", "shaft", "stair", "furniture"].includes(object.semantic ?? "") ? 1 : 2;
+  const ordered = [...inspection.objects].sort((a, b) => priority(a) - priority(b));
+  const objects = ordered.slice(0, limit).map((object) => ({
+    id: object.id,
+    semantic: object.semantic,
+    kind: object.kind,
+    layer: object.layer,
+    text: typeof object.text === "string" ? object.text.slice(0, 64) : undefined,
+    boundsMm: object.boundsMm,
+    positionMm: object.positionMm,
+    wallStartMm: object.wallStartMm,
+    wallEndMm: object.wallEndMm,
+    wallThicknessMm: object.wallThicknessMm,
+    wallOpenings: object.wallOpenings?.slice(0, 12),
+    hostWallId: object.hostWallId,
+    openingOffsetMm: object.openingOffsetMm,
+    openingWidthMm: object.openingWidthMm,
+    lineStartMm: object.lineStartMm,
+    lineEndMm: object.lineEndMm,
+    polylinePointsMm: object.polylinePointsMm?.slice(0, 16),
+    closed: object.closed,
+  }));
+  return {
+    counts: inspection.counts,
+    objectCount: inspection.objects.length,
+    listedObjectCount: objects.length,
+    omittedObjectCount: Math.max(0, inspection.objects.length - objects.length),
+    objectIds: [...new Set([
+      ...priorityIds,
+      ...(inspection.objectIds ?? inspection.objects.map((object) => object.id).filter((id): id is string => !!id)),
+    ])].slice(0, 180),
+    warnings: inspection.warnings.slice(0, 8).map((warning) => warning.slice(0, 200)),
+    qualityIssues: (inspection.qualityIssues ?? []).slice(0, 8).map((issue) => ({ ...issue, message: issue.message.slice(0, 220) })),
+    wallBaselineReady: inspection.wallBaselineReady,
+    wallBaselineIds: inspection.wallBaselineIds?.slice(0, 80),
+    wallCurrentIds: inspection.wallCurrentIds?.slice(0, 80),
+    wallChanges: inspection.wallChanges?.slice(0, 12),
+    segments: inspection.segments,
+    objects,
+  };
+}
+
 export async function critiqueCadPlan(input: CadInput, inspection: CadInspection, preview: string, fetchFn: typeof fetch = fetch): Promise<CadArchitectureReview | null> {
   const model = input.selectedConcept ? CONCEPT_BOARD_MODELS.text : resolveArchitectTextModel();
   const key = process.env.OPENROUTER_API_KEY?.trim();
   if (!model || !key) return null;
-  const objects = inspection.objects.slice(0, 400);
-  const ids = new Set(objects.map((o) => o.id).filter((id): id is string => !!id));
+  const context = compactCadInspection(inspection, 100);
+  const ids = new Set(inspection.objects.map((o) => o.id).filter((id): id is string => !!id));
   const rubric = ["program", "room_logic", "circulation", "stair", "privacy", "daylight_ventilation", "clearance", "usability"];
   let png: Buffer;
   try { png = await sharp(Buffer.from(preview)).resize({ width: 1100, height: 900, fit: "inside" }).png().toBuffer(); } catch { return null; }
   const payload = {
-    model, temperature: 0, max_tokens: 2200, reasoning: { max_tokens: 900 },
+    model, temperature: 0, max_tokens: 2200, reasoning: { max_tokens: 300 },
     messages: [
         { role: "system", content: `You are the final architectural plan reviewer for a concept the user selected. Inspect the ACTUAL post-execution preview image and complete semantic geometry metadata, not the previous design intent or the generator's pre-execution selfReview. Return only JSON: {"verdict":"ready"|"revise","summary":"...","issues":[{"dimension":"program|room_logic|circulation|stair|privacy|daylight_ventilation|clearance|usability","severity":"blocking|improvement","objectIds":["existing ID"],"finding":"...","proposedEdit":"a targeted change"}],"rubric":[{"dimension":"...","status":"reviewed|unresolved","evidenceIds":["existing ID"],"note":"..."}]}. Review each dimension: program means requested number/functions; room_logic means adjacencies/proportions; circulation means legible paths and access; stair means plausible connected placement; privacy means separation of public/private areas; daylight_ventilation means visible exterior windows or real shaft symbols; clearance means doors/windows/furniture relationships; usability means usable space without excessive fragmentation. For every reviewed dimension, cite at least one existing object ID as evidence; mark unresolved when the drawing cannot support a judgment. Keep the user's requested room counts and selected spatial concept. Look for duplicated/overcompartmentalized rooms, stairs disconnected from access, beds obstructing door swings or windows, missing exterior daylight, missing wet-room ventilation shaft/window, privacy and wasted/circulation area. Be concrete and cite inspected IDs. Do not invent code, structural, or Egyptian-regulation compliance. The room-access heuristic is not an egress certification. Mark revise for any serious program/spatial issue or unresolved rubric item; ready only if no issues remain. Limit issues to 8 and rubric to 8. Never output Python or CAD commands.` },
       { role: "user", content: [
-        { type: "text", text: JSON.stringify({ brief: input.instruction, selectedConcept: input.selectedConcept ?? null, reviewRubric: rubric, siteMm: inspection.siteMm, deterministicQualityIssues: inspection.qualityIssues ?? [], geometryWarnings: inspection.warnings, currentDrawing: { counts: inspection.counts, objects, segments: inspection.segments, wallChanges: inspection.wallChanges ?? [] }, instruction: "Review this saved result after FreeCAD executed the previous stage. Provide a post-execution critique grounded in the image and metadata." }) },
+        { type: "text", text: JSON.stringify({ brief: input.instruction, selectedConcept: input.selectedConcept ? { id: input.selectedConcept.id, strategy: input.selectedConcept.strategy, program: input.selectedConcept.program, zones: input.selectedConcept.zones } : null, reviewRubric: rubric, siteMm: inspection.siteMm, currentDrawing: context, instruction: "Review saved geometry after FreeCAD execution. Return concise findings with existing IDs; prioritize only the most important corrections." }) },
         { type: "image_url", image_url: { url: `data:image/png;base64,${png.toString("base64")}` } },
       ] },
     ],
@@ -672,8 +725,16 @@ export async function proposeCadCommands(input: CadInput, inspection: CadInspect
   const model = input.selectedConcept ? CONCEPT_BOARD_MODELS.text : resolveArchitectTextModel();
   const key = process.env.OPENROUTER_API_KEY?.trim();
   if (!model || !key) throw new Error("CAD text model unavailable");
-  const content: ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] = [{ type: "text", text: JSON.stringify({ userBrief: input.instruction, selectedConcept: input.selectedConcept ?? null, selectedConceptDrawingScope: selectedConceptDrawingScope(input.selectedConcept), selectedConceptBoardReference: input.selectedConcept ? { image: "the following selected A/B/C crop is visual inspiration only; do not infer metric dimensions from pixels", conceptId: input.selectedConcept.id, strategy: input.selectedConcept.strategy } : null, siteMm: [input.siteWidth * 1000, input.siteDepth * 1000], stage: input.step + 1, maxStages: CAD_AGENT.maxSteps, executionError: input.executionError, currentDrawing: inspection ? { counts: inspection.counts, warnings: inspection.warnings, wallBaselineReady: inspection.wallBaselineReady, wallBaselineIds: inspection.wallBaselineIds, wallCurrentIds: inspection.wallCurrentIds, wallBaselineCount: inspection.wallBaselineCount, wallCurrentCount: inspection.wallCurrentCount, wallChanges: inspection.wallChanges, objects: inspection.objects.slice(0, 400), objectIds: inspection.objectIds?.slice(0, 500), segments: inspection.segments } : null }) }];
-  if (input.selectedConcept && input.conceptBoardDataUrl) {
+  const selectedPilot = Boolean(input.selectedConcept);
+  const commandLimit = selectedPilot ? (attempt > 0 && input.executionError?.includes("Truncated CAD reply") ? 3 : 8) : 80;
+  const currentDrawing = inspection ? selectedPilot ? compactCadInspection(inspection, 100) : {
+    counts: inspection.counts, warnings: inspection.warnings, wallBaselineReady: inspection.wallBaselineReady,
+    wallBaselineIds: inspection.wallBaselineIds, wallCurrentIds: inspection.wallCurrentIds, wallBaselineCount: inspection.wallBaselineCount,
+    wallCurrentCount: inspection.wallCurrentCount, wallChanges: inspection.wallChanges,
+    objects: inspection.objects.slice(0, 400), objectIds: inspection.objectIds?.slice(0, 500), segments: inspection.segments,
+  } : null;
+  const content: ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] = [{ type: "text", text: JSON.stringify({ userBrief: input.instruction, selectedConcept: input.selectedConcept ?? null, selectedConceptDrawingScope: selectedConceptDrawingScope(input.selectedConcept), selectedConceptBoardReference: input.selectedConcept ? { image: "the following selected A/B/C crop is visual inspiration only; do not infer metric dimensions from pixels", conceptId: input.selectedConcept.id, strategy: input.selectedConcept.strategy } : null, siteMm: [input.siteWidth * 1000, input.siteDepth * 1000], stage: input.step + 1, maxStages: CAD_AGENT.maxSteps, commandLimit, executionError: input.executionError, currentDrawing }) }];
+  if (input.selectedConcept && input.conceptBoardDataUrl && !inspection) {
     const panel = await getSelectedPanelDataUrl(input.conceptBoardDataUrl, input.selectedConcept.id);
     if (panel) content.push({ type: "image_url", image_url: { url: panel } });
   }
@@ -681,12 +742,21 @@ export async function proposeCadCommands(input: CadInput, inspection: CadInspect
     const png = await sharp(Buffer.from(preview)).resize({ width: 900, height: 900, fit: "inside" }).png().toBuffer();
     content.push({ type: "image_url", image_url: { url: `data:image/png;base64,${png.toString("base64")}` } });
   }
-  const thinking = model.startsWith("anthropic/") ? { max_tokens: 3_000 } : { effort: "medium" };
-  const response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: attempt === 0 ? 10_000 : 7_000, reasoning: attempt === 0 ? thinking : (model.startsWith("anthropic/") ? { max_tokens: 1_500 } : { effort: "medium" }), messages: [
-  { role: "system", content: `You are an architectural CAD operator. Return ONLY JSON with shape {"commands":[...],"summary":"brief Arabic stage report","selfReview":["specific check/result"],"requiredElements":[{"requirement":"a concrete user-brief requirement","status":"met"|"unresolved","evidenceIds":["existing-or-created-object-id"],"evidence":"what inspected geometry supports this"}],"unresolvedItems":["remaining brief or drawing issue"],"done":false}. Never return code. Requirement review is advisory during intermediate drawing: do not omit otherwise valid commands because evidence is not available yet. Mark unverified items unresolved with evidenceIds:[] and done=false; mark met only when evidence IDs exist in inspection or are created in this batch. Coordinates and sizes are millimeters in a 0..siteMm rectangle. If selectedConcept is present, it is the chosen spatial direction: respect its strategy, zone adjacencies, and circulation while producing actual CAD geometry; the selected panel image is visual reference only, not metric input. The user's requested program takes priority over decorative choices. Wall endpoints describe the wall centerline, so inset boundary walls by half their thickness to keep the finished face on the lot edge. Available commands: {"op":"wall","id":"stable-id","from":[x,y],"to":[x,y],"thickness":200}; {"op":"beam","id":"stable-id","from":[x,y],"to":[x,y],"width":250} for a conceptual 2D beam footprint only, with no structural sizing or validation; {"op":"dimension","id":"stable-id","from":[x,y],"to":[x,y],"offset":400} to draw extension lines, measured dimension line and numeric millimeter label for that exact span; dimensions are placed toward the site center automatically, but check their full bounds; {"op":"line","id":"stable-id","from":[x,y],"to":[x,y],"layer":"DIMENSION"}; {"op":"polyline","id":"stable-id","points":[[x,y],...],"closed":true,"layer":"OTHER"} for bounded primitive outlines; {"op":"opening","id":"stable-id","wallId":"existing-wall-id","offset":1200,"kind":"DOOR"|"WINDOW","width":900,"swingSide":1}. Openings cut a gap from that wall and draw a door leaf/swing arc or double-line window symbol; offset is measured from its start centerline. The default door swing points toward the site center; use swingSide 1 or -1 only when the chosen swing and its full arc remain inside the site. The host wall must exist already or be added earlier in the same batch. {"op":"hatch","id":"stable-id","targetId":"closed-polyline-or-wall-id","pattern":"diagonal"|"cross"|"tile","spacing":400,"angle":45} creates clipped, editable pattern strokes on a dedicated HATCH layer; tile is an orthogonal grid. Hatch only material zones you mean to show; spacing is bounded and hatch strokes are not associative native HATCH entities. {"op":"room","id":"stable-id","name":"Living","at":[x,y]}; {"op":"shaft","id":"stable-id","kind":"ventilation"|"service","at":[x,y],"width":900,"depth":900} draws a clearly labeled, bounded shaft footprint for vertical ventilation or services; place it beside internal bathrooms/kitchens when no direct exterior window is feasible. It is a 2D planning symbol, not proof of a code-compliant duct or stack. {"op":"stair","id":"stable-id","kind":"flight","at":[x,y],"width":1000,"depth":3000,"angle":0,"treads":12} draws a schematic single flight with treads and travel arrow. {"op":"furniture","id":"stable-id","kind":"bed|bed-single|bed-double|sofa|sofa-2-seat|sofa-3-seat|armchair|dining-table|dining-table-4|dining-table-6|desk|wardrobe|kitchen-counter|kitchen-island|refrigerator|cooker|kitchen-sink|sink|bath-vanity|toilet|bathtub|shower|chair|car-compact|car-sedan|car-suv|generic-block","at":[x,y],"width":1800,"depth":2000,"angle":0}. Cars are top-view symbols; set width to vehicle width (~1800mm) and depth to its length (~4300mm), then rotate via angle. Beds, seating, dining tables and chairs, kitchen/bath fixtures and vehicles are procedural 2D outline/detail symbols with no third-party asset pack. {"op":"column","id":"stable-id","kind":"...","at":[x,y],"width":300,"depth":300,"angle":0}. Stair, furniture, vehicle and column shapes are schematic plan symbols, not detailed objects. {"op":"delete","id":"existing-stable-id"}. Max 80 commands per stage and two hatch commands per stage. IDs must remain stable across stages; edit by reusing the same ID; remove with delete. Work in incremental stages and critique the current preview before editing it. Preserve the requested program count; avoid duplicated/unnamed rooms and reserve useful circulation. Review the stair as a connected core, apartment privacy and entry paths, daylight to habitable rooms, ventilation of wet rooms through a nearby exterior window or shaft, furniture clearance at door swings/windows, and usable room proportions. Place beds away from door swings and window openings. Make deliberate room adjacencies and varied, coherent partitions instead of repeating small compartments. Then add/correct geometry in small batches. Every complete object shape must remain inside the site, not just its insertion point. Preflight wall thickness, door swing arcs, dimension ticks, and the rotated extents of furniture, cars, and stairs against all four boundaries. Keep clearance where a symbol has nonzero extent. Before completion, review the inspection warnings and preview. Fill selfReview with concrete visual/geometry checks performed. Map the important requirements from the actual user brief into requiredElements, and cite IDs that exist in the final inspection; mark each met only when the inspection is evidence. For a requirement that existing walls were not moved or deleted, mark met only when wallBaselineReady is true and wallChanges is empty; otherwise leave it unresolved. Explicitly list every outstanding brief or drawing issue in unresolvedItems. Set done=true only when every required element is met, every cited ID exists, unresolvedItems is empty, and deterministic geometry warnings are empty. Deterministic room access, basic clearance, wet-room ventilation symbols, and daylight proximity are checked; these heuristics do not certify room enclosure, structure, or code. never present this as architectural correctness or claim code compliance.` },
+  const thinking = model.startsWith("anthropic/") ? { max_tokens: selectedPilot ? 900 : 3_000 } : { effort: "medium" };
+  const retryIsTruncation = attempt > 0 && input.executionError?.includes("Truncated CAD reply");
+  const maxTokens = retryIsTruncation ? 3_200 : selectedPilot ? 6_000 : attempt === 0 ? 10_000 : 7_000;
+  const retryReasoning = model.startsWith("anthropic/") ? { max_tokens: retryIsTruncation ? 128 : selectedPilot ? 400 : 1_500 } : { effort: "medium" };
+  let response: Response;
+  try {
+    response = await fetchFn(OPENROUTER_ENDPOINT, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: maxTokens, reasoning: attempt === 0 ? thinking : retryReasoning, messages: [
+  { role: "system", content: `You are an architectural CAD operator. Return ONLY JSON with shape {"commands":[...],"summary":"brief Arabic stage report","selfReview":["specific check/result"],"requiredElements":[{"requirement":"a concrete user-brief requirement","status":"met"|"unresolved","evidenceIds":["existing-or-created-object-id"],"evidence":"what inspected geometry supports this"}],"unresolvedItems":["remaining brief or drawing issue"],"done":false}. Never return code. Requirement review is advisory during intermediate drawing: do not omit otherwise valid commands because evidence is not available yet. Mark unverified items unresolved with evidenceIds:[] and done=false; mark met only when evidence IDs exist in inspection or are created in this batch. Coordinates and sizes are millimeters in a 0..siteMm rectangle. If selectedConcept is present, it is the chosen spatial direction: respect its strategy, zone adjacencies, and circulation while producing actual CAD geometry; the selected panel image is visual reference only, not metric input. The user's requested program takes priority over decorative choices. Wall endpoints describe the wall centerline, so inset boundary walls by half their thickness to keep the finished face on the lot edge. Available commands: {"op":"wall","id":"stable-id","from":[x,y],"to":[x,y],"thickness":200}; {"op":"beam","id":"stable-id","from":[x,y],"to":[x,y],"width":250} for a conceptual 2D beam footprint only, with no structural sizing or validation; {"op":"dimension","id":"stable-id","from":[x,y],"to":[x,y],"offset":400} to draw extension lines, measured dimension line and numeric millimeter label for that exact span; dimensions are placed toward the site center automatically, but check their full bounds; {"op":"line","id":"stable-id","from":[x,y],"to":[x,y],"layer":"DIMENSION"}; {"op":"polyline","id":"stable-id","points":[[x,y],...],"closed":true,"layer":"OTHER"} for bounded primitive outlines; {"op":"opening","id":"stable-id","wallId":"existing-wall-id","offset":1200,"kind":"DOOR"|"WINDOW","width":900,"swingSide":1}. Openings cut a gap from that wall and draw a door leaf/swing arc or double-line window symbol; offset is measured from its start centerline. The default door swing points toward the site center; use swingSide 1 or -1 only when the chosen swing and its full arc remain inside the site. The host wall must exist already or be added earlier in the same batch. {"op":"hatch","id":"stable-id","targetId":"closed-polyline-or-wall-id","pattern":"diagonal"|"cross"|"tile","spacing":400,"angle":45} creates clipped, editable pattern strokes on a dedicated HATCH layer; tile is an orthogonal grid. Hatch only material zones you mean to show; spacing is bounded and hatch strokes are not associative native HATCH entities. {"op":"room","id":"stable-id","name":"Living","at":[x,y]}; {"op":"shaft","id":"stable-id","kind":"ventilation"|"service","at":[x,y],"width":900,"depth":900} draws a clearly labeled, bounded shaft footprint for vertical ventilation or services; place it beside internal bathrooms/kitchens when no direct exterior window is feasible. It is a 2D planning symbol, not proof of a code-compliant duct or stack. {"op":"stair","id":"stable-id","kind":"flight","at":[x,y],"width":1000,"depth":3000,"angle":0,"treads":12} draws a schematic single flight with treads and travel arrow. {"op":"furniture","id":"stable-id","kind":"bed|bed-single|bed-double|sofa|sofa-2-seat|sofa-3-seat|armchair|dining-table|dining-table-4|dining-table-6|desk|wardrobe|kitchen-counter|kitchen-island|refrigerator|cooker|kitchen-sink|sink|bath-vanity|toilet|bathtub|shower|chair|car-compact|car-sedan|car-suv|generic-block","at":[x,y],"width":1800,"depth":2000,"angle":0}. Cars are top-view symbols; set width to vehicle width (~1800mm) and depth to its length (~4300mm), then rotate via angle. Beds, seating, dining tables and chairs, kitchen/bath fixtures and vehicles are procedural 2D outline/detail symbols with no third-party asset pack. {"op":"column","id":"stable-id","kind":"...","at":[x,y],"width":300,"depth":300,"angle":0}. Stair, furniture, vehicle and column shapes are schematic plan symbols, not detailed objects. {"op":"delete","id":"existing-stable-id"}. Max ${commandLimit} commands${selectedPilot ? " for this focused stage" : " per stage"} and two hatch commands per stage. ${selectedPilot ? "Do not redesign the whole plan in one reply. Inspect the current preview, fix only the one or two highest-priority architectural issues with a small batch, and leave lower-priority improvements unresolved for later stages. On a critique retry, return at most 3 targeted commands and preserve stable IDs and existing walls unless the finding specifically requires changing them." : "IDs must remain stable across stages; edit by reusing the same ID; remove with delete. Work in incremental stages."} Preserve the requested program count; avoid duplicated/unnamed rooms and reserve useful circulation. Review stair location, privacy, daylight and wet-room ventilation, furniture clearance, and usable room proportions. Every complete object shape must remain inside the site. Preflight rotated extents of furniture, cars, and stairs against all four site boundaries. Before completion, review the inspection warnings and preview. Fill selfReview with at most 3 concrete checks. Mark met requirements only when existing evidence IDs support them; list open requirements concisely. Set done=true only when all requirements have evidence and no unresolved issue remains. Planning checks are heuristics, not professional or code certification.` },
     ...(input.selectedConcept ? [{ role: "system" as const, content: "The selectedConceptDrawingScope in the user payload is authoritative for scope. The concept comparison was already completed: draw only the selected ID and do not treat an earlier request for three alternatives as a CAD requirement. Preserve every actual room/program count, site, floor, access, and other project requirement from userBrief." }] : []),
     { role: "user", content },
-  ] }), signal: AbortSignal.timeout(attempt === 0 ? 90_000 : 55_000) });
+  ] }), signal: AbortSignal.timeout(attempt === 0 ? 90_000 : retryIsTruncation && selectedPilot ? 35_000 : 55_000) });
+  } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw new CadModelTimeoutError(attempt + 1);
+    throw error;
+  }
   if (!response.ok) throw new Error(`CAD model request failed (${response.status})`);
   const raw = await response.text();
   if (raw.length > 100_000) throw new Error("CAD model response too large");
@@ -696,13 +766,15 @@ export async function proposeCadCommands(input: CadInput, inspection: CadInspect
   const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason.slice(0, 32) : "missing";
   const answer = extractChatText(payload);
   const rejection: CadCommandRejection = { category: finishReason === "length" ? "response_truncated" : "missing_model_content" };
-  const action = answer && finishReason !== "length" ? parseCadCommandAction(answer, input.siteWidth, input.siteDepth, inspection, rejection) : null;
+  const action = answer && finishReason !== "length" ? parseCadCommandAction(answer, input.siteWidth, input.siteDepth, inspection, rejection, commandLimit) : null;
   if (!action) {
     const diagnostic = { category: rejection.category, attempt: attempt + 1, finishReason, responseContentLength: answer?.length ?? 0, commandIndex: rejection.commandIndex, op: rejection.op, schemaFields: rejection.schemaFields, reasonCode: rejection.reasonCode };
     console.warn("[CAD_MODEL_OUTPUT_REJECTED]", JSON.stringify(diagnostic));
     if (attempt === 0) {
       const fields = rejection.schemaFields?.length ? ` Invalid schema fields: ${rejection.schemaFields.join(", ")}.` : "";
-      const reason = `Previous CAD reply failed validation (${rejection.category}${rejection.commandIndex !== undefined ? `, command index ${rejection.commandIndex}` : ""}${rejection.op ? `, operation ${rejection.op}` : ""}${rejection.reasonCode ? `, reason ${rejection.reasonCode}` : ""}${finishReason === "length" ? ", response was truncated" : ""}).${fields} Return a corrected complete JSON action. Preserve the user's design intent; change only invalid fields or commands. Keep all site, geometry, ID, and schema constraints.`;
+      const reason = finishReason === "length" && selectedPilot
+        ? `Truncated CAD reply. Return a SHORT complete JSON action with at most 3 commands (3,200 output-token budget). Fix only the single most important issue visible in the current saved drawing/critique; preserve all existing geometry and stable IDs unless directly necessary. Keep the same site and safety limits. Leave other edits for a later stage.`
+        : `Previous CAD reply failed validation (${rejection.category}${rejection.commandIndex !== undefined ? `, command index ${rejection.commandIndex}` : ""}${rejection.op ? `, operation ${rejection.op}` : ""}${rejection.reasonCode ? `, reason ${rejection.reasonCode}` : ""}${finishReason === "length" ? ", response was truncated" : ""}).${fields} Return corrected complete JSON. Keep all site, geometry, ID, and schema constraints.`;
       return proposeCadCommands({ ...input, executionError: reason }, inspection, preview, fetchFn, 1);
     }
     throw new CadCommandValidationError(diagnostic);

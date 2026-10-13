@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../lib/architect/cad-agent", () => ({
   CadGeometryBoundsError: class CadGeometryBoundsError extends Error { constructor(readonly violations: { label: string; id: string; boundsMm: number[]; siteMm: number[] }[]) { super(`CAD validation failed: geometry outside the site boundary: ${violations.map((item) => `${item.label} (id=${item.id}, boundsMm=[${item.boundsMm.join(",")}], siteMm=[0,0,${item.siteMm.join(",")}])`).join("; ")}. Keep the full geometry inside the site, including wall thicknesses, door swing arcs, dimensions, and rotated symbols.`) } },
   CadCommandValidationError: class CadCommandValidationError extends Error { constructor(readonly diagnostic: unknown) { super("CAD model output invalid") } },
+  CadModelTimeoutError: class CadModelTimeoutError extends Error { constructor(readonly attempt: number) { super("CAD model request timed out"); this.name = "CadModelTimeoutError" } },
   cadAgentAvailable: vi.fn(), cadCompletionReady: vi.fn(() => false), getCadSandbox: vi.fn(), parseCadInput: vi.fn(),
   proposeCadAction: vi.fn(), proposeCadCommands: vi.fn(), compileCadCommands: vi.fn(() => "generated-safe-action"), rollbackCadProject: vi.fn(), readCadDownload: vi.fn(), readCadInspection: vi.fn(),
   retryCadSetup: vi.fn(), runCadAction: vi.fn(), setupCadSandbox: vi.fn(),
@@ -13,7 +14,7 @@ vi.mock("../../lib/credits", () => ({ getSupabaseAdminClient: vi.fn() }));
 import { GET, POST } from "../../app/api/architect/cad-agent/route";
 import { authorizeArchitectPilot } from "../../lib/admin";
 import { getSupabaseAdminClient } from "../../lib/credits";
-import { CadGeometryBoundsError, cadAgentAvailable, cadCompletionReady, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
+import { CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
 import { resetRequestGuards } from "../../lib/request-guards";
 
 const projectId = "0123456789abcdef01234567";
@@ -60,6 +61,19 @@ describe("CAD agent route", () => {
     expect((await POST(request())).status).toBe(202);
     expect(proposeCadCommands).toHaveBeenCalledTimes(1);
     expect(runCadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an actionable timeout while leaving the last saved drawing untouched", async () => {
+    vi.mocked(proposeCadCommands).mockRejectedValueOnce(new CadModelTimeoutError(2));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await POST(request());
+      const body = await response.json();
+      expect(response.status).toBe(502);
+      expect(body.error).toContain("الرسم المحفوظ لم يتغير");
+      expect(runCadAction).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith("[CAD_STEP_FAILED]", expect.stringContaining('"kind":"model_timeout","attempt":2'));
+    } finally { log.mockRestore(); }
   });
 
   it("returns actionable bounded geometry details so the admin retry can correct the offending ID", async () => {
