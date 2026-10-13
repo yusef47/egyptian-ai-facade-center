@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import sharp from "sharp";
 import { extractChatText, extractJsonPayload, resolveArchitectTextModel } from "../architect-interpreter";
-import { getSelectedPanelDataUrl, parseSelectedConcept, type ArchitecturalConcept } from "./concept-board";
+import { CONCEPT_BOARD_MODELS, getSelectedPanelDataUrl, parseSelectedConcept, type ArchitecturalConcept } from "./concept-board";
 import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
 import { FREECAD_HARNESS } from "./cad-agent-harness";
 
@@ -593,7 +593,7 @@ export class CadCommandValidationError extends Error {
 }
 
 export async function proposeCadCommands(input: CadInput, inspection: CadInspection | null, preview: string | null, fetchFn: typeof fetch = fetch, attempt = 0): Promise<CadCommandAction> {
-  const model = resolveArchitectTextModel();
+  const model = input.selectedConcept ? CONCEPT_BOARD_MODELS.text : resolveArchitectTextModel();
   const key = process.env.OPENROUTER_API_KEY?.trim();
   if (!model || !key) throw new Error("CAD text model unavailable");
   const content: ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] = [{ type: "text", text: JSON.stringify({ userBrief: input.instruction, selectedConcept: input.selectedConcept ?? null, selectedConceptBoardReference: input.selectedConcept ? { image: "the following selected A/B/C crop is visual inspiration only; do not infer metric dimensions from pixels", conceptId: input.selectedConcept.id, strategy: input.selectedConcept.strategy } : null, siteMm: [input.siteWidth * 1000, input.siteDepth * 1000], stage: input.step + 1, maxStages: CAD_AGENT.maxSteps, executionError: input.executionError, currentDrawing: inspection ? { counts: inspection.counts, warnings: inspection.warnings, wallBaselineReady: inspection.wallBaselineReady, wallBaselineIds: inspection.wallBaselineIds, wallCurrentIds: inspection.wallCurrentIds, wallBaselineCount: inspection.wallBaselineCount, wallCurrentCount: inspection.wallCurrentCount, wallChanges: inspection.wallChanges, objects: inspection.objects.slice(0, 75), objectIds: inspection.objectIds?.slice(0, 500), segments: inspection.segments } : null }) }];

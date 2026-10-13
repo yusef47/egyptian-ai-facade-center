@@ -322,11 +322,12 @@ describe("CAD agent input and execution contracts", () => {
   });
 
   it("uses bounded medium reasoning for structured CAD planning and requires a self-review field", async () => {
-    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     try {
       const fetchFn = vi.fn(async (_url: unknown, options: RequestInit) => {
         const body = JSON.parse(options.body as string);
+        expect(body.model).toBe("anthropic/claude-haiku-5.5");
         expect(body.max_tokens).toBe(10_000);
         expect(body.reasoning).toEqual({ max_tokens: 3_000 });
         expect(body.messages[0].content).toContain("requiredElements");
@@ -342,7 +343,7 @@ describe("CAD agent input and execution contracts", () => {
   });
 
   it("sends only the selected concept and its selected panel as structured CAD context", async () => {
-    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     try {
       const selectedConcept = { id: "B" as const, title: "Courtyard loop", strategy: "courtyard" as const, siteWidthM: 20, siteDepthM: 20, idea: "A small courtyard gives the shared circulation daylight and organizes rooms around a calm center.", circulation: "A compact loop around the courtyard reaches each private apartment entrance.", program: ["two homes", "shared stair"], zones: [{ name: "Home A", location: "east side", areaShare: 0.48 }, { name: "Home B", location: "west side", areaShare: 0.48 }] };
@@ -350,6 +351,7 @@ describe("CAD agent input and execution contracts", () => {
       const conceptBoardDataUrl = `data:image/png;base64,${image.toString("base64")}`;
       const fetchFn = vi.fn(async (_url: unknown, options: RequestInit) => {
         const body = JSON.parse(options.body as string);
+        expect(body.model).toBe("anthropic/claude-sonnet-5.5");
         expect(body.messages[0].content).toContain("metric input");
         const userContent = body.messages[1].content;
         expect(userContent[0].text).toContain('"id":"B"');

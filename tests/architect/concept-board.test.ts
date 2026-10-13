@@ -31,12 +31,12 @@ const concepts = [
 afterEach(() => vi.unstubAllEnvs());
 
 describe("architect concept board contract", () => {
-  it("is available only behind the pilot flag, server key, and a configured Sonnet model", () => {
-    const sonnetEnv = { NODE_ENV: "test" as const, QATTAN_BLENDER_LAB_ENABLED: "1", OPENROUTER_API_KEY: "test", OPENROUTER_ARCHITECT_TEXT_MODEL: "anthropic/claude-sonnet-5.5" };
-    expect(isConceptBoardAvailable(sonnetEnv)).toBe(true);
-    expect(isConceptBoardAvailable({ ...sonnetEnv, QATTAN_BLENDER_LAB_ENABLED: "0" })).toBe(false);
-    expect(isConceptBoardAvailable({ ...sonnetEnv, OPENROUTER_ARCHITECT_TEXT_MODEL: "anthropic/claude-haiku-5.5" })).toBe(false);
-    expect(isConceptBoardAvailable({ NODE_ENV: "test", QATTAN_BLENDER_LAB_ENABLED: "1", OPENROUTER_ARCHITECT_TEXT_MODEL: "anthropic/claude-sonnet-5.5" })).toBe(false);
+  it("is gated by the pilot flag and API key independently of the legacy text model", () => {
+    const env = { NODE_ENV: "test" as const, QATTAN_BLENDER_LAB_ENABLED: "1", OPENROUTER_API_KEY: "test", OPENROUTER_ARCHITECT_TEXT_MODEL: "anthropic/claude-haiku-5.5" };
+    expect(isConceptBoardAvailable(env)).toBe(true);
+    expect(isConceptBoardAvailable({ ...env, QATTAN_BLENDER_LAB_ENABLED: "0" })).toBe(false);
+    expect(isConceptBoardAvailable({ NODE_ENV: "test", QATTAN_BLENDER_LAB_ENABLED: "1" })).toBe(false);
+    expect(isConceptBoardAvailable({ NODE_ENV: "test", QATTAN_BLENDER_LAB_ENABLED: "1", OPENROUTER_API_KEY: "test" })).toBe(true);
   });
 
   it("accepts exactly three distinct strategies with the same required program", () => {
@@ -64,12 +64,12 @@ describe("architect concept board contract", () => {
   });
 
   it("uses configured Sonnet once for dialogue and validates its structured reply", async () => {
-    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-secret");
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "concepts", reply: "Three distinct layouts.", concepts }) } }], usage: { cost: 0.004 } }), { status: 200 }));
     const result = await generateConceptDialogue({ brief: "two apartments", history: [] }, fetchFn);
     expect(fetchFn).toHaveBeenCalledOnce();
-    expect(JSON.parse(String(fetchFn.mock.calls[0][1]?.body)).model).toBe("anthropic/claude-sonnet-5.5");
+    expect(JSON.parse(String(fetchFn.mock.calls[0][1]?.body)).model).toBe(CONCEPT_BOARD_MODELS.text);
     expect(String(fetchFn.mock.calls[0][1]?.headers && new Headers(fetchFn.mock.calls[0][1]?.headers).get("Authorization"))).toBe("Bearer test-secret");
     expect(result.dialogue.type).toBe("concepts");
     expect(result.costUsd).toBe(0.004);

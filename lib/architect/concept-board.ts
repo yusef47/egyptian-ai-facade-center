@@ -1,8 +1,9 @@
 import sharp from "sharp";
-import { extractChatText, extractJsonPayload, resolveArchitectTextModel } from "../architect-interpreter";
+import { extractChatText, extractJsonPayload } from "../architect-interpreter";
 import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
 
 export const CONCEPT_BOARD_MODELS = {
+  text: "anthropic/claude-sonnet-5.5",
   image: "google/gemini-3.1-flash-lite-image",
 } as const;
 export const OPENROUTER_IMAGES_ENDPOINT = "https://openrouter.ai/api/v1/images";
@@ -47,8 +48,7 @@ function boundedText(value: unknown, min: number, max: number): value is string 
 }
 
 export function isConceptBoardAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
-  const model = resolveArchitectTextModel(env);
-  return env.QATTAN_BLENDER_LAB_ENABLED === "1" && Boolean(env.OPENROUTER_API_KEY?.trim()) && Boolean(model && /^anthropic\/claude-sonnet/i.test(model));
+  return env.QATTAN_BLENDER_LAB_ENABLED === "1" && Boolean(env.OPENROUTER_API_KEY?.trim());
 }
 
 export function parseConceptDialogue(value: unknown): ConceptDialogue | null {
@@ -118,11 +118,10 @@ export async function generateConceptDialogue(
   input: { brief: string; history: ConceptChatTurn[] },
   fetchFn: typeof fetch = fetch,
 ): Promise<{ dialogue: ConceptDialogue; costUsd: number | null }> {
-  const model = resolveArchitectTextModel();
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-  if (!model || !/^anthropic\/claude-sonnet/i.test(model) || !apiKey) throw new Error("Concept interviewer is not configured for Sonnet");
+  if (!apiKey) throw new Error("Concept interviewer is not configured");
   const request = {
-    model, temperature: 0.25, max_tokens: 5_000,
+    model: CONCEPT_BOARD_MODELS.text, temperature: 0.25, max_tokens: 5_000,
     messages: [
       { role: "system", content: SONNET_SYSTEM },
       { role: "user", content: `BRIEF:\n${input.brief}\nRECENT DIALOGUE:\n${JSON.stringify(input.history)}` },
