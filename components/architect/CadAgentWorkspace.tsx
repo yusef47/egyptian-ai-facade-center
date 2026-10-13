@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 import type { ArchitecturalConcept } from "../../lib/architect/concept-board";
-import { verifyCadProgressSnapshot } from "../../lib/architect/cad-agent-progress";
+import { formatCadRepairFeedback, verifyCadProgressSnapshot } from "../../lib/architect/cad-agent-progress";
 
 type Inspection = { counts: Record<string, number>; warnings: string[]; qualityChecksEvaluated?: boolean; qualityIssues?: { code: string; severity: "blocking" | "improvement"; ids: string[]; message: string }[]; unverifiedChecks?: string[]; objects: number; segments: number };
 const MAX_STAGES = 6;
@@ -153,7 +153,9 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
         }
         if (!data?.previewSvg || !data.inspection) throw new Error("FreeCAD لم يُرجع لوحة رسم صالحة");
         setPreview(data.previewSvg); setInspection(data.inspection); setCompletedSteps(step + 1); setResumableBrief(brief);
-        const reviewFeedback = data.architectureReview?.verdict === "revise" ? [data.architectureReview.summary, ...data.architectureReview.issues.slice(0, 5).map((issue) => `${issue.dimension}: ${issue.finding} التعديل المقترح: ${issue.proposedEdit}`), ...(data.architectureReview.rubric ?? []).filter((item) => item.status === "unresolved").slice(0, 4).map((item) => `${item.dimension} غير محسوم: ${item.note}`), ...(data.inspection.qualityIssues ?? []).slice(0, 6).map((issue) => issue.message)].join("\n").slice(0, 1450) : "";
+        const reviewFeedback = data.architectureReview?.verdict === "revise"
+          ? formatCadRepairFeedback(data.architectureReview, data.inspection.qualityIssues ?? [])
+          : "";
         if (reviewFeedback) { feedbackForNextStage = reviewFeedback; setQualityFeedback(reviewFeedback); }
         else if (data.architectureReview?.verdict === "ready") { feedbackForNextStage = ""; setQualityFeedback(""); }
         try { localStorage.setItem(progressKey, JSON.stringify({ projectId, brief, siteWidth, siteDepth, completedSteps: step + 1, counts: data.inspection.counts, objects: data.inspection.objects, segments: data.inspection.segments, qualityFeedback: feedbackForNextStage })); } catch { /* Keep the in-memory resume cursor when browser storage is unavailable. */ }
@@ -224,6 +226,7 @@ export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, 
           <div className="mt-5 flex-1 space-y-3 overflow-y-auto">
             {turns.length === 0 && <p className="rounded-xl bg-[#18292f] p-3 text-sm leading-7 text-slate-400">اكتب وصف المخطط اللي عايزه. المساعد هيرسمه خطوة بخطوة؛ تقدر تطلب تعديل على نفس المشروع بعد النتيجة.</p>}
             {turns.map((turn, i) => <div key={i} className={`rounded-xl p-3 text-sm leading-7 ${turn.role === "user" ? "bg-[#203842]" : "bg-[#293023]"}`}>{turn.text}</div>)}
+            {qualityFeedback && <div className="rounded-xl border border-amber-400/30 bg-amber-950/40 p-3 text-xs leading-6 text-amber-100"><strong>أولويات الإصلاح المحفوظة:</strong><pre className="mt-2 whitespace-pre-wrap font-sans">{qualityFeedback}</pre></div>}
           </div>
           {error && <p role="alert" className="mt-3 rounded-xl bg-rose-950 p-3 text-sm text-rose-200">{error}</p>}
           <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)} rows={5} maxLength={1500} placeholder="اوصف المخطط أو التعديل اللي عايزه..." className="mt-4 w-full resize-none rounded-xl border border-white/15 bg-[#17282e] p-3 text-sm leading-7 text-white focus:border-[#d4af37] focus:outline-none" />

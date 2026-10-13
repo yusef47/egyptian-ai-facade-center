@@ -4,14 +4,14 @@ export type CadPlanObject = {
   hostWallId?: string; openingOffsetMm?: number; openingWidthMm?: number;
 };
 export type CadPlanQualityIssue = {
-  code: "furniture_opening_clearance" | "furniture_wall_collision" | "room_inaccessible" | "wet_room_ventilation" | "habitable_daylight" | "stair_fit" | "room_labels_missing" | "program_count";
+  code: "furniture_opening_clearance" | "furniture_wall_collision" | "room_inaccessible" | "wet_room_ventilation" | "habitable_daylight" | "stair_fit" | "room_labels_missing" | "program_count" | "duplicate_opening";
   severity: "blocking" | "improvement";
   ids: string[];
   message: string;
 };
 type PlanInspection = { objects: CadPlanObject[]; siteMm: number[] };
 
-const topologyCodes = new Set<CadPlanQualityIssue["code"]>(["program_count", "room_labels_missing", "room_inaccessible", "wet_room_ventilation", "stair_fit"]);
+const topologyCodes = new Set<CadPlanQualityIssue["code"]>(["program_count", "room_labels_missing", "duplicate_opening", "room_inaccessible", "wet_room_ventilation", "stair_fit"]);
 export type CadPlanFocus = { phase: "topology" | "furnishing"; blockingCodes: CadPlanQualityIssue["code"][]; allowedOps: string[] };
 
 function numberToken(value: string | undefined): number | null {
@@ -120,6 +120,19 @@ export function evaluateCadPlanQuality(inspection: PlanInspection, brief = ""): 
     const bedroomLabels = rooms.filter(isBedroomLabel);
     const labeledBedrooms = bedroomLabels.length;
     if (labeledBedrooms !== requestedBedrooms) issues.push({ code: "program_count", severity: "blocking", ids: bedroomLabels.map((room) => validId(room.id)).slice(0, 8), message: `The brief requests ${requestedBedrooms} bedrooms, but ${labeledBedrooms} semantic bedroom labels are present; resolve the room program before furnishing.` });
+  }
+  const openingGroups = new Map<string, CadPlanObject[]>();
+  for (const opening of openings) if (opening.hostWallId && typeof opening.openingOffsetMm === "number" && typeof opening.openingWidthMm === "number") {
+    openingGroups.set(opening.hostWallId, [...(openingGroups.get(opening.hostWallId) ?? []), opening]);
+  }
+  for (const [wallId, hosted] of openingGroups) {
+    const ordered = [...hosted].sort((a, b) => (a.openingOffsetMm ?? 0) - (b.openingOffsetMm ?? 0));
+    for (let i = 1; i < ordered.length; i++) {
+      const previous = ordered[i - 1], current = ordered[i];
+      if ((current.openingOffsetMm ?? 0) < (previous.openingOffsetMm ?? 0) + (previous.openingWidthMm ?? 0) - 1) {
+        issues.push({ code: "duplicate_opening", severity: "blocking", ids: [validId(previous.id), validId(current.id), validId(wallId)], message: "Hosted openings " + validId(previous.id) + " and " + validId(current.id) + " overlap on wall " + validId(wallId) + "; keep one opening or reposition one before adding more doors or windows." });
+      }
+    }
   }
   for(const furnishing of furniture){const fb=bounds(furnishing);if(!fb)continue;
     for(const opening of openings){const ob=bounds(opening);if(!ob)continue;const clearance=opening.text==="WINDOW"?300:150;const overlap=fb[0]<ob[2]+clearance&&fb[2]>ob[0]-clearance&&fb[1]<ob[3]+clearance&&fb[3]>ob[1]-clearance;if(overlap){issues.push({code:"furniture_opening_clearance",severity:"blocking",ids:[validId(furnishing.id),validId(opening.id)],message:`Furniture ${validId(furnishing.id)} conflicts with ${opening.text?.toLowerCase()??"opening"} ${validId(opening.id)}; relocate it to preserve access, door swing, and window clearance.`});break;}}

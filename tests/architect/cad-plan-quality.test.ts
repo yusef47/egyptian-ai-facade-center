@@ -42,6 +42,18 @@ describe("selected concept plan quality heuristics", () => {
     expect(issues.some((issue) => issue.code === "room_inaccessible" && issue.ids.includes("living"))).toBe(true);
   });
 
+  it("flags overlapping hosted openings with both stable IDs for topology repair", () => {
+    const issues = evaluateCadPlanQuality(inspection([
+      { id: "wall-entry", semantic: "wall", wallStartMm: [1000, 100], wallEndMm: [5000, 100], wallThicknessMm: 200 },
+      { id: "door-entry", semantic: "opening", text: "DOOR", hostWallId: "wall-entry", openingOffsetMm: 800, openingWidthMm: 900 },
+      { id: "door-entry-copy", semantic: "opening", text: "DOOR", hostWallId: "wall-entry", openingOffsetMm: 850, openingWidthMm: 900 },
+    ]));
+    expect(issues.find((issue) => issue.code === "duplicate_opening")).toMatchObject({
+      severity: "blocking", ids: ["door-entry", "door-entry-copy", "wall-entry"],
+    });
+    expect(cadPlanFocus(issues, "two apartments", inspection([])).phase).toBe("topology");
+  });
+
   it("does not treat an interior wall that only touches one site edge as an exterior window wall", () => {
     const issues = evaluateCadPlanQuality(inspection([
       { id: "bath", semantic: "room", text: "Bathroom", positionMm: [6000, 9500] },

@@ -37,6 +37,34 @@ describe("CAD agent input and execution contracts", () => {
     expect(rejection.hostWallLengthMm).toBeUndefined();
   });
 
+  it("rejects duplicate overlapping openings on an existing host wall but allows delete-then-replace", () => {
+    const inspection = { ok: true, objects: [
+      { id: "host-wall", label: "wall", type: "Part::Feature", layer: "WALL", semantic: "wall", wallStartMm: [100, 100], wallEndMm: [5100, 100], wallThicknessMm: 200, wallOpenings: [] },
+      { id: "other-wall", label: "wall", type: "Part::Feature", layer: "WALL", semantic: "wall", wallStartMm: [100, 500], wallEndMm: [5100, 500], wallThicknessMm: 200, wallOpenings: [] },
+      { id: "door-original", label: "door", type: "Part::Feature", layer: "DOOR", semantic: "opening", text: "DOOR", hostWallId: "host-wall", openingOffsetMm: 800, openingWidthMm: 900 },
+    ], counts: {}, warnings: [], segments: 2, siteMm: [20_000, 20_000] };
+    const action = (commands: unknown[]) => JSON.stringify({ commands, summary: "repair", done: false });
+    const rejection: CadCommandRejection = { category: "" };
+    expect(parseCadCommandAction(action([{ op: "opening", id: "door-copy", wallId: "host-wall", offset: 850, width: 900, kind: "DOOR" }]), 20, 20, inspection as never, rejection)).toBeNull();
+    expect(rejection.reasonCode).toBe("opening_overlap");
+    const inPlaceUpdate = parseCadCommandAction(action([
+      { op: "opening", id: "door-original", wallId: "host-wall", offset: 2500, width: 900, kind: "DOOR" },
+    ]), 20, 20, inspection as never);
+    expect(inPlaceUpdate?.commands).toMatchObject([{ op: "opening", id: "door-original", offset: 2500 }]);
+    const changedHost = parseCadCommandAction(action([
+      { op: "opening", id: "door-original", wallId: "other-wall", offset: 800, width: 900, kind: "DOOR" },
+      { op: "opening", id: "door-next", wallId: "host-wall", offset: 800, width: 900, kind: "WINDOW" },
+    ]), 20, 20, inspection as never);
+    expect(changedHost?.commands.map((command) => command.op)).toEqual(["opening", "opening"]);
+    const deleteOnly = action([{ op: "delete", id: "door-original" }]);
+    expect(parseCadCommandAction(deleteOnly, 20, 20, inspection as never)?.commands[0].op).toBe("delete");
+    const replaced = parseCadCommandAction(action([
+      { op: "delete", id: "door-original" },
+      { op: "opening", id: "door-replacement", wallId: "host-wall", offset: 850, width: 900, kind: "DOOR" },
+    ]), 20, 20, inspection as never);
+    expect(replaced?.commands.map((command) => command.op)).toEqual(["delete", "opening"]);
+  });
+
   it("gives Sonnet the measured host span on retry and keeps a rejected batch atomic", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     const selectedConcept = { id: "A" as const, title: "Selected courtyard", strategy: "courtyard" as const, idea: "Courtyard apartments", circulation: "Compact shared core", siteWidthM: 20, siteDepthM: 20, program: ["two apartments"], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] };
@@ -602,7 +630,9 @@ describe("CAD agent input and execution contracts", () => {
         return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "تم", done: false }) } }] }), { status: 200 });
       });
       const originalBrief = "أريد شقتين وثلاث غرف نوم لكل شقة، وعلى الأرض 20×20 متر. اقترح ثلاث توزيعات مختلفة للحركة والخصوصية.";
-      await expect(proposeCadCommands({ ...valid, instruction: originalBrief, selectedConcept, conceptBoardDataUrl }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
+      await expect(proposeCadCommands({ ...valid, instruction: originalBrief, selectedConcept, conceptBoardDataUrl, executionError: "POST-EXECUTION REPAIR PRIORITIES: [BLOCKING stair] IDs=st-main,d-main; move the existing stair; do not add another entry door." }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
+      expect(JSON.stringify(fetchFn.mock.calls[0][1]?.body)).toContain("st-main,d-main");
+      expect(JSON.stringify(fetchFn.mock.calls[0][1]?.body)).toContain("delete a duplicate opening by ID");
       expect(fetchFn).toHaveBeenCalledOnce();
     } finally { vi.unstubAllEnvs(); }
   });
