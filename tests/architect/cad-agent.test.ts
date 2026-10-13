@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
 import { CAD_AGENT, CadGeometryBoundsError, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
@@ -17,6 +18,16 @@ describe("CAD agent input and execution contracts", () => {
     expect(parseCadInput({ ...valid, siteWidth: 0 })).toBeNull();
     expect(parseCadInput({ ...valid, step: CAD_AGENT.maxSteps })).toBeNull();
     expect(parseCadInput({ ...valid, instruction: "a".repeat(CAD_AGENT.maxBrief + 1) })).toBeNull();
+  });
+
+  it("accepts the chosen structured concept and bounded board reference, rejecting malformed visual context", () => {
+    const selectedConcept = { id: "B", title: "Courtyard loop", strategy: "courtyard", siteWidthM: 20, siteDepthM: 20, idea: "A small courtyard gives the shared circulation daylight and organizes rooms around a calm center.", circulation: "A compact loop around the courtyard reaches each private apartment entrance.", program: ["two homes", "shared stair"], zones: [{ name: "Home A", location: "east side", areaShare: 0.48 }, { name: "Home B", location: "west side", areaShare: 0.48 }] };
+    const board = `data:image/jpeg;base64,${Buffer.from("encoded-preview").toString("base64")}`;
+    expect(parseCadInput({ ...valid, selectedConcept, conceptBoardDataUrl: board })).toMatchObject({ selectedConcept: { id: "B", strategy: "courtyard" }, conceptBoardDataUrl: board });
+    expect(parseCadInput({ ...valid, selectedConcept, conceptBoardDataUrl: "https://example.com/image.jpg" })).toBeNull();
+    expect(parseCadInput({ ...valid, conceptBoardDataUrl: board })).toBeNull();
+    expect(parseCadInput({ ...valid, selectedConcept: { ...selectedConcept, zones: [] } })).toBeNull();
+    expect(parseCadInput({ ...valid, siteWidth: 18, selectedConcept })).toBeNull();
   });
 
   it("uses the authenticated owner as part of the persistent sandbox name", () => {
@@ -327,6 +338,28 @@ describe("CAD agent input and execution contracts", () => {
       });
       await expect(proposeCadCommands({ ...valid, siteWidth: 3, siteDepth: 3 }, null, null, fetchFn as unknown as typeof fetch))
         .resolves.toMatchObject({ summary: "تم", selfReview: ["حدود الأرض"], done: false });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("sends only the selected concept and its selected panel as structured CAD context", async () => {
+    vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-sonnet-5.5");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    try {
+      const selectedConcept = { id: "B" as const, title: "Courtyard loop", strategy: "courtyard" as const, siteWidthM: 20, siteDepthM: 20, idea: "A small courtyard gives the shared circulation daylight and organizes rooms around a calm center.", circulation: "A compact loop around the courtyard reaches each private apartment entrance.", program: ["two homes", "shared stair"], zones: [{ name: "Home A", location: "east side", areaShare: 0.48 }, { name: "Home B", location: "west side", areaShare: 0.48 }] };
+      const image = await sharp({ create: { width: 900, height: 300, channels: 3, background: "white" } }).png().toBuffer();
+      const conceptBoardDataUrl = `data:image/png;base64,${image.toString("base64")}`;
+      const fetchFn = vi.fn(async (_url: unknown, options: RequestInit) => {
+        const body = JSON.parse(options.body as string);
+        expect(body.messages[0].content).toContain("metric input");
+        const userContent = body.messages[1].content;
+        expect(userContent[0].text).toContain('"id":"B"');
+        expect(userContent[0].text).toContain('"strategy":"courtyard"');
+        expect(userContent.filter((part: { type: string }) => part.type === "image_url")).toHaveLength(1);
+        expect(userContent[1].image_url.url.startsWith("data:image/jpeg;base64,")).toBe(true);
+        return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ commands: [{ op: "wall", id: "north-wall", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "تم", done: false }) } }] }), { status: 200 });
+      });
+      await expect(proposeCadCommands({ ...valid, selectedConcept, conceptBoardDataUrl }, null, null, fetchFn as unknown as typeof fetch)).resolves.toMatchObject({ done: false });
+      expect(fetchFn).toHaveBeenCalledOnce();
     } finally { vi.unstubAllEnvs(); }
   });
 

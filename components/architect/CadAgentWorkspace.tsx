@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
+import type { ArchitecturalConcept } from "../../lib/architect/concept-board";
 
 type Inspection = { counts: Record<string, number>; warnings: string[]; unverifiedChecks?: string[]; objects: number; segments: number };
 type Turn = { role: "user" | "assistant"; text: string };
@@ -12,11 +13,17 @@ function newProjectId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (n) => n.toString(16).padStart(2, "0")).join("");
 }
 
-export function CadAgentWorkspace() {
+export function CadAgentWorkspace({ selectedConcept, sourceBrief, conceptRunId, conceptBoardDataUrl }: { selectedConcept?: ArchitecturalConcept; sourceBrief?: string; conceptRunId?: string; conceptBoardDataUrl?: string } = {}) {
+  const storageKey = selectedConcept
+    ? `${STORAGE}:${conceptRunId ?? "legacy"}:${selectedConcept.id}:${selectedConcept.strategy}:${encodeURIComponent(`${selectedConcept.title}:${selectedConcept.idea}`).slice(0, 80)}`
+    : STORAGE;
+  const selectedBrief = selectedConcept
+    ? (sourceBrief ?? "").slice(0, 1500)
+    : EXAMPLE;
   const [projectId, setProjectId] = useState("");
-  const [instruction, setInstruction] = useState(EXAMPLE);
-  const [width, setWidth] = useState("20");
-  const [depth, setDepth] = useState("20");
+  const [instruction, setInstruction] = useState(selectedBrief);
+  const [width, setWidth] = useState(String(selectedConcept?.siteWidthM ?? 20));
+  const [depth, setDepth] = useState(String(selectedConcept?.siteDepthM ?? 20));
   const [state, setState] = useState<"checking" | "installing" | "ready" | "error">("checking");
   const [status, setStatus] = useState("بنتحقق من بيئة FreeCAD...");
   const [preview, setPreview] = useState<string | null>(null);
@@ -28,11 +35,11 @@ export function CadAgentWorkspace() {
   const [setupAttempt, setSetupAttempt] = useState(0);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE);
+    const saved = localStorage.getItem(storageKey);
     const id = saved && /^[0-9a-f]{24}$/.test(saved) ? saved : newProjectId();
-    localStorage.setItem(STORAGE, id);
+    localStorage.setItem(storageKey, id);
     setProjectId(id);
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -105,7 +112,7 @@ export function CadAgentWorkspace() {
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await fetch("/api/architect/cad-agent", {
             method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ projectId, instruction: brief, siteWidth, siteDepth, step, executionError }),
+            body: JSON.stringify({ projectId, instruction: brief, siteWidth, siteDepth, step, executionError, selectedConcept, conceptBoardDataUrl }),
           });
           data = await response.json();
           if (response.ok && data?.previewSvg) break;
@@ -162,21 +169,21 @@ export function CadAgentWorkspace() {
 
   function reset() {
     const id = newProjectId();
-    localStorage.setItem(STORAGE, id); setProjectId(id); setState("checking");
-    setPreview(null); setInspection(null); setTurns([]); setCompletedSteps(0); setError(""); setInstruction(EXAMPLE);
+    localStorage.setItem(storageKey, id); setProjectId(id); setState("checking");
+    setPreview(null); setInspection(null); setTurns([]); setCompletedSteps(0); setError(""); setInstruction(selectedConcept ? selectedBrief : EXAMPLE);
   }
 
   return <main dir="rtl" className="min-h-screen bg-[#071014] px-4 py-6 text-white md:px-7">
     <div className="mx-auto max-w-[1700px]">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div><p className="text-xs font-bold tracking-[0.2em] text-[#d4af37]">QATTAN AI / CAD AGENT LAB</p><h1 className="mt-2 text-3xl font-bold">المساعد يرسم داخل FreeCAD</h1><p className="mt-2 max-w-2xl text-sm leading-7 text-slate-400">المشروع محفوظ داخل بيئة سحابية؛ كل مرحلة تضيف عناصر CAD حقيقية، والمساعد يراجع اللوحة قبل ما يكمل.</p></div>
-        <a href="/ar/architect/blender-lab" className="rounded-xl border border-white/20 px-4 py-2 text-sm text-slate-300 hover:bg-white/10">مختبر Blender</a>
+        <div className="flex flex-wrap gap-2"><a href="/ar/architect/concept-studio" className="rounded-xl border border-[#d4af37]/50 px-4 py-2 text-sm text-[#f1d985] hover:bg-white/10">استوديو المفاهيم A/B/C</a><a href="/ar/architect/blender-lab" className="rounded-xl border border-white/20 px-4 py-2 text-sm text-slate-300 hover:bg-white/10">مختبر Blender</a></div>
       </header>
       <div className="grid gap-4 lg:grid-cols-[390px_minmax(0,1fr)]">
         <section className="flex min-h-[680px] flex-col rounded-2xl border border-white/10 bg-[#101c21] p-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm text-slate-300">عرض الأرض بالمتر<input type="number" min="3" max="100" value={width} onChange={(e) => setWidth(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-[#17282e] p-2 text-white" /></label>
-            <label className="text-sm text-slate-300">عمق الأرض بالمتر<input type="number" min="3" max="100" value={depth} onChange={(e) => setDepth(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-[#17282e] p-2 text-white" /></label>
+            <label className="text-sm text-slate-300">عرض الأرض بالمتر<input type="number" min="3" max="100" value={width} disabled={Boolean(selectedConcept)} onChange={(e) => setWidth(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-[#17282e] p-2 text-white disabled:opacity-60" /></label>
+            <label className="text-sm text-slate-300">عمق الأرض بالمتر<input type="number" min="3" max="100" value={depth} disabled={Boolean(selectedConcept)} onChange={(e) => setDepth(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-[#17282e] p-2 text-white disabled:opacity-60" /></label>
           </div>
           <div className="mt-4 rounded-xl border border-[#d4af37]/25 bg-[#252419] p-3 text-sm leading-6 text-[#eee0aa]" aria-live="polite">{status}</div>
           {state === "installing" && <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/10"><div className="h-full w-1/3 animate-pulse rounded-full bg-[#d4af37]" /></div>}
