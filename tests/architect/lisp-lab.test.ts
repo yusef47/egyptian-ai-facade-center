@@ -22,10 +22,13 @@ describe("AutoLISP pilot contract", () => {
 
   it("makes one bounded Sonnet call and reports provider usage without retry", async () => {
     expect(LISP_LAB_LIMITS.timeoutMs).toBe(165_000);
+    expect(LISP_LAB_LIMITS.maxTokens).toBe(12_000);
+    expect(LISP_LAB_LIMITS.source).toBe(48_000);
     const fetchFn = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("anthropic/claude-sonnet-5.5");
       expect(body.reasoning).toEqual({ effort: "medium" });
+      expect(body.max_tokens).toBe(12_000);
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: validLisp } }], usage: { prompt_tokens: 900, completion_tokens: 500, cost: 0.0123 } }), { status: 200 });
     });
     await expect(generateAutoLisp("20 m plan", fetchFn as unknown as typeof fetch)).resolves.toMatchObject({
@@ -39,5 +42,18 @@ describe("AutoLISP pilot contract", () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: `(defun c:QATTANPLAN () (open "secret" "w"))` } }] }), { status: 200 }));
     await expect(generateAutoLisp("plan", fetchFn as unknown as typeof fetch)).rejects.toThrow("rejected_unsafe_symbol");
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports safe usage diagnostics for a truncated response without logging source", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ finish_reason: "length", message: { content: "partial private source" } }],
+      usage: { prompt_tokens: 8000, completion_tokens: 12000 },
+    }), { status: 200 }));
+    await expect(generateAutoLisp("plan", fetchFn as unknown as typeof fetch)).rejects.toThrow("incomplete_response");
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("[LISP_LAB_INCOMPLETE_RESPONSE]", JSON.stringify({ finishReason: "length", promptTokens: 8000, completionTokens: 12000 }));
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("partial private source");
+    warn.mockRestore();
   });
 });

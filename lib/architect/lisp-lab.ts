@@ -2,9 +2,9 @@ import { extractChatText } from "../architect-interpreter";
 import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
 import { CONCEPT_BOARD_MODELS } from "./concept-board";
 
-export const LISP_LAB_LIMITS = { brief: 2_000, source: 32_000, timeoutMs: 165_000, maxTokens: 8_000 } as const;
+export const LISP_LAB_LIMITS = { brief: 2_000, source: 48_000, timeoutMs: 165_000, maxTokens: 12_000 } as const;
 
-const SYSTEM_PROMPT = `Write one complete, self-contained AutoLISP file defining c:QATTANPLAN for a schematic 2D residential plan. All units are millimetres; put that in a short header comment. Use entmake and helper defuns. Include plot boundary, wall runs with real door/window gaps and symbols, room labels, shared stair, named layers (walls, doors, windows, stairs, furniture, labels, dimensions), and overall dimensions. Design freely from the brief; no fixed template. Keep code concise and deterministic; tell operator to use a clean drawing because reruns may duplicate entities. Return ONLY source, no Markdown. Never use command/eval, file or network access, shell/system, COM/ActiveX, reactors, autoload/startup hooks, persistence, or external dependencies. Do not claim code compliance or structural validation.`;
+const SYSTEM_PROMPT = `Write one complete, self-contained AutoLISP file defining c:QATTANPLAN for a schematic 2D residential plan. Units are millimetres; state this in a short header comment. Use entmake. Keep source compact: define reusable helper functions for layers, lines, polylines, labels and dimensions, and call them with coordinate data instead of repeating entity-building code. Include the plot boundary, walls with real door/window gaps and symbols, labeled rooms, shared stair, and named layers for walls, doors, windows, stairs, furniture, labels and dimensions, plus overall dimensions. Design freely from the brief, no fixed template. Finish the entire command; use concise coordinates and labels. Warn that reruns may duplicate entities and a clean drawing is recommended. Return ONLY complete source, no Markdown. Never use command/eval, file or network access, shell/system, COM/ActiveX, reactors, autoload/startup hooks, persistence or external dependencies. Do not claim code compliance or structural validation.`;
 
 /**
  * Small fail-closed source check. We never evaluate AutoLISP on the server;
@@ -90,7 +90,18 @@ export async function generateAutoLisp(brief: string, fetchFn: typeof fetch = fe
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(raw) as Record<string, unknown>; } catch { throw new Error("invalid_response"); }
   const choice = Array.isArray(payload.choices) ? payload.choices[0] as Record<string, unknown> | undefined : undefined;
-  if (choice?.finish_reason !== "stop") throw new Error("incomplete_response");
+  if (choice?.finish_reason !== "stop") {
+    const usage = payload.usage && typeof payload.usage === "object" ? payload.usage as Record<string, unknown> : {};
+    const safeCount = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+    const knownReasons = new Set(["length", "content_filter", "tool_calls", "error", "other"]);
+    const rawReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : "other";
+    console.warn("[LISP_LAB_INCOMPLETE_RESPONSE]", JSON.stringify({
+      finishReason: knownReasons.has(rawReason) ? rawReason : "other",
+      promptTokens: safeCount(usage.prompt_tokens),
+      completionTokens: safeCount(usage.completion_tokens),
+    }));
+    throw new Error("incomplete_response");
+  }
   const source = extractChatText(payload);
   if (!source) throw new Error("invalid_response");
   const checked = validateAutoLispSource(source);
