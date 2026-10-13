@@ -398,16 +398,39 @@ export async function retryCadSetup(sandbox: Sandbox): Promise<void> {
 
 export async function readCadInspection(sandbox: Sandbox, projectId: string): Promise<{ inspection: CadInspection | null; preview: string | null }> {
   const root = projectRoot(projectId);
+  let savedInspection: CadInspection | null = null;
+  let savedPreview: string | null = null;
   try {
     const [raw, svg] = await Promise.all([
       sandbox.readFileToBuffer({ path: `${root}/result.json` }),
       sandbox.readFileToBuffer({ path: `${root}/plan.svg` }),
     ]);
-    if (!raw || !svg) return { inspection: null, preview: null };
-    const inspection = JSON.parse(raw.toString("utf8")) as CadInspection;
-    const preview = svg.length <= CAD_AGENT.maxSvg ? svg.toString("utf8") : null;
-    return { inspection: inspection.ok ? inspection : null, preview };
-  } catch { return { inspection: null, preview: null }; }
+    if (raw?.length && raw.length <= 1_000_000) {
+      const parsed = JSON.parse(raw.toString("utf8")) as CadInspection;
+      if (parsed?.ok === true && Array.isArray(parsed.objects) && parsed.counts && Array.isArray(parsed.warnings)) savedInspection = parsed;
+    }
+    if (svg?.length && svg.length <= CAD_AGENT.maxSvg) savedPreview = svg.toString("utf8");
+  } catch { /* Recover from stale, missing, or malformed saved inspection metadata below. */ }
+
+  // FCStd is the source of truth. Rebuild inspection metadata from the saved document
+  // before allowing the model to plan another edit, so it cannot mistake an existing
+  // drawing for an empty project after an interrupted/failed stage.
+  const projectCheck = await sandbox.runCommand({ cmd: "bash", args: ["-lc", `test -s '${root}/project.FCStd'`] });
+  if (projectCheck.exitCode !== 0) {
+    if (savedInspection || savedPreview) throw new Error("Saved CAD inspection exists but its FreeCAD document is missing");
+    return { inspection: null, preview: null };
+  }
+  if (savedInspection && savedPreview) return { inspection: savedInspection, preview: savedPreview };
+  try {
+    const siteBuffer = await sandbox.readFileToBuffer({ path: `${root}/site.json` });
+    if (!siteBuffer || siteBuffer.length > 2_000) throw new Error("site metadata unavailable");
+    const site = JSON.parse(siteBuffer.toString("utf8")) as { width?: unknown; depth?: unknown };
+    if (typeof site.width !== "number" || !Number.isFinite(site.width) || site.width < 3 || site.width > 100 || typeof site.depth !== "number" || !Number.isFinite(site.depth) || site.depth < 3 || site.depth > 100) throw new Error("site metadata invalid");
+    const recovered = await runCadAction(sandbox, { projectId, instruction: "recover saved CAD inspection", siteWidth: site.width, siteDepth: site.depth, step: 0 }, { python: "pass", summary: "inspect saved document", done: false }, true);
+    return recovered;
+  } catch (error) {
+    throw new Error("Saved CAD document could not be inspected; no new drawing step was run", { cause: error });
+  }
 }
 
 export async function proposeCadAction(input: CadInput, inspection: CadInspection | null, preview: string | null, fetchFn: typeof fetch = fetch): Promise<CadAction> {
@@ -515,10 +538,16 @@ export async function runCadAction(sandbox: Sandbox, input: CadInput, action: Ca
   ]);
   const inspection = raw?.length ? JSON.parse(raw.toString("utf8")) as CadInspection : null;
   if (cmd.exitCode !== 0 || !inspection?.ok) {
-    const boundsError = inspection?.error && parseCadBoundsFailure(inspection.error);
+    const failureRaw = await sandbox.readFileToBuffer({ path: `${root}/failure.json` }).catch(() => null);
+    let failure: { error?: unknown } | null = null;
+    if (failureRaw?.length && failureRaw.length <= 2_000) {
+      try { failure = JSON.parse(failureRaw.toString("utf8")) as { error?: unknown }; } catch { /* Use bounded process stderr below. */ }
+    }
+    const errorMessage = typeof failure?.error === "string" ? failure.error : inspection?.error;
+    const boundsError = errorMessage && parseCadBoundsFailure(errorMessage);
     if (boundsError) throw new CadGeometryBoundsError(boundsError);
     const stderr = (await cmd.stderr()).slice(-900);
-    throw new Error(`FreeCAD action failed: ${inspection?.error ?? stderr ?? "unknown"}`);
+    throw new Error(`FreeCAD action failed: ${errorMessage ?? stderr ?? "unknown"}`);
   }
   if (!preview?.length || preview.length > CAD_AGENT.maxSvg) throw new Error("FreeCAD preview unavailable or too large");
   return { inspection, preview: preview.toString("utf8") };

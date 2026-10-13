@@ -13,6 +13,7 @@ ROOT = os.environ['QATTAN_CAD_PROJECT_ROOT']
 PROJECT = ROOT + '/project.FCStd'
 ACTION = ROOT + '/action.py'
 RESULT = ROOT + '/result.json'
+FAILURE = ROOT + '/failure.json'
 SVG = ROOT + '/plan.svg'
 DXF = ROOT + '/plan.dxf'
 BACKUP = ROOT + '/project.backup.FCStd'
@@ -20,6 +21,7 @@ SVG_BACKUP = ROOT + '/preview.backup.svg'
 DXF_BACKUP = ROOT + '/drawing.backup.dxf'
 SITE = json.load(open(ROOT + '/site.json', encoding='utf-8'))
 os.makedirs(ROOT, exist_ok=True)
+if os.path.exists(FAILURE): os.remove(FAILURE)
 
 def layer_of(obj):
     label = obj.Label.upper()
@@ -209,10 +211,11 @@ try:
         for path in old[20:]: os.remove(path)
     doc.saveAs(PROJECT)
     json.dump({'ok':True,**details},open(RESULT,'w',encoding='utf-8'),ensure_ascii=False)
+    if os.path.exists(FAILURE): os.remove(FAILURE)
     print('QATTAN_CAD_OK',len(doc.Objects),details['segments'])
 except Exception as err:
     traceback.print_exc()
-    json.dump({'ok':False,'error':str(err)[:900]},open(RESULT,'w',encoding='utf-8'))
+    json.dump({'ok':False,'error':str(err)[:900]},open(FAILURE,'w',encoding='utf-8'))
     if doc:
         try: App.closeDocument(doc.Name)
         except Exception: pass

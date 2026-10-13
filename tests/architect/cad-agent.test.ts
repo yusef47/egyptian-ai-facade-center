@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAD_AGENT, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, sandboxName } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, readCadInspection, sandboxName } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -140,6 +140,61 @@ describe("CAD agent input and execution contracts", () => {
     expect(FREECAD_HARNESS).toContain("CAD_BOUNDS_ERROR:");
     expect(FREECAD_HARNESS).toContain("'boundsMm'");
     expect(FREECAD_HARNESS).toContain("geometry_errors[:8]");
+  });
+
+  it("recovers inspection from the saved FCStd when result.json contains a failed-stage record", async () => {
+    const root = `/vercel/sandbox/cad-projects/${valid.projectId}`;
+    const recoveredInspection = { ok: true, objects: [{ id: "wall-north", label: "WALL_wall-north", type: "Part::Feature", layer: "WALL" }], objectIds: ["wall-north"], counts: { WALL: 1 }, warnings: [], segments: 4, siteMm: [20_000, 20_000] };
+    let inspectRan = false;
+    const sandbox = {
+      readFileToBuffer: vi.fn(async ({ path }: { path: string }) => {
+        if (path === `${root}/result.json`) return Buffer.from(inspectRan ? JSON.stringify(recoveredInspection) : JSON.stringify({ ok: false, error: "old stage error" }));
+        if (path === `${root}/plan.svg`) return Buffer.from("<svg/>");
+        if (path === `${root}/site.json`) return Buffer.from(JSON.stringify({ width: 20, depth: 20 }));
+        return null;
+      }),
+      runCommand: vi.fn(async (command: string | { cmd: string; env?: Record<string, string> }) => {
+        if (typeof command === "object" && command.cmd.includes("AppRun")) {
+          expect(command.env?.QATTAN_CAD_INSPECT_ONLY).toBe("1");
+          inspectRan = true;
+        }
+        return { exitCode: 0, stdout: async () => typeof command === "string" ? "existing" : "", stderr: async () => "" };
+      }),
+      writeFiles: vi.fn(async (files: { path: string; content: string }[]) => {
+        if (files.some((file) => file.path.endsWith("/action.py"))) expect(files.find((file) => file.path.endsWith("/action.py"))?.content).toBe("pass");
+      }),
+      update: vi.fn(async () => {}),
+    };
+    const result = await readCadInspection(sandbox as never, valid.projectId);
+    expect(result).toEqual({ inspection: recoveredInspection, preview: "<svg/>" });
+    expect(inspectRan).toBe(true);
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps failed-stage diagnostics separate from the last successful inspection", () => {
+    expect(FREECAD_HARNESS).toContain("FAILURE = ROOT + '/failure.json'");
+    expect(FREECAD_HARNESS).toContain("json.dump({'ok':True,**details},open(RESULT");
+    expect(FREECAD_HARNESS).toContain("json.dump({'ok':False,'error':str(err)[:900]},open(FAILURE");
+    expect(FREECAD_HARNESS).not.toContain("open(RESULT,'w',encoding='utf-8'))\n    if doc:");
+  });
+
+  it("blocks another model stage when saved-document inspection recovery fails", async () => {
+    const root = `/vercel/sandbox/cad-projects/${valid.projectId}`;
+    const sandbox = {
+      readFileToBuffer: vi.fn(async ({ path }: { path: string }) => {
+        if (path === `${root}/result.json`) return Buffer.from(JSON.stringify({ ok: false, error: "failed prior stage" }));
+        if (path === `${root}/plan.svg`) return Buffer.from("<svg/>");
+        if (path === `${root}/site.json`) return Buffer.from(JSON.stringify({ width: 20, depth: 20 }));
+        return null;
+      }),
+      runCommand: vi.fn(async (command: string | { cmd: string; env?: Record<string, string> }) => ({
+        exitCode: typeof command === "object" && command.cmd.includes("AppRun") ? 1 : 0,
+        stdout: async () => "existing", stderr: async () => "inspect failed",
+      })),
+      writeFiles: vi.fn(async () => {}),
+      update: vi.fn(async () => {}),
+    };
+    await expect(readCadInspection(sandbox as never, valid.projectId)).rejects.toThrow("no new drawing step was run");
   });
 
   it("defaults perimeter door swings and dimensions toward the site interior", () => {
