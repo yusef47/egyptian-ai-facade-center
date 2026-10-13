@@ -4,7 +4,7 @@ import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { isAllowedOrigin } from "../../../../lib/origin";
 import { rateLimit } from "../../../../lib/request-guards";
 import {
-  CadCommandValidationError, CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
+  CadCommandValidationError, CadFreeCADExecutionError, CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
   readCadDownload, readCadInspection, retryCadSetup, rollbackCadProject, runCadAction, setupCadSandbox,
 } from "../../../../lib/architect/cad-agent";
 import { evaluateCadPlanQuality } from "../../../../lib/architect/cad-plan-quality";
@@ -133,6 +133,7 @@ export async function POST(request: Request) {
     if (error instanceof CadGeometryBoundsError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "geometry_outside_site", violations: error.violations }));
     else if (error instanceof CadCommandValidationError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "model_output_rejected", ...error.diagnostic }));
     else if (error instanceof CadModelTimeoutError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "model_timeout", attempt: error.attempt }));
+    else if (error instanceof CadFreeCADExecutionError) console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: "freecad_execution_failed", errorName: error.name, operation: error.operation, id: error.objectId }));
     else console.error("[CAD_STEP_FAILED]", JSON.stringify({ kind: message.startsWith("FreeCAD action failed:") ? "freecad_execution_failed" : "request_failed", errorName: error instanceof Error ? error.name.slice(0, 60) : "unknown" }));
     if (sandbox) await sandbox.stop().catch(() => {});
     return NextResponse.json({ error: error instanceof CadGeometryBoundsError

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../lib/architect/cad-agent", () => ({
   CadGeometryBoundsError: class CadGeometryBoundsError extends Error { constructor(readonly violations: { label: string; id: string; boundsMm: number[]; siteMm: number[] }[]) { super(`CAD validation failed: geometry outside the site boundary: ${violations.map((item) => `${item.label} (id=${item.id}, boundsMm=[${item.boundsMm.join(",")}], siteMm=[0,0,${item.siteMm.join(",")}])`).join("; ")}. Keep the full geometry inside the site, including wall thicknesses, door swing arcs, dimensions, and rotated symbols.`) } },
   CadCommandValidationError: class CadCommandValidationError extends Error { constructor(readonly diagnostic: unknown) { super("CAD model output invalid") } },
+  CadFreeCADExecutionError: class CadFreeCADExecutionError extends Error { constructor(message: string, readonly operation?: string, readonly objectId?: string) { super(message); this.name = "CadFreeCADExecutionError" } },
   CadModelTimeoutError: class CadModelTimeoutError extends Error { constructor(readonly attempt: number) { super("CAD model request timed out"); this.name = "CadModelTimeoutError" } },
   cadAgentAvailable: vi.fn(), cadCompletionReady: vi.fn(() => false), getCadSandbox: vi.fn(), parseCadInput: vi.fn(),
   proposeCadAction: vi.fn(), proposeCadCommands: vi.fn(), critiqueCadPlan: vi.fn(), compileCadCommands: vi.fn(() => "generated-safe-action"), rollbackCadProject: vi.fn(), readCadDownload: vi.fn(), readCadInspection: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock("../../lib/credits", () => ({ getSupabaseAdminClient: vi.fn() }));
 import { GET, POST } from "../../app/api/architect/cad-agent/route";
 import { authorizeArchitectPilot } from "../../lib/admin";
 import { getSupabaseAdminClient } from "../../lib/credits";
-import { CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
+import { CadFreeCADExecutionError, CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
 import { resetRequestGuards } from "../../lib/request-guards";
 
 const projectId = "0123456789abcdef01234567";
@@ -117,6 +118,17 @@ describe("CAD agent route", () => {
       expect(body.error).toContain("boundsMm=[-120,2500,900,3400]");
       expect(body.error).toContain("rotated symbols");
       expect(log).toHaveBeenCalledWith("[CAD_STEP_FAILED]", JSON.stringify({ kind: "geometry_outside_site", violations: [violation] }));
+    } finally { log.mockRestore(); }
+  });
+
+  it("logs only validated FreeCAD operation context for execution failures", async () => {
+    vi.mocked(runCadAction).mockRejectedValueOnce(new CadFreeCADExecutionError("FreeCAD action failed: private raw traceback", "move", "st-main"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await POST(request());
+      expect(response.status).toBe(502);
+      expect(log).toHaveBeenCalledWith("[CAD_STEP_FAILED]", JSON.stringify({ kind: "freecad_execution_failed", errorName: "CadFreeCADExecutionError", operation: "move", id: "st-main" }));
+      expect(JSON.stringify(log.mock.calls)).not.toContain("private raw traceback");
     } finally { log.mockRestore(); }
   });
 });

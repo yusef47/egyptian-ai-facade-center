@@ -301,6 +301,28 @@ describe("CAD agent input and execution contracts", () => {
     }
   });
 
+  it("uses immutable-safe copy transformations for move, rotate, copy, and offset scripts", () => {
+    const inspection = { ok: true, objects: [
+      { id: "stair-main", label: "STAIR_stair-main", type: "Part::Feature", layer: "STAIR", semantic: "stair", boundsMm: [1000, 1000, 2000, 4000], positionMm: [1500, 2500] },
+      { id: "chair-main", label: "FURNITURE_chair-main", type: "Part::Feature", layer: "FURNITURE", semantic: "furniture", boundsMm: [3000, 3000, 4000, 4000], positionMm: [3500, 3500] },
+      { id: "detail-line", label: "OTHER_detail-line", type: "Part::Feature", layer: "OTHER", lineStartMm: [5000, 5000], lineEndMm: [8000, 5000] },
+    ], counts: {}, warnings: [], segments: 3, siteMm: [20_000, 20_000] };
+    const parse = (commands: unknown[]) => parseCadCommandAction(JSON.stringify({ commands, summary: "transform", done: false }), 20, 20, inspection as never);
+    const move = compileCadCommands(parse([{ op: "move", id: "stair-main", delta: [100, 200] }])!);
+    const rotate = compileCadCommands(parse([{ op: "rotate", id: "chair-main", center: [3500, 3500], angle: 90 }])!);
+    const copy = compileCadCommands(parse([{ op: "copy", id: "chair-copy", sourceId: "chair-main", delta: [1000, 0] }])!);
+    const offset = compileCadCommands(parse([{ op: "offset", id: "line-offset", sourceId: "detail-line", distance: 200 }])!);
+    for (const script of [move, rotate, copy, offset]) {
+      expect(script).not.toMatch(/\.Shape\.(?:translate|rotate)\(/);
+    }
+    expect(move).toContain("_shape=_obj.Shape.copy(); _shape.translate(_delta); _obj.Shape=_shape");
+    expect(rotate).toContain("_shape=_obj.Shape.copy(); _shape.rotate(_center,Vector(0,0,1),_angle); _obj.Shape=_shape");
+    expect(copy).toContain("_shape=_src.Shape.copy(); _shape.translate(_delta); obj.Shape=_shape");
+    expect(offset).toContain("_shape=_src.Shape.copy(); _shape.translate(_n); obj.Shape=_shape");
+    expect(move).toContain("_cad_current_op=\"move\"");
+    expect(move).toContain("_cad_current_id=\"stair-main\"");
+  });
+
   it("creates bounded hatches only from closed boundaries and produces recognizable furniture and car geometry", () => {
     const hatchInput = JSON.stringify({ commands: [
       { op: "polyline", id: "zone", points: [[1000, 1000], [7000, 1000], [7000, 5000], [1000, 5000]], closed: true, layer: "OTHER" },
@@ -514,7 +536,7 @@ describe("CAD agent input and execution contracts", () => {
   it("keeps failed-stage diagnostics separate from the last successful inspection", () => {
     expect(FREECAD_HARNESS).toContain("FAILURE = ROOT + '/failure.json'");
     expect(FREECAD_HARNESS).toContain("json.dump({'ok':True,**details},open(RESULT");
-    expect(FREECAD_HARNESS).toContain("json.dump({'ok':False,'error':str(err)[:900]},open(FAILURE");
+    expect(FREECAD_HARNESS).toContain("json.dump({'ok':False,'error':str(err)[:900],'operation':scope.get('_cad_current_op','setup')");
     expect(FREECAD_HARNESS).not.toContain("open(RESULT,'w',encoding='utf-8'))\n    if doc:");
   });
 

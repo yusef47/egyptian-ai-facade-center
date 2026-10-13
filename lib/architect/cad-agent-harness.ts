@@ -245,7 +245,7 @@ try:
     else:
         existing_walls = wall_state(doc)
         wall_baseline = existing_walls or None
-    scope={'App':App,'Part':Part,'Vector':App.Vector,'doc':doc,'SITE_WIDTH_MM':float(SITE['width'])*1000,'SITE_DEPTH_MM':float(SITE['depth'])*1000}
+    scope={'App':App,'Part':Part,'Vector':App.Vector,'doc':doc,'SITE_WIDTH_MM':float(SITE['width'])*1000,'SITE_DEPTH_MM':float(SITE['depth'])*1000,'_cad_current_op':'setup','_cad_current_id':''}
     def add_label(name, value, x_mm, y_mm):
         obj=doc.addObject('App::FeaturePython',name)
         obj.addProperty('App::PropertyString','Text')
@@ -282,7 +282,7 @@ try:
     print('QATTAN_CAD_OK',len(doc.Objects),details['segments'])
 except Exception as err:
     traceback.print_exc()
-    json.dump({'ok':False,'error':str(err)[:900]},open(FAILURE,'w',encoding='utf-8'))
+    json.dump({'ok':False,'error':str(err)[:900],'operation':scope.get('_cad_current_op','setup') if 'scope' in locals() else 'setup','id':scope.get('_cad_current_id','') if 'scope' in locals() else ''},open(FAILURE,'w',encoding='utf-8'))
     if doc:
         try: App.closeDocument(doc.Name)
         except Exception: pass
