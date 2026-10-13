@@ -5,7 +5,7 @@ vi.mock("../../lib/architect/cad-agent", () => ({
   CadCommandValidationError: class CadCommandValidationError extends Error { constructor(readonly diagnostic: unknown) { super("CAD model output invalid") } },
   CadModelTimeoutError: class CadModelTimeoutError extends Error { constructor(readonly attempt: number) { super("CAD model request timed out"); this.name = "CadModelTimeoutError" } },
   cadAgentAvailable: vi.fn(), cadCompletionReady: vi.fn(() => false), getCadSandbox: vi.fn(), parseCadInput: vi.fn(),
-  proposeCadAction: vi.fn(), proposeCadCommands: vi.fn(), compileCadCommands: vi.fn(() => "generated-safe-action"), rollbackCadProject: vi.fn(), readCadDownload: vi.fn(), readCadInspection: vi.fn(),
+  proposeCadAction: vi.fn(), proposeCadCommands: vi.fn(), critiqueCadPlan: vi.fn(), compileCadCommands: vi.fn(() => "generated-safe-action"), rollbackCadProject: vi.fn(), readCadDownload: vi.fn(), readCadInspection: vi.fn(),
   retryCadSetup: vi.fn(), runCadAction: vi.fn(), setupCadSandbox: vi.fn(),
 }));
 vi.mock("../../lib/admin", () => ({ authorizeArchitectPilot: vi.fn() }));
@@ -14,7 +14,7 @@ vi.mock("../../lib/credits", () => ({ getSupabaseAdminClient: vi.fn() }));
 import { GET, POST } from "../../app/api/architect/cad-agent/route";
 import { authorizeArchitectPilot } from "../../lib/admin";
 import { getSupabaseAdminClient } from "../../lib/credits";
-import { CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
+import { CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
 import { resetRequestGuards } from "../../lib/request-guards";
 
 const projectId = "0123456789abcdef01234567";
@@ -34,6 +34,7 @@ beforeEach(() => {
   vi.mocked(getCadSandbox).mockResolvedValue(sandbox as never);
   vi.mocked(setupCadSandbox).mockResolvedValue("ready");
   vi.mocked(readCadInspection).mockResolvedValue({ inspection: null, preview: null });
+  vi.mocked(critiqueCadPlan).mockResolvedValue(null);
   vi.mocked(proposeCadCommands).mockResolvedValue({ commands: [{ op: "wall", id: "wall-a", from: [0, 0], to: [1000, 0], thickness: 200 }], summary: "رسمت", selfReview: [], requiredElements: [], unresolvedItems: [], done: false });
   vi.mocked(runCadAction).mockResolvedValue({ inspection: { ok: true, counts: { WALL: 8 }, warnings: [], objects: [], segments: 20, siteMm: [20000, 20000] }, preview: "<svg/>" });
 });
@@ -74,6 +75,18 @@ describe("CAD agent route", () => {
       expect(runCadAction).not.toHaveBeenCalled();
       expect(log).toHaveBeenCalledWith("[CAD_STEP_FAILED]", expect.stringContaining('"kind":"model_timeout","attempt":2'));
     } finally { log.mockRestore(); }
+  });
+
+  it("runs post-execution critique on every selected-concept stage and fails visibly when it is unavailable", async () => {
+    const concept = { id: "A", title: "Court", strategy: "court", idea: "Court", circulation: "Core", siteWidthM: 20, siteDepthM: 20, program: [], zones: [{ name: "A", location: "east", areaShare: 0.5 }, { name: "B", location: "west", areaShare: 0.5 }] };
+    vi.mocked(parseCadInput).mockReturnValue({ ...input, selectedConcept: concept } as never);
+    const response = await POST(request());
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(critiqueCadPlan).toHaveBeenCalledOnce();
+    expect(body.done).toBe(false);
+    expect(body.architectureReview.verdict).toBe("revise");
+    expect(body.unresolvedItems).toContain("Post-execution visual critique did not return a validated review; architectural status remains unverified");
   });
 
   it("returns actionable bounded geometry details so the admin retry can correct the offending ID", async () => {

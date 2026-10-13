@@ -4,14 +4,46 @@ export type CadPlanObject = {
   hostWallId?: string; openingOffsetMm?: number; openingWidthMm?: number;
 };
 export type CadPlanQualityIssue = {
-  code: "furniture_opening_clearance" | "furniture_wall_collision" | "room_inaccessible" | "wet_room_ventilation" | "habitable_daylight" | "stair_fit" | "room_labels_missing";
+  code: "furniture_opening_clearance" | "furniture_wall_collision" | "room_inaccessible" | "wet_room_ventilation" | "habitable_daylight" | "stair_fit" | "room_labels_missing" | "program_count";
   severity: "blocking" | "improvement";
   ids: string[];
   message: string;
 };
 type PlanInspection = { objects: CadPlanObject[]; siteMm: number[] };
 
+const topologyCodes = new Set<CadPlanQualityIssue["code"]>(["program_count", "room_labels_missing", "room_inaccessible", "wet_room_ventilation", "stair_fit"]);
+export type CadPlanFocus = { phase: "topology" | "furnishing"; blockingCodes: CadPlanQualityIssue["code"][]; allowedOps: string[] };
+
+function numberToken(value: string | undefined): number | null {
+  if (!value) return null;
+  const normalized = value.replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+  return ({ one: 1, two: 2, three: 3, four: 4, five: 5, واحد: 1, واحدة: 1, اثنين: 2, اثنتين: 2, شقة: 1, شقتين: 2, شقتان: 2, ثلاث: 3, ثلاثة: 3, أربع: 4, أربعة: 4 } as Record<string, number>)[normalized.toLowerCase()] ?? null;
+}
+
+function requestedBedroomCount(brief: string): number | null {
+  const apartmentsMatch = brief.match(/\b(\d+|one|two|three|four|five)\s+apartments?\b/i) ?? brief.match(/(\d+|[٠-٩]+|شقة|شقتين|شقتان)\s*(?:مستقلة|مستقلتين|مستقلتان)?\s*شقق?/i) ?? brief.match(/(شقتين|شقتان|شقة واحدة)/i);
+  const apartmentCount = numberToken(apartmentsMatch?.[1]) ?? numberToken(apartmentsMatch?.[2]) ?? (apartmentsMatch?.[1] === "شقة" ? 1 : null);
+  const perApartment = brief.match(/\b(\d+|one|two|three|four|five)\s+(?:bedrooms?|bed\s*rooms?)\s+(?:per|each)\s+apartment\b/i)
+    ?? brief.match(/(?:لكل\s+شقة|في\s+كل\s+شقة|كل\s+شقة\s+(?:فيها|بها)?|كل\s+واحدة\s+(?:فيها|بها)?|each\s+apartment\s+has)\s*(\d+|[٠-٩]+|ثلاث|ثلاثة|أربع|أربعة)\s*غرف?\s*(?:نوم)?/i)
+    ?? brief.match(/(\d+|[٠-٩]+|ثلاث|ثلاثة|أربع|أربعة)\s*غرف\s+نوم\s+لكل\s+شقة/i);
+  const each = numberToken(perApartment?.[1]);
+  if (each && apartmentCount) return each * apartmentCount;
+  const total = brief.match(/\b(\d+|one|two|three|four|five)\s+(?:bedrooms?|bed\s*rooms?)\b/i)
+    ?? brief.match(/(\d+|[٠-٩]+|ثلاث|ثلاثة|أربع|أربعة)\s+غرف\s+نوم/i);
+  return numberToken(total?.[1]);
+}
+
+export function cadPlanFocus(issues: CadPlanQualityIssue[], brief: string, inspection: PlanInspection | null): CadPlanFocus {
+  const blockers = new Set(issues.filter((issue) => issue.severity === "blocking" && topologyCodes.has(issue.code)).map((issue) => issue.code));
+  if (!inspection && /(apartment|bedroom|شقة|غرف)/i.test(brief)) blockers.add("room_labels_missing");
+  return blockers.size
+    ? { phase: "topology", blockingCodes: [...blockers], allowedOps: ["wall", "opening", "room", "shaft", "stair", "delete", "move", "rotate"] }
+    : { phase: "furnishing", blockingCodes: [], allowedOps: ["wall", "opening", "room", "shaft", "stair", "furniture", "delete", "move", "rotate", "dimension", "hatch", "line", "polyline", "circle", "arc", "beam", "column", "copy", "offset", "set-layer"] };
+}
+
 const validId = (value?: string) => value && /^[a-z][a-z0-9_-]{1,39}$/i.test(value) ? value : "unknown";
+const isBedroomLabel = (object: CadPlanObject) => /\bbed(?:room)?\b|غرف?\s+نوم|نوم/i.test(object.text ?? "");
 const center = (object: CadPlanObject): [number, number] | null => {
   const b = object.boundsMm;
   if (b?.length === 4 && b.every(Number.isFinite)) return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
@@ -83,6 +115,12 @@ export function evaluateCadPlanQuality(inspection: PlanInspection, brief = ""): 
   const issues: CadPlanQualityIssue[]=[];
   const objects=inspection.objects, rooms=objects.filter((o)=>o.semantic==="room"), walls=objects.filter((o)=>o.wallStartMm&&o.wallEndMm), openings=objects.filter((o)=>o.semantic==="opening"), furniture=objects.filter((o)=>o.semantic==="furniture"), stairs=objects.filter((o)=>o.semantic==="stair"), shafts=objects.filter((o)=>o.semantic==="shaft");
   if(rooms.length===0 && /(apartment|bedroom|bath|kitchen|شقة|غرفة|حمام|مطبخ)/i.test(brief)) issues.push({code:"room_labels_missing",severity:"blocking",ids:[],message:"The brief requests residential rooms but the drawing has no semantic room labels to review."});
+  const requestedBedrooms = requestedBedroomCount(brief);
+  if (requestedBedrooms !== null) {
+    const bedroomLabels = rooms.filter(isBedroomLabel);
+    const labeledBedrooms = bedroomLabels.length;
+    if (labeledBedrooms !== requestedBedrooms) issues.push({ code: "program_count", severity: "blocking", ids: bedroomLabels.map((room) => validId(room.id)).slice(0, 8), message: `The brief requests ${requestedBedrooms} bedrooms, but ${labeledBedrooms} semantic bedroom labels are present; resolve the room program before furnishing.` });
+  }
   for(const furnishing of furniture){const fb=bounds(furnishing);if(!fb)continue;
     for(const opening of openings){const ob=bounds(opening);if(!ob)continue;const clearance=opening.text==="WINDOW"?300:150;const overlap=fb[0]<ob[2]+clearance&&fb[2]>ob[0]-clearance&&fb[1]<ob[3]+clearance&&fb[3]>ob[1]-clearance;if(overlap){issues.push({code:"furniture_opening_clearance",severity:"blocking",ids:[validId(furnishing.id),validId(opening.id)],message:`Furniture ${validId(furnishing.id)} conflicts with ${opening.text?.toLowerCase()??"opening"} ${validId(opening.id)}; relocate it to preserve access, door swing, and window clearance.`});break;}}
     for(const wall of walls){if(!wall.wallStartMm||!wall.wallEndMm)continue;const penetration=(wall.wallThicknessMm??200)/2-30;if(penetration>0&&segmentRectDistance(wall.wallStartMm as [number,number],wall.wallEndMm as [number,number],fb)<penetration){issues.push({code:"furniture_wall_collision",severity:"blocking",ids:[validId(furnishing.id),validId(wall.id)],message:`Furniture ${validId(furnishing.id)} penetrates wall ${validId(wall.id)} beyond its face; shift the symbol out of the wall footprint.`});break;}}
@@ -109,5 +147,5 @@ export function evaluateCadPlanQuality(inspection: PlanInspection, brief = ""): 
   }
   if(rooms.length){const access=roomReachability(inspection,rooms,walls,openings,furniture);if(access.missingEntry)issues.push({code:"room_inaccessible",severity:"blocking",ids:rooms.map((o)=>validId(o.id)).slice(0,8),message:"No accessible exterior door was found to seed a circulation check; provide an entry and connect the room labels to it through door gaps."});for(const room of access.unreachable.slice(0,8))issues.push({code:"room_inaccessible",severity:"blocking",ids:[validId(room.id)],message:`Room ${validId(room.id)} is not reachable from an exterior entry through the measured wall gaps; check its door and circulation route.`});}
   for(const stair of stairs){const b=bounds(stair);if(!b||b[2]-b[0]<800||b[3]-b[1]<800)issues.push({code:"stair_fit",severity:"blocking",ids:[validId(stair.id)],message:`Stair ${validId(stair.id)} has no usable measured footprint; move or resize the flight and confirm it connects to the circulation route.`});}
-  return issues.slice(0,30);
+  return issues.sort((a, b) => Number(topologyCodes.has(b.code)) - Number(topologyCodes.has(a.code)) || Number(b.severity === "blocking") - Number(a.severity === "blocking")).slice(0,30);
 }

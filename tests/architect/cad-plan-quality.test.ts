@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateCadPlanQuality, type CadPlanObject } from "../../lib/architect/cad-plan-quality";
+import { cadPlanFocus, evaluateCadPlanQuality, type CadPlanObject } from "../../lib/architect/cad-plan-quality";
 
 const inspection = (objects: CadPlanObject[]) => ({ objects, siteMm: [20_000, 20_000] });
 
@@ -49,5 +49,29 @@ describe("selected concept plan quality heuristics", () => {
       { id: "fake-exterior-window", semantic: "opening", text: "WINDOW", hostWallId: "partition", boundsMm: [4500, 7900, 5500, 8100] },
     ]));
     expect(issues.some((issue) => issue.code === "wet_room_ventilation")).toBe(true);
+  });
+
+  it("compares an explicit bedroom count with semantic room evidence and prioritizes topology", () => {
+    const drawing = inspection([
+      { id: "bedroom-a", semantic: "room", text: "Bedroom 1", positionMm: [3000, 3000] },
+      { id: "bedroom-b", semantic: "room", text: "Bedroom 2", positionMm: [7000, 3000] },
+      { id: "sofa-a", semantic: "furniture", text: "sofa", boundsMm: [8000, 8000, 10_000, 9000] },
+    ]);
+    const issues = evaluateCadPlanQuality(drawing, "2 apartments, 3 bedrooms per apartment");
+    expect(issues.find((issue) => issue.code === "program_count")?.message).toContain("6 bedrooms");
+    const focus = cadPlanFocus(issues, "2 apartments, 3 bedrooms per apartment", drawing);
+    expect(focus.phase).toBe("topology");
+    expect(focus.allowedOps).not.toContain("furniture");
+  });
+
+  it("multiplies Arabic per-apartment bedroom counts only when the brief states each unit's count", () => {
+    const issues = evaluateCadPlanQuality(inspection([]), "شقتين مستقلتين، كل واحدة فيها ٣ غرف نوم");
+    expect(issues.find((issue) => issue.code === "program_count")?.message).toContain("6 bedrooms");
+  });
+
+  it("allows detail operations after topology blockers clear", () => {
+    const focus = cadPlanFocus([], "Residential plan", inspection([{ id: "room", semantic: "room", text: "Living" }]));
+    expect(focus.phase).toBe("furnishing");
+    expect(focus.allowedOps).toContain("furniture");
   });
 });

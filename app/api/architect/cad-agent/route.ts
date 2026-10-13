@@ -4,7 +4,7 @@ import { getSupabaseAdminClient } from "../../../../lib/credits";
 import { isAllowedOrigin } from "../../../../lib/origin";
 import { rateLimit } from "../../../../lib/request-guards";
 import {
-  CAD_AGENT, CadCommandValidationError, CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
+  CadCommandValidationError, CadGeometryBoundsError, CadModelTimeoutError, cadAgentAvailable, cadCompletionReady, compileCadCommands, critiqueCadPlan, getCadSandbox, parseCadInput, proposeCadCommands,
   readCadDownload, readCadInspection, retryCadSetup, rollbackCadProject, runCadAction, setupCadSandbox,
 } from "../../../../lib/architect/cad-agent";
 import { evaluateCadPlanQuality } from "../../../../lib/architect/cad-plan-quality";
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
     let result = await runCadAction(sandbox, input, { python: compileCadCommands(action), summary: action.summary, done: action.done });
     let inspected = withQualityChecks(result.inspection, input.instruction, selectedProgram, selectedPilot);
     let review: Awaited<ReturnType<typeof critiqueCadPlan>> = null;
-    const finalReviewRequired = selectedPilot && (action.done || input.step === CAD_AGENT.maxSteps - 1);
+    const finalReviewRequired = selectedPilot;
     if (finalReviewRequired) {
       review = await critiqueCadPlan(input, inspected, result.preview).catch(() => null);
     }
@@ -117,9 +117,9 @@ export async function POST(request: Request) {
     const reviewReady = !finalReviewRequired || review?.verdict === "ready";
     const reviewCandidate = { ...action, done: action.done || (finalReviewRequired && review?.verdict === "ready") };
     return NextResponse.json({
-      summary: action.summary, selfReview: action.selfReview, requiredElements: action.requiredElements, unresolvedItems: [...action.unresolvedItems, ...(!reviewReady ? ["Post-execution architectural review still requires revision or could not be completed"] : [])],
+      summary: action.summary, selfReview: action.selfReview, requiredElements: action.requiredElements, unresolvedItems: [...action.unresolvedItems, ...(!review ? ["Post-execution visual critique did not return a validated review; architectural status remains unverified"] : review.verdict === "revise" ? ["Post-execution architectural review identified unresolved revisions"] : [])],
       modelDone: action.done, done: reviewReady && cadCompletionReady(reviewCandidate, inspected), step: input.step + 1,
-      architectureReview: review ? { verdict: review.verdict, summary: review.summary, issues: review.issues, rubric: review.rubric } : finalReviewRequired ? { verdict: "revise", summary: "Post-execution review could not be completed", issues: [], rubric: [] } : null,
+      architectureReview: review ? { verdict: review.verdict, summary: review.summary, issues: review.issues, rubric: review.rubric } : finalReviewRequired ? { verdict: "revise", summary: "Post-execution visual critique did not return validated findings; this stage is unverified and needs another review.", issues: [], rubric: ["program", "room_logic", "circulation", "stair", "privacy", "daylight_ventilation", "clearance", "usability"].map((dimension) => ({ dimension, status: "unresolved" as const, evidenceIds: [], note: "No validated post-execution review returned." })) } : null,
       previewSvg: result.preview, inspection: {
         counts: inspected.counts, warnings: inspected.warnings, qualityChecksEvaluated: selectedPilot, qualityIssues: inspected.qualityIssues, unverifiedChecks: inspected.unverifiedChecks ?? [], wallBaselineReady: inspected.wallBaselineReady ?? false, wallBaselineIds: inspected.wallBaselineIds ?? [], wallCurrentIds: inspected.wallCurrentIds ?? [], wallBaselineCount: inspected.wallBaselineCount ?? 0, wallCurrentCount: inspected.wallCurrentCount ?? 0, wallChanges: inspected.wallChanges ?? [],
         objects: inspected.objects.length, segments: inspected.segments,

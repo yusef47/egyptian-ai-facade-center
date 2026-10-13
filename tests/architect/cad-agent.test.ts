@@ -12,6 +12,16 @@ const valid = {
 };
 
 describe("CAD agent input and execution contracts", () => {
+  it("enforces topology-phase command policy before accepting model edits", () => {
+    const furniture = JSON.stringify({ commands: [{ op: "furniture", id: "bed-a", kind: "bed-double", at: [2000, 2000], width: 1600, depth: 2000 }], summary: "bed", selfReview: [], done: false });
+    const wall = JSON.stringify({ commands: [{ op: "wall", id: "wall-a", from: [500, 500], to: [5000, 500], thickness: 200 }], summary: "wall", selfReview: [], done: false });
+    const allowed = new Set(["wall", "opening", "room", "shaft", "stair", "delete", "move", "rotate"] as const);
+    const rejection: CadCommandRejection = { category: "" };
+    expect(parseCadCommandAction(furniture, 20, 20, null, rejection, 8, allowed, true)).toBeNull();
+    expect(rejection.reasonCode).toBe("topology_phase_restriction");
+    expect(parseCadCommandAction(wall, 20, 20, null, undefined, 8, allowed, true)?.commands[0].op).toBe("wall");
+  });
+
   it("compacts long inspections while retaining semantic issue targets and stable IDs", () => {
     const objects = Array.from({ length: 260 }, (_, i) => ({ id: `item-${i}`, label: `LABEL_${i}`, type: "Part::Feature", layer: "OTHER", semantic: i === 250 ? "furniture" : "line", boundsMm: [i, i, i + 100, i + 100], positionMm: [i, i], text: "x".repeat(300) }));
     const compact = compactCadInspection({ ok: true, objects, objectIds: objects.map((object) => object.id), counts: { OTHER: 260 }, warnings: [], qualityIssues: [{ code: "furniture_opening_clearance", severity: "blocking", ids: ["item-250"], message: "move furniture" }], segments: 260, siteMm: [20_000, 20_000] });
