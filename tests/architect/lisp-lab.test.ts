@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { generateAutoLisp, validateAutoLispSource } from "../../lib/architect/lisp-lab";
+import { generateAutoLisp, LISP_LAB_LIMITS, validateAutoLispSource } from "../../lib/architect/lisp-lab";
 
 const validLisp = `; millimetres
 (defun c:QATTANPLAN (/)
@@ -21,6 +21,7 @@ describe("AutoLISP pilot contract", () => {
   });
 
   it("makes one bounded Sonnet call and reports provider usage without retry", async () => {
+    expect(LISP_LAB_LIMITS.timeoutMs).toBe(53_000);
     const fetchFn = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("anthropic/claude-sonnet-5.5");

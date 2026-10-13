@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 
-const DEFAULT_BRIEF = "Create a schematic architectural plan in millimetres for a 20 m × 20 m site: two independent apartments, each with exactly 3 bedrooms, 1 bathroom, 1 kitchen, and 1 reception/living room. Include a shared entrance and a usable shared stair. Draw walls with real gaps for door and window openings, room labels, basic door/window symbols, and overall dimensions. Design the arrangement yourself; do not use a fixed template. Keep every entity within the site. This is a conceptual plan, not a code-compliant or structurally verified drawing.";
+const DEFAULT_BRIEF = "Schematic plan, 20x20 m site. Two independent apartments, each exactly 3 bedrooms, 1 bathroom, 1 kitchen, 1 reception/living room. Add shared entrance and usable shared stair. Use millimetres; keep all geometry inside the site. Draw labeled rooms, walls with real door/window gaps and symbols, named layers, and overall dimensions. Choose your own layout. Concept only; no code or structural verification.";
 
 type Generated = { source: string; model: string; usage: { promptTokens: number | null; completionTokens: number | null; costUsd: number | null }; verified: false; executed: false };
 

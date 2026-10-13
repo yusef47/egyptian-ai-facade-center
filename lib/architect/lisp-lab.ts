@@ -2,9 +2,9 @@ import { extractChatText } from "../architect-interpreter";
 import { OPENROUTER_ENDPOINT } from "../openrouter-engine";
 import { CONCEPT_BOARD_MODELS } from "./concept-board";
 
-export const LISP_LAB_LIMITS = { brief: 2_000, source: 32_000, timeoutMs: 45_000, maxTokens: 8_000 } as const;
+export const LISP_LAB_LIMITS = { brief: 2_000, source: 32_000, timeoutMs: 53_000, maxTokens: 8_000 } as const;
 
-const SYSTEM_PROMPT = `Write one self-contained AutoLISP source file for a user to download and manually inspect in compatible AutoCAD. The source should define the command QATTANPLAN and create a schematic 2D residential floor plan from the user's brief. Treat all coordinates and dimensions consistently in millimetres; state that in the source header comments. Prefer simple entmake entities (LINE, LWPOLYLINE, TEXT) and helper defuns. Create and use named layers for walls, doors, windows, stairs, furniture, room labels, and dimensions. Draw the plot boundary, wall runs with real gaps for openings, door/window symbols, room labels, a shared stair, and a few overall dimensions. Design the layout yourself; do not use a fixed coordinate template. Keep the source bounded and deterministic; a rerun may create a fresh duplicate plan, so define the command clearly and warn the operator to use a clean drawing. Do not use (command), eval, file access, network, shell/system calls, COM/ActiveX, reactors, autoload, startup hooks, or any persistence. Do not write or load files. No external dependencies. Return ONLY complete AutoLISP source code, no Markdown fences or explanation. Keep the function self-contained and avoid symbols that trigger file, shell, network, or startup actions. Do not claim code compliance or structural validation.`;
+const SYSTEM_PROMPT = `Write one complete, self-contained AutoLISP file defining c:QATTANPLAN for a schematic 2D residential plan. All units are millimetres; put that in a short header comment. Use entmake and helper defuns. Include plot boundary, wall runs with real door/window gaps and symbols, room labels, shared stair, named layers (walls, doors, windows, stairs, furniture, labels, dimensions), and overall dimensions. Design freely from the brief; no fixed template. Keep code concise and deterministic; tell operator to use a clean drawing because reruns may duplicate entities. Return ONLY source, no Markdown. Never use command/eval, file or network access, shell/system, COM/ActiveX, reactors, autoload/startup hooks, persistence, or external dependencies. Do not claim code compliance or structural validation.`;
 
 /**
  * Small fail-closed source check. We never evaluate AutoLISP on the server;
@@ -76,10 +76,15 @@ export async function generateAutoLisp(brief: string, fetchFn: typeof fetch = fe
       body: JSON.stringify({ model, temperature: 0.2, max_tokens: LISP_LAB_LIMITS.maxTokens, reasoning: { effort: "medium" }, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: cleanBrief }] }),
       signal: AbortSignal.timeout(LISP_LAB_LIMITS.timeoutMs), cache: "no-store",
     });
-  } catch {
+  } catch (error) {
+    const category = error instanceof Error && error.name === "TimeoutError" ? "timeout" : "request_failed";
+    console.warn("[LISP_LAB_UPSTREAM_FAILED]", JSON.stringify({ category }));
     throw new Error("upstream_failed");
   }
-  if (!response.ok) throw new Error("upstream_failed");
+  if (!response.ok) {
+    console.warn("[LISP_LAB_UPSTREAM_FAILED]", JSON.stringify({ category: "http_error", status: response.status }));
+    throw new Error("upstream_failed");
+  }
   const raw = await response.text();
   if (raw.length > 100_000) throw new Error("invalid_response");
   let payload: Record<string, unknown>;
