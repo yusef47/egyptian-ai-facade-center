@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAD_AGENT, cadCompletionReady, compileCadCommands, parseCadAction, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, sandboxName } from "../../lib/architect/cad-agent";
+import { CAD_AGENT, cadCompletionReady, compileCadCommands, parseCadAction, parseCadBoundsFailure, parseCadCommandAction, parseCadInput, proposeCadAction, proposeCadCommands, sandboxName } from "../../lib/architect/cad-agent";
 import { FREECAD_HARNESS } from "../../lib/architect/cad-agent-harness";
 
 const valid = {
@@ -132,6 +132,30 @@ describe("CAD agent input and execution contracts", () => {
     expect(FREECAD_HARNESS).toContain("Room enclosure and room-to-exit accessibility are not automatically verified");
   });
 
+  it("returns bounded structured outside-site geometry details without trusting labels", () => {
+    const encoded = JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-120, 2500, 900, 3400], siteMm: [20_000, 20_000] }]);
+    expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${encoded}`)).toEqual([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-120, 2500, 900, 3400], siteMm: [20_000, 20_000] }]);
+    expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "<script>secret</script>", boundsMm: [-120, 2500, 900, 3400], siteMm: [20_000, 20_000] }])}`)).toBeNull();
+    expect(parseCadBoundsFailure(`CAD_BOUNDS_ERROR:${JSON.stringify([{ code: "OUTSIDE_SITE", id: "door-west", label: "DOOR_door-west", boundsMm: [-300_000, 2500, 900, 3400], siteMm: [20_000, 20_000] }])}`)).toBeNull();
+    expect(FREECAD_HARNESS).toContain("CAD_BOUNDS_ERROR:");
+    expect(FREECAD_HARNESS).toContain("'boundsMm'");
+    expect(FREECAD_HARNESS).toContain("geometry_errors[:8]");
+  });
+
+  it("defaults perimeter door swings and dimensions toward the site interior", () => {
+    const reversedSouthWall = JSON.stringify({ commands: [
+      { op: "wall", id: "south-wall", from: [19_900, 100], to: [100, 100], thickness: 200 },
+      { op: "opening", id: "south-door", wallId: "south-wall", offset: 1000, kind: "DOOR", width: 900 },
+      { op: "dimension", id: "south-dim", from: [19_900, 100], to: [100, 100], offset: 400 },
+    ], summary: "interior-safe defaults", selfReview: [], done: false });
+    const parsed = parseCadCommandAction(reversedSouthWall, 20, 20);
+    expect(parsed?.commands.find((command) => command.op === "opening")).toMatchObject({ swingSide: -1 });
+    const compiled = compileCadCommands(parsed!);
+    expect(compiled).toContain("_toward=_center.sub(_mid)");
+    expect(compiled).toContain("if _toward.x*_n.x+_toward.y*_n.y<0: _n=_n.multiply(-1)");
+    expect(compiled).toContain("_normal=_n.multiply(-1)");
+  });
+
   it("reserves output tokens for the CAD action with the production text model", async () => {
     vi.stubEnv("OPENROUTER_ARCHITECT_TEXT_MODEL", "anthropic/claude-haiku-5.5");
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
@@ -162,6 +186,7 @@ describe("CAD agent input and execution contracts", () => {
         expect(body.messages[0].content).toContain('"op":"hatch"');
         expect(body.messages[0].content).toContain("car-sedan");
         expect(body.messages[0].content).toContain('"pattern":"diagonal"|"cross"|"tile"');
+        expect(body.messages[0].content).toContain("rotated extents of furniture, cars, and stairs");
         return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ commands: [{ op: "wall", id: "north", from: [100, 100], to: [1900, 100], thickness: 200 }], summary: "تم", selfReview: ["حدود الأرض"], requiredElements: [], unresolvedItems: [], done: false }) } }] }), { status: 200 });
       });
       await expect(proposeCadCommands({ ...valid, siteWidth: 3, siteDepth: 3 }, null, null, fetchFn as unknown as typeof fetch))

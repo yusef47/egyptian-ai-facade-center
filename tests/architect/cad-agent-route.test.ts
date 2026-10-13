@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/architect/cad-agent", () => ({
+  CadGeometryBoundsError: class CadGeometryBoundsError extends Error { constructor(readonly violations: { label: string; id: string; boundsMm: number[]; siteMm: number[] }[]) { super(`CAD validation failed: geometry outside the site boundary: ${violations.map((item) => `${item.label} (id=${item.id}, boundsMm=[${item.boundsMm.join(",")}], siteMm=[0,0,${item.siteMm.join(",")}])`).join("; ")}. Keep the full geometry inside the site, including wall thicknesses, door swing arcs, dimensions, and rotated symbols.`) } },
+  CadCommandValidationError: class CadCommandValidationError extends Error { constructor(readonly diagnostic: unknown) { super("CAD model output invalid") } },
   cadAgentAvailable: vi.fn(), cadCompletionReady: vi.fn(() => false), getCadSandbox: vi.fn(), parseCadInput: vi.fn(),
   proposeCadAction: vi.fn(), proposeCadCommands: vi.fn(), compileCadCommands: vi.fn(() => "generated-safe-action"), rollbackCadProject: vi.fn(), readCadDownload: vi.fn(), readCadInspection: vi.fn(),
   retryCadSetup: vi.fn(), runCadAction: vi.fn(), setupCadSandbox: vi.fn(),
@@ -11,7 +13,7 @@ vi.mock("../../lib/credits", () => ({ getSupabaseAdminClient: vi.fn() }));
 import { GET, POST } from "../../app/api/architect/cad-agent/route";
 import { authorizeArchitectPilot } from "../../lib/admin";
 import { getSupabaseAdminClient } from "../../lib/credits";
-import { cadAgentAvailable, cadCompletionReady, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
+import { CadGeometryBoundsError, cadAgentAvailable, cadCompletionReady, getCadSandbox, parseCadInput, proposeCadCommands, readCadInspection, runCadAction, setupCadSandbox } from "../../lib/architect/cad-agent";
 import { resetRequestGuards } from "../../lib/request-guards";
 
 const projectId = "0123456789abcdef01234567";
@@ -58,5 +60,21 @@ describe("CAD agent route", () => {
     expect((await POST(request())).status).toBe(202);
     expect(proposeCadCommands).toHaveBeenCalledTimes(1);
     expect(runCadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns actionable bounded geometry details so the admin retry can correct the offending ID", async () => {
+    const violation = { code: "OUTSIDE_SITE" as const, id: "door-west", label: "DOOR_door-west", boundsMm: [-120, 2500, 900, 3400] as [number, number, number, number], siteMm: [20_000, 20_000] as [number, number] };
+    vi.mocked(runCadAction).mockRejectedValueOnce(new CadGeometryBoundsError([violation]));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await POST(request());
+      const body = await response.json();
+      expect(response.status).toBe(502);
+      expect(body.error).toContain("FreeCAD action failed:");
+      expect(body.error).toContain("id=door-west");
+      expect(body.error).toContain("boundsMm=[-120,2500,900,3400]");
+      expect(body.error).toContain("rotated symbols");
+      expect(log).toHaveBeenCalledWith("[CAD_STEP_FAILED]", JSON.stringify({ kind: "geometry_outside_site", violations: [violation] }));
+    } finally { log.mockRestore(); }
   });
 });

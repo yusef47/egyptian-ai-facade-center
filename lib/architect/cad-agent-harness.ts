@@ -33,6 +33,7 @@ def emit_preview(doc):
     labels = []
     summary = []
     warnings = []
+    geometry_errors = []
     max_x = float(SITE['width']) * 1000
     max_y = float(SITE['depth']) * 1000
     limits = [0.0, 0.0, max_x, max_y]
@@ -76,7 +77,10 @@ def emit_preview(doc):
             limits[2] = max(limits[2], bb.XMax)
             limits[3] = max(limits[3], bb.YMax)
             if bb.XMin < -1 or bb.YMin < -1 or bb.XMax > max_x + 1 or bb.YMax > max_y + 1:
-                warnings.append(obj.Label + ' extends outside the site')
+                raw_id = str(getattr(obj, 'CadAgentId', ''))
+                safe_id = raw_id if raw_id and len(raw_id) <= 40 and raw_id[0].isalpha() and all(ch.isascii() and (ch.isalnum() or ch in '_-') for ch in raw_id) else 'unknown'
+                geometry_errors.append({'code':'OUTSIDE_SITE','id':safe_id,'label':kind+'_'+safe_id,'boundsMm':[round(bb.XMin,1),round(bb.YMin,1),round(bb.XMax,1),round(bb.YMax,1)],'siteMm':[max_x,max_y]})
+                warnings.append(kind+'_'+safe_id+' extends outside the site')
             for edge in obj.Shape.Edges:
                 try:
                     points = edge.discretize(Deflection=25.0)
@@ -166,7 +170,7 @@ def emit_preview(doc):
             bb=obj.get('boundsMm')
             if not bb or bb[0]<-1 or bb[1]<-1 or bb[2]>max_x+1 or bb[3]>max_y+1: warnings.append(str(obj.get('semantic'))+' '+str(obj.get('id','?'))+' has invalid plan bounds')
     if len(summary)>1200: raise RuntimeError('CAD drawing exceeds the inspection limit')
-    return {'objects':summary, 'objectIds':[o['id'] for o in summary if o.get('id')], 'counts':counts, 'warnings':warnings[:30], 'unverifiedChecks':['Room enclosure and room-to-exit accessibility are not automatically verified','No code, structural, or professional-plan review is performed'], 'segments':len(lines), 'siteMm':[max_x,max_y]}
+    return {'objects':summary, 'objectIds':[o['id'] for o in summary if o.get('id')], 'counts':counts, 'warnings':warnings[:30], 'geometryErrors':geometry_errors[:8], 'unverifiedChecks':['Room enclosure and room-to-exit accessibility are not automatically verified','No code, structural, or professional-plan review is performed'], 'segments':len(lines), 'siteMm':[max_x,max_y]}
 
 doc = None
 had_project = os.path.exists(PROJECT)
@@ -195,8 +199,8 @@ try:
     doc.recompute()
     details=emit_preview(doc)
     if details['segments']==0: raise RuntimeError('FreeCAD produced no visible geometry')
-    if any('extends outside the site' in warning for warning in details['warnings']):
-        raise RuntimeError('CAD validation failed: geometry extends outside the site boundary')
+    if details['geometryErrors']:
+        raise RuntimeError('CAD_BOUNDS_ERROR:'+json.dumps(details['geometryErrors'][:4],separators=(',',':')))
     if os.path.exists(PROJECT) and not inspect_only:
         versions=ROOT+'/versions'
         os.makedirs(versions,exist_ok=True)
