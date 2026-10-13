@@ -94,6 +94,9 @@ describe("CAD agent input and execution contracts", () => {
       { op: "hatch", id: "bad-hatch", targetId: "open-zone", pattern: "diagonal", spacing: 400, angle: 45 },
     ], summary: "invalid", done: false }), 20, 20)).toBeNull();
     expect(parseCadCommandAction(JSON.stringify({ commands: [
+      { op: "polyline", id: "flat-zone", points: [[1000, 1000], [3000, 1000], [5000, 1000]], closed: true, layer: "OTHER" },
+    ], summary: "invalid degenerate outline", done: false }), 20, 20)).toBeNull();
+    expect(parseCadCommandAction(JSON.stringify({ commands: [
       { op: "furniture", id: "oversized-car", kind: "car-sedan", at: [1000, 1000], width: 8000, depth: 12000 },
     ], summary: "invalid", done: false }), 20, 20)).toBeNull();
     expect(FREECAD_HARNESS).toContain("'HATCH':'#6ca6a3'");
@@ -111,6 +114,10 @@ describe("CAD agent input and execution contracts", () => {
     expect(python).toContain("phase=pmin+spacing/2.0");
     expect(python).toContain("if phase>=pmax: phase=(pmin+pmax)/2.0");
     expect(python).toContain("t=phase+k*spacing; hits=[]");
+    expect(python).toContain("_target_kind='wall'");
+    expect(python).toContain("HATCH_EMPTY:target=south-edge-wall;kind=");
+    expect(python).toContain("_x0=_a.x+_ux*_lo; _y0=_a.y+_uy*_lo; _x1=_a.x+_ux*_hi; _y1=_a.y+_uy*_hi");
+    expect(python).not.toContain("_a.add(_u.multiply(_lo))");
   });
 
   it("rejects moving or rotating attached opening symbols independently of their host wall", () => {
